@@ -1,0 +1,5 @@
+{
+  "name": "General Deterrence",
+  "description": "An arcade-style, top-down driving game where you play as a police officer on patrol. The goal is to reinforce the principles of road policing: Deterrence, Recognition, and Enforcement by identifying and intervening in high-risk driving behaviours.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>General Deterrence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Rajdhani:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+  }
+}
+</script>
+<style>
+  body {
+    font-family: 'Rajdhani', sans-serif;
+    background-color: #0d0221;
+  }
+  .font-display {
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  .text-glow-cyan {
+    text-shadow: 0 0 5px theme('colors.cyan.400'), 0 0 10px theme('colors.cyan.500');
+  }
+  .text-glow-pink {
+    text-shadow: 0 0 5px theme('colors.pink.400'), 0 0 10px theme('colors.pink.500');
+  }
+  .text-glow-yellow {
+    text-shadow: 0 0 5px theme('colors.yellow.300'), 0 0 10px theme('colors.yellow.400');
+  }
+
+  /* Retro CRT Scanline Effect */
+  .crt-overlay::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 4px, 6px 100%;
+    z-index: 100;
+    pointer-events: none;
+    animation: flicker 0.15s infinite;
+  }
+
+  @keyframes flicker {
+    0% { opacity: 0.2; }
+    20% { opacity: 0.4; }
+    40% { opacity: 0.3; }
+    60% { opacity: 0.6; }
+    80% { opacity: 0.2; }
+    100% { opacity: 0.4; }
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.7; filter: drop-shadow(0 0 10px theme('colors.cyan.400')); }
+    50% { opacity: 1; filter: drop-shadow(0 0 15px theme('colors.cyan.300')); }
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.5); }
+      to { opacity: 1; transform: scale(1); }
+  }
+  .animate-fadeIn {
+      animation: fadeIn 0.5s ease-out forwards;
+  }
+  @keyframes scale-up-in {
+      from { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  .animate-scale-up-in {
+      animation: scale-up-in 0.3s ease-out forwards;
+  }
+  @keyframes score-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.4); filter: drop-shadow(0 0 15px theme('colors.yellow.300')); }
+    100% { transform: scale(1); }
+  }
+  .animate-score-pop {
+    animation: score-pop 0.3s ease-out;
+  }
+
+  /* Siren Light Animations */
+  @keyframes siren-red {
+    0%, 49%, 100% { background-color: theme('colors.red.900'); box-shadow: none; }
+    50%, 99% { background-color: theme('colors.red.400'); box-shadow: 0 0 8px theme('colors.red.400'); }
+  }
+  @keyframes siren-blue {
+    0%, 49%, 100% { background-color: theme('colors.blue.400'); box-shadow: 0 0 8px theme('colors.blue.400'); }
+    50%, 99% { background-color: theme('colors.blue.900'); box-shadow: none; }
+  }
+  .animate-siren-red { animation: siren-red 0.4s infinite; }
+  .animate-siren-blue { animation: siren-blue 0.4s infinite; }
+
+  /* Intense Pulse for Compass */
+   @keyframes intense-pulse {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.3); opacity: 1; }
+  }
+  .animate-intense-pulse {
+    animation: intense-pulse 1s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  @keyframes intense-red-pulse {
+    0%, 100% { 
+      background-color: theme('colors.red.600'); 
+      box-shadow: 0 0 10px theme('colors.red.500'), 0 0 20px theme('colors.red.400'); 
+    }
+    50% { 
+      background-color: theme('colors.red.400'); 
+      box-shadow: 0 0 20px theme('colors.red.300'), 0 0 30px theme('colors.red.200'); 
+    }
+  }
+  .animate-intense-red-pulse {
+    animation: intense-red-pulse 1s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  /* Life at Risk Pulse */
+  @keyframes life-at-risk-pulse-ring {
+      0% {
+          transform: translate(-50%, -50%) scale(1);
+          opacity: 0.7;
+      }
+      100% {
+          transform: translate(-50%, -50%) scale(5.0);
+          opacity: 0;
+      }
+  }
+  .animate-life-at-risk-pulse-ring {
+      animation: life-at-risk-pulse-ring 1.2s infinite ease-out;
+  }
+
+  /* Path Target Pulse */
+  @keyframes path-target-pulse-ring {
+      0% {
+          transform: translate(-50%, -50%) scale(1.2);
+          opacity: 0.8;
+          border-color: theme('colors.yellow.400');
+      }
+      100% {
+          transform: translate(-50%, -50%) scale(4.0);
+          opacity: 0;
+          border-color: theme('colors.yellow.200');
+      }
+  }
+  .animate-path-target-pulse-ring {
+      animation: path-target-pulse-ring 1.5s infinite ease-out;
+  }
+
+  /* Path Flow for GPS */
+  @keyframes path-flow {
+    to {
+      stroke-dashoffset: -100;
+    }
+  }
+  .animate-path-flow {
+    stroke-dasharray: 50 20;
+    animation: path-flow 2s linear infinite;
+  }
+
+  /* Game Message Animation */
+  @keyframes fade-in-out {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  }
+  .animate-fade-in-out {
+      animation: fade-in-out 3s ease-in-out forwards;
+  }
+
+  /* Floating Score Text Animation */
+  @keyframes float-up-fade-out {
+    0% { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, -80px); opacity: 0; }
+  }
+  .animate-float-up-fade-out {
+    animation: float-up-fade-out 2s ease-out forwards;
+  }
+  
+  /* Vigilance Bonus Glow */
+  @keyframes vigilance-glow {
+      0%, 100% { 
+        color: theme('colors.yellow.300');
+        text-shadow: 0 0 8px theme('colors.yellow.300'), 0 0 16px theme('colors.yellow.400');
+      }
+      50% { 
+        color: theme('colors.yellow.200');
+        text-shadow: 0 0 16px theme('colors.yellow.200'), 0 0 24px theme('colors.yellow.300');
+      }
+  }
+  .animate-vigilance-glow {
+      animation: vigilance-glow 1.5s infinite;
+  }
+
+  /* Vigilance Gain Flash */
+  @keyframes vigilance-gain-flash {
+    0%, 100% { 
+        transform: scale(1); 
+        box-shadow: 0 0 8px theme('colors.purple.400/50');
+    }
+    50% { 
+        transform: scale(1.05); 
+        box-shadow: 0 0 20px theme('colors.purple.300'), inset 0 0 10px theme('colors.purple.400/30');
+    }
+  }
+  .animate-vigilance-gain-flash {
+      animation: vigilance-gain-flash 0.5s ease-out;
+  }
+
+  /* --- OLD POLISH ANIMATIONS --- */
+  @keyframes slow-pan {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 5% 5%; }
+  }
+  .animate-slow-pan {
+    animation: slow-pan 20s linear infinite alternate;
+  }
+  
+  @keyframes button-pulse-glow {
+    0%, 100% { transform: scale(1.0); box-shadow: 0 0 15px theme('colors.pink.500'), 0 0 5px theme('colors.pink.400') inset; }
+    50% { transform: scale(1.05); box-shadow: 0 0 25px theme('colors.pink.400'), 0 0 10px theme('colors.pink.300') inset; }
+  }
+  .animate-button-pulse-glow {
+    animation: button-pulse-glow 2.5s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  @keyframes hud-siren-flash {
+      0%, 49%, 100% { box-shadow: inset 0 0 40px 20px theme('colors.blue.500/0.4'), 0 0 20px 10px theme('colors.blue.500/0.4'); }
+      50%, 99% { box-shadow: inset 0 0 40px 20px theme('colors.red.500/0.4'), 0 0 20px 10px theme('colors.red.500/0.4'); }
+  }
+  .animate-hud-siren-flash {
+      animation: hud-siren-flash 0.4s infinite;
+  }
+
+  @keyframes urgent-pulse {
+    0%, 100% { 
+      transform: scale(1);
+      text-shadow: 0 0 10px theme('colors.red.400');
+    }
+    50% { 
+      transform: scale(1.05);
+      text-shadow: 0 0 20px theme('colors.red.300');
+    }
+  }
+  .animate-urgent-pulse {
+    color: theme('colors.red.400');
+    animation: urgent-pulse 1s infinite;
+  }
+
+  .brake-light-glow {
+      background-color: theme('colors.red.500');
+      box-shadow: 0 0 10px 3px theme('colors.red.500');
+  }
+
+  /* Neglect of Duty Pulse */
+  @keyframes neglect-pulse {
+    0%, 100% {
+      transform: scale(1);
+      text-shadow: 0 0 15px theme('colors.red.500');
+      color: theme('colors.red.400');
+    }
+    50% {
+      transform: scale(1.1);
+      text-shadow: 0 0 25px theme('colors.red.300');
+      color: theme('colors.red.300');
+    }
+  }
+  .animate-neglect-pulse {
+    animation: neglect-pulse 1s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  }
+
+  @keyframes scale-up-and-fade {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+  }
+  .animate-scale-up-and-fade {
+      animation: scale-up-and-fade 1s ease-in-out forwards;
+  }
+
+  @keyframes siren-boost-flash {
+    0%, 100% { background-color: theme('colors.blue.500'); box-shadow: 0 0 10px theme('colors.blue.400'); }
+    50% { background-color: theme('colors.red.500'); box-shadow: 0 0 10px theme('colors.red.400'); }
+  }
+  .animate-siren-boost-flash {
+    animation: siren-boost-flash 0.4s infinite;
+    transition: none;
+  }
+  
+  /* --- POLISH ANIMATIONS --- */
+  @keyframes car-idle-bob {
+    0%, 100% { transform: translate(-50%, -50%) rotate(var(--car-angle)) translateY(0px); }
+    50% { transform: translate(-50%, -50%) rotate(var(--car-angle)) translateY(-1px); }
+  }
+  .animate-car-idle-bob {
+    --car-angle: 0deg;
+    animation: car-idle-bob 1s ease-in-out infinite;
+  }
+
+  @keyframes target-flash {
+    0%, 100% { filter: brightness(1.2) drop-shadow(0 0 8px theme('colors.yellow.300')); }
+    50% { filter: brightness(2.0) drop-shadow(0 0 15px theme('colors.yellow.200')); }
+  }
+  .animate-target-flash {
+    animation: target-flash 0.5s infinite;
+  }
+
+  @keyframes fade-out-smoke {
+    from { opacity: 0.4; transform: scale(0.5); }
+    to { opacity: 0; transform: scale(2); }
+  }
+  .animate-fade-out-smoke {
+    animation: fade-out-smoke 1s ease-out forwards;
+  }
+
+  /* Exhaust Flame Flicker */
+  @keyframes exhaust-flicker {
+    0%, 100% { transform: scaleY(1.0) scaleX(1.0); opacity: 0.7; }
+    50% { transform: scaleY(1.5) scaleX(1.2); opacity: 1; }
+  }
+  
+  /* Boost Ready Glow */
+  @keyframes boost-ready-glow {
+      0%, 100% { box-shadow: 0 0 10px theme('colors.cyan.400'), inset 0 0 4px theme('colors.cyan.300'); }
+      50% { box-shadow: 0 0 20px theme('colors.cyan.300'), inset 0 0 8px theme('colors.cyan.200'); }
+  }
+
+  .headlight-beam {
+    clip-path: polygon(20% 0, 80% 0, 100% 100%, 0% 100%);
+    background: linear-gradient(to top, transparent, rgba(255, 255, 220, 0.3));
+  }
+
+  /* --- EXPLOSION ANIMATION --- */
+  @keyframes explosion-ring-expand {
+    from {
+      transform: translate(-50%, -50%) scale(0);
+      opacity: 1;
+    }
+    to {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 0;
+    }
+  }
+  
+  /* --- NEW ANIMATIONS --- */
+  @keyframes suspect-glow {
+    0%, 100% { filter: drop-shadow(0 0 12px theme('colors.yellow.400')); }
+    50% { filter: drop-shadow(0 0 20px theme('colors.yellow.300')); }
+  }
+  .animate-suspect-glow {
+    animation: suspect-glow 1.5s infinite;
+  }
+
+  @keyframes icon-bob {
+      0%, 100% { transform: translate(-50%, -50%) rotate(var(--icon-angle)) scale(1.5) translateY(0); }
+      50% { transform: translate(-50%, -50%) rotate(var(--icon-angle)) scale(1.5) translateY(-5px); }
+  }
+  .animate-icon-bob {
+      --icon-angle: 0deg;
+      animation: icon-bob 1s ease-in-out infinite;
+  }
+
+  .boost-overlay {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 0.2s ease-in-out;
+  }
+  .boost-overlay.active {
+      opacity: 1;
+  }
+
+  /* --- NEW POLISH EFFECTS --- */
+  .life-at-risk-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 99;
+    animation: life-at-risk-vignette-pulse 1.2s infinite;
+  }
+  @keyframes life-at-risk-vignette-pulse {
+    0%, 100% { box-shadow: inset 0 0 100px 50px rgba(255, 0, 0, 0.2); }
+    50% { box-shadow: inset 0 0 120px 60px rgba(255, 0, 0, 0.35); }
+  }
+
+  .vigilance-border {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 98;
+    animation: vigilance-border-glow 2s infinite;
+    border: 4px solid theme('colors.yellow.400/0.8');
+  }
+  @keyframes vigilance-border-glow {
+    0%, 100% { box-shadow: inset 0 0 20px 10px theme('colors.yellow.400/0.4'), 0 0 20px 10px theme('colors.yellow.400/0.4'); }
+    50% { box-shadow: inset 0 0 30px 15px theme('colors.yellow.300/0.6'), 0 0 30px 15px theme('colors.yellow.300/0.6'); }
+  }
+  
+  .speed-lines-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 21;
+    overflow: hidden;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 80%);
+  }
+  .speed-line {
+    position: absolute;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.7), transparent);
+    width: 2px;
+    height: 150px;
+    animation: speed-line-anim 0.3s linear infinite;
+  }
+  @keyframes speed-line-anim {
+    from { transform: translateY(-200px); }
+    to { transform: translateY(800px); }
+  }
+
+</style>
+</head>
+  <body class="text-white overflow-hidden">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
