@@ -1,19 +1,48 @@
 const express = require('express');
 const cors = require('cors');
-const { createClient } = require('@libsql/client');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Turso/LibSQL connection - use env vars or fall back to local file
-const dbUrl = process.env.TURSO_DATABASE_URL || 'file:local.db';
-const authToken = process.env.TURSO_AUTH_TOKEN;
+// Turso HTTP API configuration
+const TURSO_URL = process.env.TURSO_DATABASE_URL;
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN;
 
-const db = createClient({
-  url: dbUrl,
-  authToken: authToken,
-});
+// In-memory fallback when Turso is not configured
+let inMemoryLeaderboard = [];
+
+// Execute SQL via Turso HTTP API
+async function executeSQL(sql, args = []) {
+  if (!TURSO_URL || !TURSO_TOKEN) {
+    return null; // Use in-memory fallback
+  }
+
+  // Convert libsql URL to HTTP URL
+  const httpUrl = TURSO_URL.replace('libsql://', 'https://');
+  
+  const response = await fetch(`${httpUrl}/v2/pipeline`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${TURSO_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [
+        { type: 'execute', stmt: { sql, args: args.map(a => ({ type: 'text', value: String(a) })) } },
+        { type: 'close' }
+      ]
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Turso API error: ${response.status} - ${text}`);
+  }
+
+  const data = await response.json();
+  return data.results[0];
+}
 
 app.use(cors());
 app.use(express.json());
@@ -23,36 +52,58 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // Initialize database
 async function initDb() {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS leaderboard (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      score INTEGER NOT NULL,
-      email TEXT,
-      timestamp INTEGER NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_email ON leaderboard(email)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_score ON leaderboard(score DESC)`);
-  
-  console.log('Database initialized');
+  if (!TURSO_URL || !TURSO_TOKEN) {
+    console.log('Turso not configured - using in-memory leaderboard (scores will not persist across restarts)');
+    return;
+  }
+
+  try {
+    await executeSQL(`
+      CREATE TABLE IF NOT EXISTS leaderboard (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        email TEXT,
+        timestamp INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Turso database initialized');
+  } catch (error) {
+    console.error('Failed to initialize Turso database:', error.message);
+    console.log('Falling back to in-memory leaderboard');
+  }
 }
 
 // GET /api/leaderboard - Fetch top scores
 app.get('/api/leaderboard', async (req, res) => {
   try {
-    const result = await db.execute(`
+    if (!TURSO_URL || !TURSO_TOKEN) {
+      // Return in-memory leaderboard
+      const sorted = [...inMemoryLeaderboard].sort((a, b) => b.score - a.score).slice(0, 10);
+      return res.json(sorted);
+    }
+
+    const result = await executeSQL(`
       SELECT name, score, timestamp 
       FROM leaderboard 
       ORDER BY score DESC 
       LIMIT 10
     `);
-    res.json(result.rows);
+    
+    // Transform Turso response format to simple objects
+    const rows = result.response.result.rows.map(row => ({
+      name: row[0].value,
+      score: parseInt(row[1].value),
+      timestamp: parseInt(row[2].value)
+    }));
+    
+    res.json(rows);
   } catch (error) {
     console.error('Error reading leaderboard:', error);
-    res.status(500).json({ error: 'Failed to read leaderboard' });
+    // Fallback to in-memory
+    const sorted = [...inMemoryLeaderboard].sort((a, b) => b.score - a.score).slice(0, 10);
+    res.json(sorted);
   }
 });
 
@@ -67,46 +118,74 @@ app.post('/api/leaderboard', async (req, res) => {
   const ts = timestamp || Date.now();
 
   try {
+    if (!TURSO_URL || !TURSO_TOKEN) {
+      // In-memory storage
+      if (email) {
+        const existing = inMemoryLeaderboard.find(e => e.email?.toLowerCase() === email.toLowerCase());
+        if (existing) {
+          if (score > existing.score) {
+            existing.name = name;
+            existing.score = score;
+            existing.timestamp = ts;
+          }
+        } else {
+          inMemoryLeaderboard.push({ name, score, email, timestamp: ts });
+        }
+      } else {
+        inMemoryLeaderboard.push({ name, score, timestamp: ts });
+      }
+      const sorted = [...inMemoryLeaderboard].sort((a, b) => b.score - a.score).slice(0, 10);
+      return res.json(sorted);
+    }
+
     if (email) {
       // Check if user with this email exists
-      const existing = await db.execute({
-        sql: 'SELECT id, score FROM leaderboard WHERE LOWER(email) = LOWER(?)',
-        args: [email]
-      });
+      const existing = await executeSQL(
+        'SELECT id, score FROM leaderboard WHERE LOWER(email) = LOWER(?)',
+        [email]
+      );
       
-      if (existing.rows.length > 0) {
-        const row = existing.rows[0];
+      const rows = existing.response.result.rows;
+      if (rows.length > 0) {
+        const existingScore = parseInt(rows[0][1].value);
+        const existingId = rows[0][0].value;
         // Only update if new score is higher
-        if (score > row.score) {
-          await db.execute({
-            sql: 'UPDATE leaderboard SET name = ?, score = ?, timestamp = ? WHERE id = ?',
-            args: [name, score, ts, row.id]
-          });
+        if (score > existingScore) {
+          await executeSQL(
+            'UPDATE leaderboard SET name = ?, score = ?, timestamp = ? WHERE id = ?',
+            [name, score, ts, existingId]
+          );
         }
       } else {
         // Insert new entry with email
-        await db.execute({
-          sql: 'INSERT INTO leaderboard (name, score, email, timestamp) VALUES (?, ?, ?, ?)',
-          args: [name, score, email, ts]
-        });
+        await executeSQL(
+          'INSERT INTO leaderboard (name, score, email, timestamp) VALUES (?, ?, ?, ?)',
+          [name, score, email, ts]
+        );
       }
     } else {
       // No email - just insert new entry
-      await db.execute({
-        sql: 'INSERT INTO leaderboard (name, score, timestamp) VALUES (?, ?, ?)',
-        args: [name, score, ts]
-      });
+      await executeSQL(
+        'INSERT INTO leaderboard (name, score, timestamp) VALUES (?, ?, ?)',
+        [name, score, ts]
+      );
     }
     
     // Return updated top 10
-    const result = await db.execute(`
+    const result = await executeSQL(`
       SELECT name, score, timestamp 
       FROM leaderboard 
       ORDER BY score DESC 
       LIMIT 10
     `);
     
-    res.json(result.rows);
+    const leaderboard = result.response.result.rows.map(row => ({
+      name: row[0].value,
+      score: parseInt(row[1].value),
+      timestamp: parseInt(row[2].value)
+    }));
+    
+    res.json(leaderboard);
   } catch (error) {
     console.error('Error updating leaderboard:', error);
     res.status(500).json({ error: 'Failed to update leaderboard' });
@@ -115,12 +194,8 @@ app.post('/api/leaderboard', async (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
-  try {
-    await db.execute('SELECT 1');
-    res.json({ status: 'ok', db: 'connected' });
-  } catch (error) {
-    res.status(500).json({ status: 'error', db: 'disconnected' });
-  }
+  const dbStatus = TURSO_URL && TURSO_TOKEN ? 'turso' : 'in-memory';
+  res.json({ status: 'ok', db: dbStatus });
 });
 
 // Catch-all route to serve the frontend
@@ -132,9 +207,9 @@ app.get('*', (req, res) => {
 initDb().then(() => {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`General Deterrence server running on port ${PORT}`);
-    console.log(`Database: ${dbUrl.startsWith('libsql') ? 'Turso (cloud)' : 'Local SQLite'}`);
+    console.log(`Database: ${TURSO_URL ? 'Turso (cloud)' : 'In-memory (temporary)'}`);
   });
 }).catch(err => {
-  console.error('Failed to initialize database:', err);
+  console.error('Failed to initialize:', err);
   process.exit(1);
 });
