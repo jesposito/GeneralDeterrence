@@ -10,8 +10,8 @@ const DATA_FILE = process.env.DATA_FILE || '/data/leaderboard.json';
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the built frontend
-app.use(express.static(path.join(__dirname, '../dist')));
+// Serve static files from the built frontend (same directory in container)
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Ensure data directory exists
 const dataDir = path.dirname(DATA_FILE);
@@ -118,7 +118,7 @@ app.post('/api/leaderboard', (req, res) => {
 
 // Catch-all route to serve the frontend
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist/index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => {

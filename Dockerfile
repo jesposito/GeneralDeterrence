@@ -20,7 +20,7 @@ WORKDIR /app
 
 # Copy server files
 COPY server/package*.json ./
-RUN npm ci --production
+RUN npm install --omit=dev
 
 COPY server/index.js ./
 
