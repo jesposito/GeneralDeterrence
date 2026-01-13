@@ -21,26 +21,40 @@ async function executeSQL(sql, args = []) {
   // Convert libsql URL to HTTP URL
   const httpUrl = TURSO_URL.replace('libsql://', 'https://');
   
+  console.log(`Executing SQL: ${sql.substring(0, 100)}...`);
+  
+  const body = {
+    requests: [
+      { type: 'execute', stmt: { sql, args: args.map(a => ({ type: 'text', value: String(a) })) } },
+      { type: 'close' }
+    ]
+  };
+  
   const response = await fetch(`${httpUrl}/v2/pipeline`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${TURSO_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      requests: [
-        { type: 'execute', stmt: { sql, args: args.map(a => ({ type: 'text', value: String(a) })) } },
-        { type: 'close' }
-      ]
-    }),
+    body: JSON.stringify(body),
   });
 
+  const text = await response.text();
+  
   if (!response.ok) {
-    const text = await response.text();
+    console.error(`Turso API error: ${response.status} - ${text}`);
     throw new Error(`Turso API error: ${response.status} - ${text}`);
   }
 
-  const data = await response.json();
+  const data = JSON.parse(text);
+  console.log(`Turso response:`, JSON.stringify(data).substring(0, 200));
+  
+  // Check for errors in the response
+  if (data.results && data.results[0] && data.results[0].type === 'error') {
+    console.error('Turso query error:', data.results[0].error);
+    throw new Error(`Turso query error: ${JSON.stringify(data.results[0].error)}`);
+  }
+  
   return data.results[0];
 }
 
@@ -68,7 +82,7 @@ async function initDb() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    console.log('Turso database initialized');
+    console.log('Turso database initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Turso database:', error.message);
     console.log('Falling back to in-memory leaderboard');
@@ -79,7 +93,6 @@ async function initDb() {
 app.get('/api/leaderboard', async (req, res) => {
   try {
     if (!TURSO_URL || !TURSO_TOKEN) {
-      // Return in-memory leaderboard
       const sorted = [...inMemoryLeaderboard].sort((a, b) => b.score - a.score).slice(0, 10);
       return res.json(sorted);
     }
@@ -91,7 +104,12 @@ app.get('/api/leaderboard', async (req, res) => {
       LIMIT 10
     `);
     
-    // Transform Turso response format to simple objects
+    // Check if we got a valid response
+    if (!result || !result.response || !result.response.result || !result.response.result.rows) {
+      console.log('No rows returned from Turso, returning empty array');
+      return res.json([]);
+    }
+    
     const rows = result.response.result.rows.map(row => ({
       name: row[0].value,
       score: parseInt(row[1].value),
@@ -101,7 +119,6 @@ app.get('/api/leaderboard', async (req, res) => {
     res.json(rows);
   } catch (error) {
     console.error('Error reading leaderboard:', error);
-    // Fallback to in-memory
     const sorted = [...inMemoryLeaderboard].sort((a, b) => b.score - a.score).slice(0, 10);
     res.json(sorted);
   }
@@ -110,6 +127,8 @@ app.get('/api/leaderboard', async (req, res) => {
 // POST /api/leaderboard - Submit a new score
 app.post('/api/leaderboard', async (req, res) => {
   const { name, score, email, timestamp } = req.body;
+  
+  console.log('Received score submission:', { name, score, email, timestamp });
   
   if (!name || typeof score !== 'number') {
     return res.status(400).json({ error: 'Name and score are required' });
@@ -145,30 +164,32 @@ app.post('/api/leaderboard', async (req, res) => {
         [email]
       );
       
-      const rows = existing.response.result.rows;
+      const rows = existing?.response?.result?.rows || [];
       if (rows.length > 0) {
         const existingScore = parseInt(rows[0][1].value);
         const existingId = rows[0][0].value;
-        // Only update if new score is higher
         if (score > existingScore) {
           await executeSQL(
             'UPDATE leaderboard SET name = ?, score = ?, timestamp = ? WHERE id = ?',
             [name, score, ts, existingId]
           );
+          console.log(`Updated existing entry for ${email}`);
+        } else {
+          console.log(`Score ${score} not higher than existing ${existingScore}`);
         }
       } else {
-        // Insert new entry with email
         await executeSQL(
           'INSERT INTO leaderboard (name, score, email, timestamp) VALUES (?, ?, ?, ?)',
           [name, score, email, ts]
         );
+        console.log(`Inserted new entry for ${email}`);
       }
     } else {
-      // No email - just insert new entry
       await executeSQL(
         'INSERT INTO leaderboard (name, score, timestamp) VALUES (?, ?, ?)',
         [name, score, ts]
       );
+      console.log(`Inserted new entry without email`);
     }
     
     // Return updated top 10
@@ -179,16 +200,17 @@ app.post('/api/leaderboard', async (req, res) => {
       LIMIT 10
     `);
     
-    const leaderboard = result.response.result.rows.map(row => ({
+    const leaderboard = (result?.response?.result?.rows || []).map(row => ({
       name: row[0].value,
       score: parseInt(row[1].value),
       timestamp: parseInt(row[2].value)
     }));
     
+    console.log(`Returning ${leaderboard.length} leaderboard entries`);
     res.json(leaderboard);
   } catch (error) {
     console.error('Error updating leaderboard:', error);
-    res.status(500).json({ error: 'Failed to update leaderboard' });
+    res.status(500).json({ error: 'Failed to update leaderboard', details: error.message });
   }
 });
 
@@ -196,6 +218,24 @@ app.post('/api/leaderboard', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   const dbStatus = TURSO_URL && TURSO_TOKEN ? 'turso' : 'in-memory';
   res.json({ status: 'ok', db: dbStatus });
+});
+
+// Debug endpoint to test Turso connection
+app.get('/api/debug', async (req, res) => {
+  try {
+    const result = await executeSQL('SELECT COUNT(*) as count FROM leaderboard');
+    res.json({ 
+      tursoConfigured: !!(TURSO_URL && TURSO_TOKEN),
+      tursoUrl: TURSO_URL ? TURSO_URL.substring(0, 30) + '...' : null,
+      result: result
+    });
+  } catch (error) {
+    res.json({ 
+      tursoConfigured: !!(TURSO_URL && TURSO_TOKEN),
+      tursoUrl: TURSO_URL ? TURSO_URL.substring(0, 30) + '...' : null,
+      error: error.message 
+    });
+  }
 });
 
 // Catch-all route to serve the frontend
