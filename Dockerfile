@@ -13,11 +13,8 @@ COPY . .
 # Build the frontend
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine
-
-# Install build dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
+# Production stage - use slim (Debian-based) for glibc compatibility with @libsql/client
+FROM node:20-slim
 
 WORKDIR /app
 
@@ -30,17 +27,13 @@ COPY server/index.js ./
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
 
-# Create data directory for SQLite
-RUN mkdir -p /data
-
 # Environment variables
 ENV PORT=3000
-ENV DATA_DIR=/data
 
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "index.js"]
