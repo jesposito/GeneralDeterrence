@@ -367,6 +367,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             tireSmokeRef.current.push({id: now + Math.random(), pos: {x: player.pos.x - Math.cos(rads) * backOffset, y: player.pos.y - Math.sin(rads) * backOffset}, spawnTime: now});
         }
         player.pos.x += player.vel.x; player.pos.y += player.vel.y;
+        
+        // Track patrol path for heatmap (every 10 frames to reduce memory)
+        patrolPathFrameCounter.current++;
+        if (patrolPathFrameCounter.current >= 10) {
+            patrolPathRef.current.push({ x: player.pos.x, y: player.pos.y });
+            patrolPathFrameCounter.current = 0;
+        }
     };
     
     const updateVigilance = () => {
