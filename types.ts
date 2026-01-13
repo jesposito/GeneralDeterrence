@@ -30,9 +30,9 @@ export interface District {
 
 export interface Civilian extends Vehicle {
   ridsType: RIDSType | null;
-  zone: RoadZone; // For visual/legacy pathing, primary logic uses district
+  zone: RoadZone;
   district: DistrictName;
-  path: string[]; // Path is now an array of node IDs
+  path: string[];
   pathIndex: number;
   spawnTime: number;
   isDeterred: boolean;
@@ -40,12 +40,12 @@ export interface Civilian extends Vehicle {
   lastBlobSpawnTime: number;
   deterrenceBlobsRemaining: number;
   isLifeAtRisk: boolean;
-  lifeAtRiskTimer: number; // in frames
+  lifeAtRiskTimer: number;
   roadType?: RoadType;
   isBraking?: boolean;
-  swerveAngle?: number; // For impairment wobble
-  speedFluctuationTimer?: number; // For distraction speed changes
-  speedFluctuationTarget?: number; // The current target speed for a distracted driver
+  swerveAngle?: number;
+  speedFluctuationTimer?: number;
+  speedFluctuationTarget?: number;
   isYieldingToSiren?: boolean;
   patrolPostBonusApplied?: boolean;
 }
@@ -76,6 +76,8 @@ export interface FinalScoreBreakdown {
 export interface LeaderboardEntry {
   name: string;
   score: number;
+  email?: string;
+  timestamp?: number;
 }
 
 export interface MiniGameProps {
@@ -110,7 +112,7 @@ export interface DispatchedCall {
     id: number;
     pos: { x: number; y: number };
     targetVehicleId: number;
-    timeLeft: number; // in seconds
+    timeLeft: number;
     active: boolean;
 }
 
@@ -150,7 +152,7 @@ export interface Explosion {
 export interface PatrolPost {
   id: number;
   pos: { x: number; y: number };
-  remainingTime: number; // in frames
+  remainingTime: number;
 }
 
 export type StationaryCountdown = {

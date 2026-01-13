@@ -1,23 +1,46 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { GameState, LeaderboardEntry, FinalScoreBreakdown } from './types';
 import MainMenu from './components/MainMenu';
 import Game from './components/Game';
 import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
 
+// API base URL - will be set via environment or default to relative path
+const API_BASE = (window as any).LEADERBOARD_API || '/api';
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>('MainMenu');
   const [finalScoreBreakdown, setFinalScoreBreakdown] = useState<FinalScoreBreakdown | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem('leaderboard');
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error('Failed to load leaderboard:', error);
-      return [];
-    }
-  });
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Fetch leaderboard from API on mount
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/leaderboard`);
+        if (response.ok) {
+          const data = await response.json();
+          setLeaderboard(data);
+          setIsOnline(true);
+        } else {
+          throw new Error('API unavailable');
+        }
+      } catch (error) {
+        console.log('Using local leaderboard (API unavailable)');
+        setIsOnline(false);
+        // Fallback to localStorage
+        try {
+          const saved = localStorage.getItem('leaderboard');
+          setLeaderboard(saved ? JSON.parse(saved) : []);
+        } catch (e) {
+          setLeaderboard([]);
+        }
+      }
+    };
+    fetchLeaderboard();
+  }, []);
 
   const handleStartGame = useCallback(() => {
     setGameState('Tutorial');
@@ -36,9 +59,35 @@ const App: React.FC = () => {
     setGameState('MainMenu');
   }, []);
 
-  const handleAddToLeaderboard = useCallback((name: string) => {
+  const handleAddToLeaderboard = useCallback(async (name: string, email?: string) => {
     if (!finalScoreBreakdown) return;
-    const newEntry = { name, score: finalScoreBreakdown.finalScore };
+    
+    const newEntry: LeaderboardEntry = { 
+      name, 
+      score: finalScoreBreakdown.finalScore,
+      email,
+      timestamp: Date.now()
+    };
+
+    if (isOnline) {
+      try {
+        const response = await fetch(`${API_BASE}/leaderboard`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newEntry),
+        });
+        
+        if (response.ok) {
+          const updatedLeaderboard = await response.json();
+          setLeaderboard(updatedLeaderboard);
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to submit to API, saving locally:', error);
+      }
+    }
+    
+    // Fallback to local storage
     const newLeaderboard = [...leaderboard, newEntry]
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
@@ -48,7 +97,7 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('Failed to save leaderboard:', error);
     }
-  }, [finalScoreBreakdown, leaderboard]);
+  }, [finalScoreBreakdown, leaderboard, isOnline]);
 
   const renderContent = () => {
     switch (gameState) {

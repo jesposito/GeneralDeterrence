@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MiniGameProps } from '../../types';
 
 const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
-  const [taps, setTaps] = useState(3);
-  const [timeLeft, setTimeLeft] = useState(1500); // 1.5 seconds
+  const [taps, setTaps] = useState(5);
+  const [timeLeft, setTimeLeft] = useState(2500); // 2.5 seconds for 5 taps
 
   useEffect(() => {
     if (timeLeft <= 0) {
@@ -38,11 +38,11 @@ const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
 
   return (
     <div>
-      <p className="text-lg text-gray-300 mb-4 font-sans">Tap the button or press <span className="bg-gray-200 text-black font-bold px-2 py-1 rounded">SPACE</span> 3 times!</p>
+      <p className="text-lg text-gray-300 mb-4 font-sans">Simulate the breath screening procedure. Tap or press <span className="bg-gray-200 text-black font-bold px-2 py-1 rounded">SPACE</span> {taps} times!</p>
       <div className="w-full bg-gray-600 rounded-full h-4 mb-4">
         <div
           className="bg-red-500 h-4 rounded-full"
-          style={{ width: `${(timeLeft / 1500) * 100}%`, transition: 'width 50ms linear' }}
+          style={{ width: `${(timeLeft / 2500) * 100}%`, transition: 'width 50ms linear' }}
         ></div>
       </div>
       <button
@@ -52,7 +52,7 @@ const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
         <span>TAP!</span>
         <span className="text-6xl">{taps}</span>
       </button>
-       <p className="mt-4 text-sm text-gray-400 font-sans">Principle: Breath test every time you stop someone.</p>
+       <p className="mt-4 text-sm text-gray-400 font-sans">Principle: Breath test every driver you stop - it only takes a moment.</p>
     </div>
   );
 };

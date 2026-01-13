@@ -23,7 +23,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-pink-500/50">
             <h2 className="text-xl md:text-2xl font-display font-semibold text-yellow-400 mb-4 text-glow-yellow">Your Mission</h2>
             <p className="text-gray-300 text-left text-sm md:text-base">
-              Begin your 5-minute patrol. Maximize your <span className="text-white font-bold">Deterrence</span> by staying visible and unpredictable. Identify high-risk driving behaviors (RIDS) and intervene to earn <span className="text-white font-bold">Lives Saved</span> points.
+              Begin your 90-second patrol shift. Maximize your <span className="text-white font-bold">Deterrence</span> by staying visible and unpredictable. Identify high-risk driving behaviors (RIDS) and intervene to earn <span className="text-white font-bold">Lives Saved</span> points.
             </p>
             <button
               onClick={onStartGame}
