@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { LeaderboardEntry } from '../types';
 import Leaderboard from './Leaderboard';
@@ -19,7 +18,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
         </h1>
         <p className="text-lg sm:text-xl lg:text-2xl text-pink-400 font-display mb-8">A Road Policing Tool</p>
         
-        <div className="w-full max-w-lg grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 items-start">
+        <div className="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 items-start">
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-pink-500/50">
             <h2 className="text-xl md:text-2xl font-display font-semibold text-yellow-400 mb-4 text-glow-yellow">Your Mission</h2>
             <p className="text-gray-300 text-left text-sm md:text-base">
@@ -32,7 +31,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
               Start Shift
             </button>
           </div>
-          <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50">
+          <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50 min-w-[280px]">
             <Leaderboard scores={leaderboard} />
           </div>
         </div>
