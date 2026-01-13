@@ -7,9 +7,9 @@ interface LeaderboardProps {
 
 const Leaderboard: React.FC<LeaderboardProps> = ({ scores }) => {
   return (
-    <div className="w-full">
+    <div className="w-full flex flex-col">
       <h2 className="text-2xl font-semibold text-yellow-400 mb-4 text-center font-display text-glow-yellow">Top Patrols</h2>
-      <ol className="text-left space-y-2">
+      <ol className="text-left space-y-2 max-h-64 overflow-y-auto pr-1">
         {scores.map((entry, index) => (
           <li key={index} className="flex justify-between items-center text-base bg-black/30 p-2 rounded gap-2">
             <span className="text-gray-400 w-6 flex-shrink-0">{index + 1}.</span>
