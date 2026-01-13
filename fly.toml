@@ -5,7 +5,6 @@ primary_region = 'syd'
 
 [env]
   PORT = "3000"
-  DATA_DIR = "/data"
 
 [http_service]
   internal_port = 3000
@@ -14,10 +13,6 @@ primary_region = 'syd'
   auto_start_machines = true
   min_machines_running = 1
   processes = ['app']
-
-[mounts]
-  source = "leaderboard_data"
-  destination = "/data"
 
 [[vm]]
   memory = '512mb'
