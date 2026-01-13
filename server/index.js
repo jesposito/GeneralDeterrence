@@ -1,59 +1,61 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
+const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const DATA_FILE = process.env.DATA_FILE || '/data/leaderboard.json';
+const DATA_DIR = process.env.DATA_DIR || '/data';
+const DB_PATH = path.join(DATA_DIR, 'leaderboard.db');
 
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the built frontend (same directory in container)
+// Serve static files from the built frontend
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Ensure data directory exists
-const dataDir = path.dirname(DATA_FILE);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Initialize leaderboard file if it doesn't exist
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-}
+// Initialize SQLite database
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
 
-// Read leaderboard
-const readLeaderboard = () => {
+// Create table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS leaderboard (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    email TEXT,
+    timestamp INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Create index on email for faster lookups
+db.exec(`CREATE INDEX IF NOT EXISTS idx_email ON leaderboard(email)`);
+db.exec(`CREATE INDEX IF NOT EXISTS idx_score ON leaderboard(score DESC)`);
+
+console.log(`Database initialized at ${DB_PATH}`);
+
+// GET /api/leaderboard - Fetch top scores
+app.get('/api/leaderboard', (req, res) => {
   try {
-    const data = fs.readFileSync(DATA_FILE, 'utf8');
-    return JSON.parse(data);
+    const rows = db.prepare(`
+      SELECT name, score, timestamp 
+      FROM leaderboard 
+      ORDER BY score DESC 
+      LIMIT 10
+    `).all();
+    res.json(rows);
   } catch (error) {
     console.error('Error reading leaderboard:', error);
-    return [];
+    res.status(500).json({ error: 'Failed to read leaderboard' });
   }
-};
-
-// Write leaderboard
-const writeLeaderboard = (leaderboard) => {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(leaderboard, null, 2));
-  } catch (error) {
-    console.error('Error writing leaderboard:', error);
-  }
-};
-
-// GET /api/leaderboard - Fetch all scores
-app.get('/api/leaderboard', (req, res) => {
-  const leaderboard = readLeaderboard();
-  // Return without email addresses for privacy
-  const publicLeaderboard = leaderboard.map(({ name, score, timestamp }) => ({ 
-    name, 
-    score, 
-    timestamp 
-  }));
-  res.json(publicLeaderboard);
 });
 
 // POST /api/leaderboard - Submit a new score
@@ -64,61 +66,65 @@ app.post('/api/leaderboard', (req, res) => {
     return res.status(400).json({ error: 'Name and score are required' });
   }
 
-  let leaderboard = readLeaderboard();
-  
-  // If email is provided, check if this user already has an entry
-  if (email) {
-    const existingIndex = leaderboard.findIndex(entry => 
-      entry.email && entry.email.toLowerCase() === email.toLowerCase()
-    );
-    
-    if (existingIndex !== -1) {
-      // Only update if new score is higher
-      if (score > leaderboard[existingIndex].score) {
-        leaderboard[existingIndex] = {
-          name,
-          score,
-          email,
-          timestamp: timestamp || Date.now()
-        };
+  const ts = timestamp || Date.now();
+
+  try {
+    if (email) {
+      // Check if user with this email exists
+      const existing = db.prepare('SELECT id, score FROM leaderboard WHERE LOWER(email) = LOWER(?)').get(email);
+      
+      if (existing) {
+        // Only update if new score is higher
+        if (score > existing.score) {
+          db.prepare('UPDATE leaderboard SET name = ?, score = ?, timestamp = ? WHERE id = ?')
+            .run(name, score, ts, existing.id);
+        }
+      } else {
+        // Insert new entry with email
+        db.prepare('INSERT INTO leaderboard (name, score, email, timestamp) VALUES (?, ?, ?, ?)')
+          .run(name, score, email, ts);
       }
-      // If score isn't higher, we still keep the old entry
     } else {
-      // New user with email
-      leaderboard.push({
-        name,
-        score,
-        email,
-        timestamp: timestamp || Date.now()
-      });
+      // No email - just insert new entry
+      db.prepare('INSERT INTO leaderboard (name, score, timestamp) VALUES (?, ?, ?)')
+        .run(name, score, ts);
     }
-  } else {
-    // No email - just add as new entry
-    leaderboard.push({
-      name,
-      score,
-      timestamp: timestamp || Date.now()
-    });
+    
+    // Return updated top 10
+    const rows = db.prepare(`
+      SELECT name, score, timestamp 
+      FROM leaderboard 
+      ORDER BY score DESC 
+      LIMIT 10
+    `).all();
+    
+    res.json(rows);
+  } catch (error) {
+    console.error('Error updating leaderboard:', error);
+    res.status(500).json({ error: 'Failed to update leaderboard' });
   }
-  
-  // Sort by score descending and keep top 100
-  leaderboard = leaderboard
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 100);
-  
-  writeLeaderboard(leaderboard);
-  
-  // Return public leaderboard (top 10 for display)
-  const publicLeaderboard = leaderboard
-    .slice(0, 10)
-    .map(({ name, score, timestamp }) => ({ name, score, timestamp }));
-  
-  res.json(publicLeaderboard);
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ok', db: 'connected' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', db: 'disconnected' });
+  }
 });
 
 // Catch-all route to serve the frontend
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing database...');
+  db.close();
+  process.exit(0);
 });
 
 app.listen(PORT, '0.0.0.0', () => {
