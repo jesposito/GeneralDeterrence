@@ -16,19 +16,29 @@ RUN npm run build
 # Production stage
 FROM node:20-alpine
 
+# Install build dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Copy server files and install dependencies
 COPY server/package*.json ./
 RUN npm install --omit=dev
 
+# Cleanup build dependencies to reduce image size
+RUN apk del python3 make g++
+
 COPY server/index.js ./
 
 # Copy built frontend from builder
 COPY --from=builder /app/dist ./dist
 
+# Create data directory for SQLite
+RUN mkdir -p /data
+
 # Environment variables
 ENV PORT=3000
+ENV DATA_DIR=/data
 
 EXPOSE 3000
 
