@@ -64,19 +64,12 @@ Not a "tech person"? No problem! Follow the guide below to get the game running 
 
 | If you want... | Use this method | Difficulty |
 |:---|:---|:---:|
-| To play **right now** without installing anything | **Option 1: Play Online** | ⭐ (Easiest) |
-| To run it **privately** on your PC with 1 click | **Option 2: Docker Desktop** | ⭐⭐ (Easy) |
-| To **change the code** or contribute | **Option 3: Development Mode** | ⭐⭐⭐ (Advanced) |
+| To run it on your PC with minimal effort | **Option 1: Docker Desktop** | ⭐ (Easy) |
+| To **change the code** or contribute | **Option 2: Development Mode** | ⭐⭐ (Advanced) |
 
 ---
 
-### 🌟 Option 1: Play Online
-If the game is hosted on a server (like Fly.io), you can simply visit the URL provided by your administrator.
-> **Note:** No installation is required! Just open your web browser (Chrome, Edge, or Firefox) and go to the link.
-
----
-
-### 🐋 Option 2: Docker Desktop (Recommended for most users)
+### 🐋 Option 1: Docker Desktop (Recommended for most users)
 
 **What is Docker?** Think of Docker like a "shipping container." Inside the container is everything the game needs to run (the engine, the database, the graphics). You don't have to install individual pieces; you just run the container.
 
@@ -102,7 +95,7 @@ Open your web browser and go to:
 
 ---
 
-### 💻 Option 3: Development Mode (For Technical Users)
+### 💻 Option 2: Development Mode (For Technical Users)
 
 If you want to modify the game or run it from the source files, follow these steps.
 
