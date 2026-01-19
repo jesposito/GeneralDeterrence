@@ -200,4 +200,4 @@ GeneralDeterrence/
 
 **Suggestions welcome!** If you have ideas for gameplay balance, legal updates, or technical fixes, feel free to open a Pull Request.
 
-**License**: Internal Use - New Zealand Police Road Policing Training.
+**License**: MIT
