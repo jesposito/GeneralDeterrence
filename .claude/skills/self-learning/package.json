@@ -1,0 +1,13 @@
+{
+  "name": "self-learning",
+  "version": "1.0.0",
+  "description": "Self-learning skills system for capturing and sharing durable learnings",
+  "type": "module",
+  "scripts": {
+    "cli": "bun run scripts/self-learning.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

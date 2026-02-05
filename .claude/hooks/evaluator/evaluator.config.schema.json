@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Claude CLI Evaluator Configuration",
+  "description": "Configuration for the Claude CLI Evaluator system that enforces rule adherence at checkpoints",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Global enable/disable for the evaluator. When false, all checkpoints are skipped.",
+      "default": true
+    },
+    "model": {
+      "type": "string",
+      "enum": ["haiku", "sonnet"],
+      "description": "Claude model to use for evaluation. Haiku is faster (~2-3s), Sonnet is more capable.",
+      "default": "haiku"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000,
+      "description": "Timeout in milliseconds for Claude CLI calls. System fails open on timeout.",
+      "default": 10000
+    },
+    "debug": {
+      "type": "boolean",
+      "description": "Enable debug logging to .claude/state/evaluator-debug.log",
+      "default": false
+    },
+    "checkpoints": {
+      "type": "object",
+      "description": "Per-checkpoint configuration",
+      "properties": {
+        "preFlight": {
+          "$ref": "#/definitions/checkpointConfig",
+          "description": "Pre-flight checkpoint: blocks code writing before implementation workflow is acknowledged"
+        },
+        "closingCheck": {
+          "$ref": "#/definitions/checkpointConfig",
+          "description": "Closing check checkpoint: warns on incomplete completion notes when closing items"
+        },
+        "sessionEnd": {
+          "$ref": "#/definitions/checkpointConfig",
+          "description": "Session end checkpoint: warns about unsynced beads and uncommitted changes"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "checkpointConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this checkpoint is active",
+          "default": true
+        },
+        "blocking": {
+          "type": "boolean",
+          "description": "If true, violations block the action. If false, violations only warn.",
+          "default": false
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000,
+          "description": "Override timeout for this specific checkpoint"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

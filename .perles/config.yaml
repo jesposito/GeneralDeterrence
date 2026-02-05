@@ -1,0 +1,273 @@
+# Perles Configuration
+
+# Path to beads database directory (default: current directory)
+# beads_dir: /path/to/project
+
+# Auto-refresh when database changes
+auto_refresh: true
+
+# UI settings
+ui:
+  show_counts: true      # Show issue counts in column headers
+  show_status_bar: true  # Show status bar at bottom
+
+# Theme configuration
+# Use a preset theme or customize individual colors
+theme:
+  # Use a preset (run 'perles themes' to see available presets):
+  # preset: catppuccin-mocha
+  #
+  # Available presets:
+  #   default           - Default perles theme
+  #   catppuccin-mocha  - Warm, cozy dark theme
+  #   catppuccin-latte  - Warm, cozy light theme
+  #   dracula           - Dark theme with vibrant colors
+  #   nord              - Arctic, north-bluish palette
+  #   high-contrast     - High contrast for accessibility
+  #
+  # Override specific colors (works with or without preset):
+  # colors:
+  #   text.primary: "#FFFFFF"
+  #   status.error: "#FF0000"
+  #   priority.critical: "#FF5555"
+  #
+  # See all available color tokens with 'perles themes --help' or docs
+
+# Board views - each view is a named collection of columns
+# Cycle through views with Ctrl+J
+views:
+  # ============================================================================
+  # Default - All open issues in standard kanban
+  # Start here to see all your work
+  # ============================================================================
+  - name: Default
+    columns:
+      - name: Blocked
+        type: bql
+        query: "status != closed and blocked = true"
+        color: "#FF8787"
+
+      - name: Ready
+        type: bql
+        query: "status != closed and ready = true"
+        color: "#73F59F"
+
+      - name: In Progress
+        type: bql
+        query: "status = in_progress"
+        color: "#54A0FF"
+
+      - name: Closed (Recent)
+        type: bql
+        query: "status = closed and updated > -7d"
+        color: "#95A5A6"
+
+  # ============================================================================
+  # Migration Epics - High-level overview of migration validation runs
+  # Shows epics from migration-validator with their progress
+  # ============================================================================
+  - name: Migration Epics
+    columns:
+      - name: Active Epics
+        type: bql
+        query: "type = epic and status != closed"
+        color: "#FFD700"
+
+      - name: Blocked Epics
+        type: bql
+        query: "type = epic and status != closed and blocked = true"
+        color: "#FF6B6B"
+
+      - name: Completed Epics
+        type: bql
+        query: "type = epic and status = closed and updated > -30d"
+        color: "#51CF66"
+
+  # ============================================================================
+  # All Tasks - All task-type issues (filtered from epics)
+  # Standard kanban for task work
+  # ============================================================================
+  - name: All Tasks
+    columns:
+      - name: Blocked
+        type: bql
+        query: "type = task and status != closed and blocked = true"
+        color: "#FF8787"
+
+      - name: Ready
+        type: bql
+        query: "type = task and status = open and ready = true"
+        color: "#73F59F"
+
+      - name: In Progress
+        type: bql
+        query: "type = task and status = in_progress"
+        color: "#54A0FF"
+
+      - name: Done (Recent)
+        type: bql
+        query: "type = task and status = closed and updated > -7d"
+        color: "#95A5A6"
+
+  # ============================================================================
+  # By Priority - All issues organized by priority level
+  # Useful for focusing on high-priority work first
+  # ============================================================================
+  - name: By Priority
+    columns:
+      - name: Critical (P0)
+        type: bql
+        query: "priority = 0 and status != closed"
+        color: "#E74C3C"
+
+      - name: High (P1)
+        type: bql
+        query: "priority = 1 and status != closed"
+        color: "#E67E22"
+
+      - name: Medium (P2)
+        type: bql
+        query: "priority = 2 and status != closed"
+        color: "#F39C12"
+
+      - name: Low (P3-P4)
+        type: bql
+        query: "priority >= 3 and status != closed"
+        color: "#95A5A6"
+
+  # ============================================================================
+  # By Type - Issues organized by type (bug, task, feature, epic)
+  # Shows what kind of work you have
+  # ============================================================================
+  - name: By Type
+    columns:
+      - name: Bugs
+        type: bql
+        query: "type = bug and status != closed"
+        color: "#E74C3C"
+
+      - name: Tasks
+        type: bql
+        query: "type = task and status != closed"
+        color: "#3498DB"
+
+      - name: Features
+        type: bql
+        query: "type = feature and status != closed"
+        color: "#9B59B6"
+
+      - name: Epics
+        type: bql
+        query: "type = epic and status != closed"
+        color: "#FFD700"
+
+  # ============================================================================
+  # Planning Features - Shows planning work with task → bugfix hierarchy
+  # Use this during /plan-orchestrate to see feature tasks and their bugfixes
+  # ============================================================================
+  - name: Planning Features
+    columns:
+      - name: Tasks Ready
+        type: bql
+        query: "type = task and status = open and ready = true and label ~ planning"
+        color: "#73F59F"
+
+      - name: Tasks In Progress
+        type: bql
+        query: "type = task and status = in_progress and label ~ planning"
+        color: "#54A0FF"
+
+      - name: Tasks with Bugfixes
+        type: bql
+        query: "type = task and status != closed and label in (quality-review, bugfix)"
+        color: "#E67E22"
+
+      - name: Tasks Done
+        type: bql
+        query: "type = task and status = closed and label ~ planning and updated > -7d"
+        color: "#2ECC71"
+
+  # ============================================================================
+  # Migration Validation - Issues from migration-validator
+  # Track .NET Framework → .NET 10 migration issues
+  # ============================================================================
+  - name: Migration Validation
+    columns:
+      - name: Non-Equivalent Logic (P0)
+        type: bql
+        query: "priority = 0 and label ~ migration-validation and status != closed"
+        color: "#E74C3C"
+
+      - name: Missing Types (P1)
+        type: bql
+        query: "priority = 1 and label ~ migration-validation and status != closed"
+        color: "#E67E22"
+
+      - name: Test Quality (P2)
+        type: bql
+        query: "priority = 2 and label ~ migration-validation and status != closed"
+        color: "#F39C12"
+
+      - name: Warnings (P3-P4)
+        type: bql
+        query: "priority >= 3 and label ~ migration-validation and status != closed"
+        color: "#95A5A6"
+
+      - name: Resolved
+        type: bql
+        query: "label ~ migration-validation and status = closed"
+        color: "#2ECC71"
+
+
+# View options:
+#   name: Display name for the view (required)
+#   columns: List of columns for this view (required)
+#
+# Column options:
+#   name: Display name (required)
+#   type: bql or tree
+#   query: BQL query (required when type is bql) - see BQL syntax below
+#   issue_id: Issue Id (required when type is tree)
+#   tree_mode: deps or child (optional when type is tree)
+#   color: Hex color for column header
+#
+# BQL Query Syntax:
+#   Fields: type, priority, status, blocked, ready, label, title, id, created, updated
+#   Operators: = != < > <= >= ~ (contains) in not-in
+#   Examples:
+#     status = open
+#     type = bug and priority = P0
+#     blocked = true
+#     label in (urgent, critical)
+#     title ~ auth
+
+# Orchestration mode settings
+# Configure which AI client to use when entering orchestration mode
+orchestration:
+  # AI client provider: "claude" (default) or "amp"
+  client: claude
+
+  # Claude-specific settings (only used when client: claude)
+  claude:
+    model: sonnet  # sonnet (default), opus, or haiku
+
+  # Amp-specific settings (only used when client: amp)
+  amp:
+    model: opus    # opus (default) or sonnet
+    mode: smart    # free, rush, or smart (default)
+
+  # Workflow templates (Ctrl+P to open picker in orchestration mode)
+  # User workflows are loaded from ~/.perles/workflows/*.md
+  # workflows:
+  #   # Define a user workflow (loaded from ~/.perles/workflows/)
+  #   - name: "Code Review"
+  #     description: "Multi-perspective code review"
+  #     file: "code_review.md"
+  #
+  #   # Disable a built-in workflow
+  #   - name: "Debate"
+  #     enabled: false
+  #
+  #   # Override name/description of a built-in workflow
+  #   - name: "Research Proposal"
+  #     description: "Custom description for research workflow"

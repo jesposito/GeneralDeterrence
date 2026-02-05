@@ -1,0 +1,21 @@
+{
+  "$schema": "./evaluator.config.schema.json",
+  "enabled": true,
+  "model": "haiku",
+  "timeoutMs": 10000,
+  "debug": false,
+  "checkpoints": {
+    "preFlight": {
+      "enabled": true,
+      "blocking": true
+    },
+    "closingCheck": {
+      "enabled": true,
+      "blocking": false
+    },
+    "sessionEnd": {
+      "enabled": true,
+      "blocking": false
+    }
+  }
+}
