@@ -503,6 +503,26 @@ function drawCivilianCar(
     ctx.restore();
   }
 
+  // RIDS offender pulse ring — visibility aid at mobile scales (base zoom ~0.5).
+  // Drawn in WORLD space (not rotated with the car) so the halo stays oriented.
+  if (car.ridsType && !car.isLifeAtRisk) {
+    const t = time / 350;
+    const ringScale = 1 + Math.sin(t) * 0.18;
+    ctx.save();
+    ctx.rotate((-car.angle * Math.PI) / 180);
+    ctx.strokeStyle = `rgba(250, 204, 21, ${0.45 + Math.sin(t) * 0.15})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 28 * ringScale, 0, Math.PI * 2);
+    ctx.stroke();
+    // Filled fade so the ring reads even on busy backgrounds
+    ctx.fillStyle = `rgba(250, 204, 21, 0.12)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, 26 * ringScale, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Pathfinding target ring
   if (isPathfindingTarget) {
     ctx.save();
@@ -525,10 +545,10 @@ function drawCivilianCar(
   // Targeted flash
   if (isTargeted) {
     ctx.shadowColor = '#fde047';
-    ctx.shadowBlur = 15;
+    ctx.shadowBlur = 22;
   } else if (car.ridsType && !car.isLifeAtRisk) {
     ctx.shadowColor = '#facc15';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 18;
   }
 
   // Draw car body
@@ -578,16 +598,16 @@ function drawCivilianCar(
 
   ctx.restore();
 
-  // RIDS icon
+  // RIDS icon — bigger + stronger glow for legibility at mobile zoom (~0.5).
   if (car.ridsType && !car.isLifeAtRisk) {
     ctx.save();
-    ctx.translate(car.pos.x, car.pos.y - 35);
+    ctx.translate(car.pos.x, car.pos.y - 42);
     const bobY = Math.sin(time / 500) * -5;
-    ctx.font = '24px sans-serif';
+    ctx.font = 'bold 36px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowColor = '#ff00ff';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 14;
     ctx.fillText(RIDS_ICONS[car.ridsType], 0, bobY);
     ctx.shadowBlur = 0;
     ctx.restore();
