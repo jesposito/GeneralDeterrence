@@ -1008,7 +1008,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       : false;
 
   return (
-    <div ref={containerRef} className="w-full bg-black overflow-hidden relative" style={{ height: '100dvh' }}>
+    <div ref={containerRef} className="w-full h-full bg-black overflow-hidden relative">
        {gameState === 'Starting' && countdownText && (
             <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
                 <h1 key={countdownText} className="text-9xl font-display text-cyan-400 animate-scale-up-and-fade">
