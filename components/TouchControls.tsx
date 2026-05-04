@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 
 type ControlAction = 'forward' | 'backward' | 'left' | 'right' | 'boost';
 
@@ -10,69 +10,153 @@ interface TouchControlsProps {
   isSirenActive?: boolean;
 }
 
-interface HoldButtonProps {
-  onPointerDown: () => void;
-  onPointerUp: () => void;
-  className?: string;
-  ariaLabel: string;
-  glyph: string;
-  glyphClass?: string;
+const JOYSTICK_BASE = 128;
+const JOYSTICK_KNOB = 56;
+const JOYSTICK_DEADZONE = 0.3;
+const ACTION_BUTTON = 64;
+
+interface JoystickProps {
+  onDirectionChange: (active: { forward: boolean; backward: boolean; left: boolean; right: boolean }) => void;
 }
 
-const HoldButton: React.FC<HoldButtonProps> = ({ onPointerDown, onPointerUp, className, ariaLabel, glyph, glyphClass }) => {
-  const buttonRef = useRef<HTMLButtonElement>(null);
+const Joystick: React.FC<JoystickProps> = ({ onDirectionChange }) => {
+  const baseRef = useRef<HTMLDivElement>(null);
+  const [knob, setKnob] = useState({ x: 0, y: 0 });
+  const [pressed, setPressed] = useState(false);
+  const activePointerId = useRef<number | null>(null);
+  const lastDirRef = useRef({ forward: false, backward: false, left: false, right: false });
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    onPointerDown();
-  }, [onPointerDown]);
+  const compute = (clientX: number, clientY: number) => {
+    if (!baseRef.current) return;
+    const rect = baseRef.current.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const r = rect.width / 2;
+    let nx = (clientX - cx) / r;
+    let ny = (clientY - cy) / r;
+    const mag = Math.hypot(nx, ny);
+    if (mag > 1) { nx /= mag; ny /= mag; }
+    setKnob({ x: nx, y: ny });
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    const dir = {
+      forward: ny < -JOYSTICK_DEADZONE,
+      backward: ny > JOYSTICK_DEADZONE,
+      left: nx < -JOYSTICK_DEADZONE,
+      right: nx > JOYSTICK_DEADZONE,
+    };
+    const prev = lastDirRef.current;
+    if (dir.forward !== prev.forward || dir.backward !== prev.backward
+        || dir.left !== prev.left || dir.right !== prev.right) {
+      onDirectionChange(dir);
+      lastDirRef.current = dir;
+    }
+  };
+
+  const release = useCallback(() => {
+    activePointerId.current = null;
+    setPressed(false);
+    setKnob({ x: 0, y: 0 });
+    const prev = lastDirRef.current;
+    if (prev.forward || prev.backward || prev.left || prev.right) {
+      const off = { forward: false, backward: false, left: false, right: false };
+      onDirectionChange(off);
+      lastDirRef.current = off;
+    }
+  }, [onDirectionChange]);
+
+  const handleDown = (e: React.PointerEvent) => {
+    if (activePointerId.current !== null) return;
     e.preventDefault();
-    onPointerUp();
-  }, [onPointerUp]);
+    activePointerId.current = e.pointerId;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setPressed(true);
+    compute(e.clientX, e.clientY);
+  };
+  const handleMove = (e: React.PointerEvent) => {
+    if (activePointerId.current !== e.pointerId) return;
+    e.preventDefault();
+    compute(e.clientX, e.clientY);
+  };
+  const handleEnd = (e: React.PointerEvent) => {
+    if (activePointerId.current !== e.pointerId) return;
+    e.preventDefault();
+    release();
+  };
+
+  const knobOffsetMax = JOYSTICK_BASE / 2 - JOYSTICK_KNOB / 2;
 
   return (
-    <button
-      ref={buttonRef}
-      type="button"
-      aria-label={ariaLabel}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onPointerLeave={handlePointerUp}
+    <div
+      ref={baseRef}
+      role="img"
+      aria-label="Movement joystick: drag to steer and accelerate. Push up to accelerate, down to reverse, left or right to steer."
+      aria-roledescription="joystick"
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={handleEnd}
+      onPointerCancel={handleEnd}
+      onLostPointerCapture={() => release()}
       onContextMenu={(e) => e.preventDefault()}
-      className={`bg-black/60 rounded-full flex items-center justify-center text-white font-bold select-none active:bg-cyan-500/50 transition-colors touch-none ${className ?? ''}`}
-      style={{ touchAction: 'none' }}
+      style={{ width: JOYSTICK_BASE, height: JOYSTICK_BASE, touchAction: 'none' }}
+      className="relative rounded-full bg-black/50 border-4 border-cyan-500/40 shadow-lg pointer-events-auto select-none"
     >
-      <span aria-hidden="true" className={glyphClass}>{glyph}</span>
-    </button>
+      {/* Crosshair reference (decorative) */}
+      <div aria-hidden="true" className="absolute left-1/2 top-1/2 w-1 h-8 -translate-x-1/2 -translate-y-1/2 bg-cyan-500/15 rounded-full pointer-events-none" />
+      <div aria-hidden="true" className="absolute left-1/2 top-1/2 w-8 h-1 -translate-x-1/2 -translate-y-1/2 bg-cyan-500/15 rounded-full pointer-events-none" />
+      {/* Knob */}
+      <div
+        aria-hidden="true"
+        className="absolute rounded-full border-2 border-cyan-200/80 bg-cyan-400/70 pointer-events-none shadow"
+        style={{
+          width: JOYSTICK_KNOB,
+          height: JOYSTICK_KNOB,
+          left: '50%',
+          top: '50%',
+          transform: `translate(calc(-50% + ${knob.x * knobOffsetMax}px), calc(-50% + ${knob.y * knobOffsetMax}px))`,
+          transition: pressed ? 'none' : 'transform 0.15s ease-out',
+        }}
+      />
+    </div>
   );
 };
 
-interface TapButtonProps {
-  onTap: () => void;
-  className?: string;
+interface ActionButtonProps {
   ariaLabel: string;
   ariaPressed?: boolean;
+  onTap?: () => void;
+  onPointerDown?: () => void;
+  onPointerUp?: () => void;
+  className: string;
+  size?: number;
   children: React.ReactNode;
 }
 
-const TapButton: React.FC<TapButtonProps> = ({ onTap, className, ariaLabel, ariaPressed, children }) => {
-  const handle = useCallback((e: React.PointerEvent) => {
+const ActionButton: React.FC<ActionButtonProps> = ({
+  ariaLabel, ariaPressed, onTap, onPointerDown, onPointerUp,
+  className, size = ACTION_BUTTON, children,
+}) => {
+  const handleDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    onTap();
-  }, [onTap]);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (onPointerDown) onPointerDown();
+    if (onTap) onTap();
+  };
+  const handleUp = (e: React.PointerEvent) => {
+    e.preventDefault();
+    if (onPointerUp) onPointerUp();
+  };
   return (
     <button
       type="button"
       aria-label={ariaLabel}
       aria-pressed={ariaPressed}
-      onPointerDown={handle}
+      onPointerDown={handleDown}
+      onPointerUp={handleUp}
+      onPointerCancel={handleUp}
+      onPointerLeave={handleUp}
       onContextMenu={(e) => e.preventDefault()}
-      className={`select-none touch-none flex items-center justify-center font-bold ${className ?? ''}`}
-      style={{ touchAction: 'none' }}
+      style={{ width: size, height: size, touchAction: 'manipulation' }}
+      className={`rounded-full border-4 flex items-center justify-center font-bold text-xs leading-tight text-center select-none shadow-lg transition-colors ${className}`}
     >
       <span aria-hidden="true">{children}</span>
     </button>
@@ -80,9 +164,13 @@ const TapButton: React.FC<TapButtonProps> = ({ onTap, className, ariaLabel, aria
 };
 
 const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCheck, onSirenToggle, onColleagueCall, isSirenActive = false }) => {
-  const handleAction = useCallback((action: ControlAction, active: boolean) => {
-    onControlChange(action, active);
+  const handleJoystickDir = useCallback((dir: { forward: boolean; backward: boolean; left: boolean; right: boolean }) => {
+    onControlChange('forward', dir.forward);
+    onControlChange('backward', dir.backward);
+    onControlChange('left', dir.left);
+    onControlChange('right', dir.right);
   }, [onControlChange]);
+  const handleBoost = useCallback((active: boolean) => onControlChange('boost', active), [onControlChange]);
 
   return (
     <div
@@ -94,106 +182,37 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCh
         paddingRight: 'env(safe-area-inset-right)',
       }}
     >
-      {/* ========== PORTRAIT LAYOUT ========== */}
-      {/* D-Pad bottom-left, action stack bottom-right (original layout) */}
-      <div className="landscape:hidden absolute inset-0 w-full h-full pointer-events-none">
-        {/* D-Pad */}
-        <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-8 grid grid-cols-3 grid-rows-3 w-56 h-56 sm:w-72 sm:h-72 pointer-events-auto">
-          <div className="col-start-2 row-start-1 flex justify-center items-center">
-            <HoldButton ariaLabel="Accelerate" glyph="▲" glyphClass="text-3xl sm:text-4xl"
-              className="w-16 h-16 sm:w-20 sm:h-20"
-              onPointerDown={() => handleAction('forward', true)} onPointerUp={() => handleAction('forward', false)} />
-          </div>
-          <div className="col-start-1 row-start-2 flex justify-center items-center">
-            <HoldButton ariaLabel="Steer left" glyph="◀" glyphClass="text-3xl sm:text-4xl"
-              className="w-16 h-16 sm:w-20 sm:h-20"
-              onPointerDown={() => handleAction('left', true)} onPointerUp={() => handleAction('left', false)} />
-          </div>
-          <div className="col-start-3 row-start-2 flex justify-center items-center">
-            <HoldButton ariaLabel="Steer right" glyph="▶" glyphClass="text-3xl sm:text-4xl"
-              className="w-16 h-16 sm:w-20 sm:h-20"
-              onPointerDown={() => handleAction('right', true)} onPointerUp={() => handleAction('right', false)} />
-          </div>
-          <div className="col-start-2 row-start-3 flex justify-center items-center">
-            <HoldButton ariaLabel="Brake or reverse" glyph="▼" glyphClass="text-3xl sm:text-4xl"
-              className="w-16 h-16 sm:w-20 sm:h-20"
-              onPointerDown={() => handleAction('backward', true)} onPointerUp={() => handleAction('backward', false)} />
-          </div>
-        </div>
-
-        {/* Action cluster bottom-right */}
-        <div className="absolute bottom-4 right-4 sm:bottom-8 sm:right-8 flex flex-col gap-3 sm:gap-4 pointer-events-auto items-center">
-          <TapButton ariaLabel="Run RIDS check on nearby driver" onTap={onRidsCheck}
-            className="w-32 h-20 sm:w-40 sm:h-24 bg-yellow-500/80 rounded-xl text-black text-xl sm:text-2xl active:bg-yellow-400 shadow-lg">
-            RIDS<br/>CHECK
-          </TapButton>
-          <div className="flex gap-3 sm:gap-4">
-            <HoldButton ariaLabel="Boost" glyph="BOOST" glyphClass="text-lg sm:text-xl"
-              className="w-20 h-20 sm:w-24 sm:h-24 bg-cyan-600/80 active:bg-cyan-400/80"
-              onPointerDown={() => handleAction('boost', true)} onPointerUp={() => handleAction('boost', false)} />
-            <TapButton ariaLabel={isSirenActive ? 'Deactivate siren' : 'Activate siren'} ariaPressed={isSirenActive}
-              onTap={onSirenToggle}
-              className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full text-white text-lg sm:text-xl border-2 border-red-400/50 transition-colors ${isSirenActive ? 'bg-red-500/70 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}>
-              SIREN
-            </TapButton>
-          </div>
-          <TapButton ariaLabel="Request colleague assist" onTap={onColleagueCall}
-            className="w-32 h-16 sm:w-40 sm:h-20 bg-green-600/80 rounded-xl text-black text-lg sm:text-xl active:bg-green-500 shadow-lg text-center">
-            COLLEAGUE<br/>ASSIST
-          </TapButton>
-        </div>
+      {/* LEFT: Virtual joystick — 360 degrees, replaces 4 directional buttons */}
+      <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 pointer-events-auto">
+        <Joystick onDirectionChange={handleJoystickDir} />
       </div>
 
-      {/* ========== LANDSCAPE LAYOUT ========== */}
-      {/* Steering bottom-left, throttle bottom-right, actions stacked above throttle, COLLEAGUE bottom-center */}
-      <div className="hidden landscape:block absolute inset-0 w-full h-full pointer-events-none">
-
-        {/* Steering: bottom-left, two big buttons side by side */}
-        <div className="absolute bottom-3 left-3 flex gap-3 pointer-events-auto">
-          <HoldButton ariaLabel="Steer left" glyph="◀" glyphClass="text-4xl"
-            className="w-20 h-20"
-            onPointerDown={() => handleAction('left', true)} onPointerUp={() => handleAction('left', false)} />
-          <HoldButton ariaLabel="Steer right" glyph="▶" glyphClass="text-4xl"
-            className="w-20 h-20"
-            onPointerDown={() => handleAction('right', true)} onPointerUp={() => handleAction('right', false)} />
-        </div>
-
-        {/* Throttle: bottom-right corner, gas above brake */}
-        <div className="absolute bottom-3 right-3 flex flex-col gap-3 pointer-events-auto">
-          <HoldButton ariaLabel="Accelerate" glyph="▲" glyphClass="text-4xl"
-            className="w-20 h-20 active:bg-green-500/50"
-            onPointerDown={() => handleAction('forward', true)} onPointerUp={() => handleAction('forward', false)} />
-          <HoldButton ariaLabel="Brake or reverse" glyph="▼" glyphClass="text-4xl"
-            className="w-20 h-20 active:bg-red-500/50"
-            onPointerDown={() => handleAction('backward', true)} onPointerUp={() => handleAction('backward', false)} />
-        </div>
-
-        {/* Action stack: right side, above throttle, RIDS biggest */}
-        {/* On <=500h landscape (covers iPhone SE/8+/12/14 Pro Max), lower to avoid HUD minimap overlap; <=400h additionally shrinks button heights. gap-2 keeps WCAG 2.5.5 AA spacing. */}
-        <div className="absolute right-3 bottom-[11.5rem] [@media(max-height:500px)]:bottom-[8rem] flex flex-col gap-2 pointer-events-auto items-end">
-          <TapButton ariaLabel="Run RIDS check on nearby driver" onTap={onRidsCheck}
-            className="w-28 h-14 [@media(max-height:400px)]:h-10 bg-yellow-500/80 rounded-xl text-black text-base active:bg-yellow-400 shadow-lg">
-            RIDS CHECK
-          </TapButton>
-          <div className="flex gap-2">
-            <HoldButton ariaLabel="Boost" glyph="BOOST" glyphClass="text-sm"
-              className="w-16 h-12 [@media(max-height:400px)]:h-10 bg-cyan-600/80 active:bg-cyan-400/80 !rounded-xl"
-              onPointerDown={() => handleAction('boost', true)} onPointerUp={() => handleAction('boost', false)} />
-            <TapButton ariaLabel={isSirenActive ? 'Deactivate siren' : 'Activate siren'} ariaPressed={isSirenActive}
-              onTap={onSirenToggle}
-              className={`w-16 h-12 [@media(max-height:400px)]:h-10 rounded-xl text-white text-sm border-2 border-red-400/50 transition-colors ${isSirenActive ? 'bg-red-500/70 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}>
-              SIREN
-            </TapButton>
-          </div>
-        </div>
-
-        {/* COLLEAGUE ASSIST: bottom-center between thumbs (less frequent) */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-auto">
-          <TapButton ariaLabel="Request colleague assist" onTap={onColleagueCall}
-            className="w-32 h-12 bg-green-600/80 rounded-xl text-black text-sm active:bg-green-500 shadow-lg">
-            COLLEAGUE ASSIST
-          </TapButton>
-        </div>
+      {/* RIGHT: 2x2 round Xbox-style action grid */}
+      <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 grid grid-cols-2 gap-3 pointer-events-auto">
+        {/* Top-left: BOOST (cyan, hold) */}
+        <ActionButton ariaLabel="Boost"
+          className="text-white border-cyan-300/60 bg-cyan-600/80 active:bg-cyan-400/90"
+          onPointerDown={() => handleBoost(true)} onPointerUp={() => handleBoost(false)}>
+          BOOST
+        </ActionButton>
+        {/* Top-right: SIREN (red, toggle) */}
+        <ActionButton ariaLabel={isSirenActive ? 'Deactivate siren' : 'Activate siren'} ariaPressed={isSirenActive}
+          className={`text-white border-red-400/60 ${isSirenActive ? 'bg-red-500/80 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}
+          onTap={onSirenToggle}>
+          SIREN
+        </ActionButton>
+        {/* Bottom-left: RIDS (yellow, primary tap) */}
+        <ActionButton ariaLabel="Run RIDS check on nearby driver"
+          className="text-black border-yellow-300/60 bg-yellow-500/80 active:bg-yellow-400/90"
+          onTap={onRidsCheck}>
+          RIDS
+        </ActionButton>
+        {/* Bottom-right: COLLEAGUE ASSIST (green) */}
+        <ActionButton ariaLabel="Request colleague assist"
+          className="text-white border-green-300/60 bg-green-600/80 active:bg-green-500/90"
+          onTap={onColleagueCall}>
+          ASSIST
+        </ActionButton>
       </div>
     </div>
   );
