@@ -1,24 +1,35 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MiniGameProps } from '../../types';
 
 const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
   const [taps, setTaps] = useState(5);
-  const [timeLeft, setTimeLeft] = useState(2500); // 2.5 seconds for 5 taps
+  const [timeLeft, setTimeLeft] = useState(2500);
+  const startTimeRef = useRef(Date.now());
+  const rafRef = useRef<number>();
 
   useEffect(() => {
-    if (timeLeft <= 0) {
-      onComplete(false);
-    }
-    const timer = setInterval(() => {
-      setTimeLeft(t => t - 10);
-    }, 10);
-    return () => clearInterval(timer);
-  }, [timeLeft, onComplete]);
+    startTimeRef.current = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const remaining = Math.max(0, 2500 - elapsed);
+      setTimeLeft(remaining);
+      if (remaining > 0) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        onComplete(false);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [onComplete]);
 
   const handleTap = useCallback(() => {
     setTaps(prevTaps => {
       const newTaps = prevTaps - 1;
       if (newTaps === 0) {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
         onComplete(true);
       }
       return newTaps;
@@ -46,8 +57,10 @@ const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
         ></div>
       </div>
       <button
-        onClick={handleTap}
-        className="w-48 h-48 bg-pink-600 hover:bg-pink-500 border-4 border-pink-400 text-white font-bold rounded-full text-4xl transition transform active:scale-95 flex flex-col items-center justify-center font-display"
+        onPointerDown={(e) => { e.preventDefault(); handleTap(); }}
+        onContextMenu={(e) => e.preventDefault()}
+        className="w-48 h-48 bg-pink-600 hover:bg-pink-500 border-4 border-pink-400 text-white font-bold rounded-full text-4xl transition transform active:scale-95 flex flex-col items-center justify-center font-display touch-none"
+        style={{ touchAction: 'none' }}
       >
         <span>TAP!</span>
         <span className="text-6xl">{taps}</span>

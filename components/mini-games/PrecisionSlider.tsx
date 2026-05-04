@@ -66,9 +66,11 @@ const PrecisionSlider: React.FC<MiniGameProps> = ({ onComplete }) => {
         ></div>
       </div>
       <button
-        onClick={handleStop}
+        onPointerDown={(e) => { e.preventDefault(); handleStop(); }}
+        onContextMenu={(e) => e.preventDefault()}
         disabled={stopped}
-        className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-xl transition disabled:bg-gray-500 disabled:cursor-not-allowed font-display tracking-wider"
+        className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-xl transition disabled:bg-gray-500 disabled:cursor-not-allowed font-display tracking-wider touch-none"
+        style={{ touchAction: 'none' }}
       >
         STOP
       </button>
