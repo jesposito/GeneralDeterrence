@@ -255,9 +255,10 @@ interface HUDProps {
   presenceBoostRate: number;
   stationaryCountdown: StationaryCountdown;
   shouldFlashColleagueAssist: boolean;
+  hudTick: number;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -442,4 +443,4 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   );
 };
 
-export default HUD;
+export default React.memo(HUD, (prev, next) => prev.hudTick === next.hudTick);

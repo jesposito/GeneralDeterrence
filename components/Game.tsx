@@ -1079,7 +1079,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
           minimapMode={minimapMode} colleagueCalls={colleagueCallsRef.current} gameMessage={gameMessage}
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
           stationaryCountdown={stationaryCountdown}
-          shouldFlashColleagueAssist={shouldFlashColleagueAssist} />
+          shouldFlashColleagueAssist={shouldFlashColleagueAssist}
+          hudTick={hudTick} />
       {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} ridsType={activeRids.ridsType} />}
       {gameState === 'MiniGame' && activeRids && (
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} />
