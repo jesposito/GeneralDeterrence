@@ -6,6 +6,7 @@ import MiniGameModal from './MiniGameModal';
 import useKeyPress from '../hooks/useKeyPress';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
+import RotateDevicePrompt from './RotateDevicePrompt';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
 import { drawGame, CameraState, RenderState } from '../utils/gameRenderer';
 
@@ -1081,13 +1082,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} />
       )}
        {isTouchDevice && gameState === 'Playing' && (
-        <TouchControls 
-            onControlChange={handleControlChange} 
+        <TouchControls
+            onControlChange={handleControlChange}
             onRidsCheck={handleRidsCheck}
             onSirenToggle={handleSirenToggle}
             onColleagueCall={handleColleagueCall}
+            isSirenActive={player.isSirenActive}
         />
       )}
+      {isTouchDevice && gameState === 'Playing' && <RotateDevicePrompt />}
     </div>
   );
 };
