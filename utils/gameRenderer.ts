@@ -135,9 +135,10 @@ export function drawGame(
   const shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
   const shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
 
+  ctx.save();
+
   // Handle DPR for crisp rendering on mobile
   const dpr = window.devicePixelRatio || 1;
-  ctx.save();
   ctx.scale(dpr, dpr);
 
   // Camera transform: center on camera position, apply zoom and shake

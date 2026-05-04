@@ -121,8 +121,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen min-h-[100dvh] bg-[#0d0221] overflow-hidden">
-      <div className="w-full h-screen h-[100dvh] bg-black relative shadow-2xl shadow-cyan-500/20 overflow-hidden">
+    <div className="flex items-center justify-center bg-[#0d0221] overflow-hidden" style={{ minHeight: '100dvh', height: '100dvh' }}>
+      <div className="w-full bg-black relative overflow-hidden" style={{ height: '100dvh' }}>
         {renderContent()}
         <div className="crt-overlay"></div>
       </div>

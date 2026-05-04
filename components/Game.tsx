@@ -888,12 +888,16 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (canvas && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
-        if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
-            canvas.width = Math.round(rect.width * dpr);
-            canvas.height = Math.round(rect.height * dpr);
+        const cssWidth = Math.max(1, Math.round(rect.width));
+        const cssHeight = Math.max(1, Math.round(rect.height));
+        if (canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
+            canvas.width = Math.round(cssWidth * dpr);
+            canvas.height = Math.round(cssHeight * dpr);
         }
         const ctx = canvas.getContext('2d');
         if (ctx) {
+            // Clear full pixel buffer (not just CSS-sized area)
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             const renderState: RenderState = {
                 player: playerRef.current,
                 civilians: civiliansRef.current,
@@ -910,7 +914,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 targetedCarId: targetedCarId,
                 isBraking: isBrakingRef.current,
             };
-            drawGame(ctx, rect.width, rect.height, cameraRef.current, renderState, now);
+            drawGame(ctx, cssWidth, cssHeight, cameraRef.current, renderState, now);
         }
     }
 
@@ -992,7 +996,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       : false;
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-black overflow-hidden relative">
+    <div ref={containerRef} className="w-full bg-black overflow-hidden relative" style={{ height: '100dvh' }}>
        {gameState === 'Starting' && countdownText && (
             <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
                 <h1 key={countdownText} className="text-9xl font-display text-cyan-400 animate-scale-up-and-fade">
@@ -1002,8 +1006,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         )}
       <canvas 
         ref={canvasRef}
-        className="absolute top-0 left-0 w-full h-full"
-        style={{ touchAction: 'none' }}
+        className="absolute top-0 left-0 w-full h-full block"
+        style={{ touchAction: 'none', backgroundColor: '#0d0221' }}
       />
       <div className={`boost-overlay ${player.isBoosting ? 'active' : ''}`}></div>
       {player.isBoosting && (
