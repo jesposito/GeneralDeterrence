@@ -350,3 +350,4 @@ scripts/migration-validator/.claude-tasks/
 *.db
 .beads-credential-key
 .gstack/
+.serena/
