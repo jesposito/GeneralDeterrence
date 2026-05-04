@@ -99,6 +99,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   
   const cameraRef = useRef<CameraState>({ x: 0, y: 0, zoom: 1, shake: 0 });
   const cameraPosRef = useRef({ x: playerRef.current.pos.x, y: playerRef.current.pos.y });
+  // Track the actual on-screen viewport size in CSS pixels. Updated each frame in
+  // gameLoop. Used by HUD off-screen indicator math so arrows fire on the actual
+  // visible bounds rather than the fixed 1280x720 design viewport.
+  const viewportRef = useRef({ width: CONSTANTS.VIEWPORT_WIDTH, height: CONSTANTS.VIEWPORT_HEIGHT });
   const isBrakingRef = useRef(false);
   const colleagueCallsRef = useRef(CONSTANTS.MAX_COLLEAGUE_CALLS);
   const presenceBoostRateRef = useRef(0);
@@ -932,6 +936,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const dpr = window.devicePixelRatio || 1;
         const cssWidth = Math.max(1, Math.round(rect.width));
         const cssHeight = Math.max(1, Math.round(rect.height));
+        viewportRef.current.width = cssWidth;
+        viewportRef.current.height = cssHeight;
         if (canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
             canvas.width = Math.round(cssWidth * dpr);
             canvas.height = Math.round(cssHeight * dpr);
@@ -1082,7 +1088,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       <HUD 
           score={totalScore} timeLeft={Math.ceil(timeLeftRef.current)} player={player} civilians={civiliansRef.current}
           districts={districtsRef.current} playerDistrict={playerDistrict} livesLost={scoreRef.current.livesLost}
-          dispatchedCall={dispatchedCallRef.current} camera={{x: cameraPos.x - (CONSTANTS.VIEWPORT_WIDTH/camera.zoom)/2, y: cameraPos.y - (CONSTANTS.VIEWPORT_HEIGHT/camera.zoom)/2}}
+          dispatchedCall={dispatchedCallRef.current}
+          camera={{x: cameraPos.x - (viewportRef.current.width/camera.zoom)/2, y: cameraPos.y - (viewportRef.current.height/camera.zoom)/2}}
+          viewport={{width: viewportRef.current.width / camera.zoom, height: viewportRef.current.height / camera.zoom}}
           minimapMode={minimapMode} colleagueCalls={colleagueCallsRef.current} gameMessage={gameMessage}
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
           stationaryCountdown={stationaryCountdown}

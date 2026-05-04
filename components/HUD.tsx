@@ -61,30 +61,31 @@ const DispatchedCallUI: React.FC<DispatchedCallUIProps> = ({ call }) => (
 const OffscreenIndicator: React.FC<{
     targetPos: { x: number, y: number },
     camera: { x: number, y: number },
+    viewport: { width: number, height: number },
     color: string,
-}> = ({ targetPos, camera, color }) => {
+}> = ({ targetPos, camera, viewport, color }) => {
     const targetScreenX = targetPos.x - camera.x;
     const targetScreenY = targetPos.y - camera.y;
 
-    const isOffScreen = targetScreenX < 0 || targetScreenX > CONSTANTS.VIEWPORT_WIDTH ||
-                        targetScreenY < 0 || targetScreenY > CONSTANTS.VIEWPORT_HEIGHT;
-    
+    const isOffScreen = targetScreenX < 0 || targetScreenX > viewport.width ||
+                        targetScreenY < 0 || targetScreenY > viewport.height;
+
     if (!isOffScreen) {
         return null;
     }
 
-    const screenCenterX = CONSTANTS.VIEWPORT_WIDTH / 2;
-    const screenCenterY = CONSTANTS.VIEWPORT_HEIGHT / 2;
+    const screenCenterX = viewport.width / 2;
+    const screenCenterY = viewport.height / 2;
 
     const angle = Math.atan2(targetScreenY - screenCenterY, targetScreenX - screenCenterX);
     const degrees = angle * (180 / Math.PI) + 90;
 
     const padding = 30;
-    const boundX = CONSTANTS.VIEWPORT_WIDTH - padding;
-    const boundY = CONSTANTS.VIEWPORT_HEIGHT - padding;
-    
-    let x = screenCenterX + Math.cos(angle) * (CONSTANTS.VIEWPORT_WIDTH / 2);
-    let y = screenCenterY + Math.sin(angle) * (CONSTANTS.VIEWPORT_HEIGHT / 2);
+    const boundX = viewport.width - padding;
+    const boundY = viewport.height - padding;
+
+    let x = screenCenterX + Math.cos(angle) * (viewport.width / 2);
+    let y = screenCenterY + Math.sin(angle) * (viewport.height / 2);
 
     x = Math.max(padding, Math.min(x, boundX));
     y = Math.max(padding, Math.min(y, boundY));
@@ -256,9 +257,10 @@ interface HUDProps {
   stationaryCountdown: StationaryCountdown;
   shouldFlashColleagueAssist: boolean;
   hudTick: number;
+  viewport: { width: number; height: number };
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -329,10 +331,10 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       {isVigilanceBonusActive && <div className="vigilance-border"></div>}
       
       {livesAtRiskCars.map(car => (
-          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} camera={camera} color="text-red-500" />
+          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} camera={camera} viewport={viewport} color="text-red-500" />
       ))}
       {dispatchedCall && (
-           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} camera={camera} color="text-yellow-400" />
+           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} camera={camera} viewport={viewport} color="text-yellow-400" />
       )}
 
       <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} />
