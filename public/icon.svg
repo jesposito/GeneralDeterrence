@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a0a3a"/>
+      <stop offset="1" stop-color="#0d0221"/>
+    </linearGradient>
+    <linearGradient id="horizon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ec4899" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ec4899" stop-opacity="1"/>
+      <stop offset="1" stop-color="#ec4899" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#a855f7" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+
+  <!-- Inner border for retro frame -->
+  <rect x="28" y="28" width="456" height="456" rx="80" fill="none" stroke="#22d3ee" stroke-width="3" opacity="0.55"/>
+
+  <!-- Synthwave horizon lines (decorative; behind the type) -->
+  <line x1="60" y1="380" x2="452" y2="380" stroke="url(#horizon)" stroke-width="3"/>
+  <line x1="100" y1="408" x2="412" y2="408" stroke="url(#purple)" stroke-width="2"/>
+  <line x1="140" y1="430" x2="372" y2="430" stroke="url(#purple)" stroke-width="2" opacity="0.6"/>
+
+  <!-- GD monogram in cyan with glow. font-family falls back through Orbitron-style stacks; at 240px the silhouette reads regardless. -->
+  <text x="256" y="320" font-family="Orbitron, 'Trebuchet MS', Arial Black, sans-serif" font-size="240" font-weight="900" text-anchor="middle" fill="#22d3ee" filter="url(#glow)">GD</text>
+
+  <!-- Pink siren dot top-right for theme -->
+  <circle cx="404" cy="108" r="14" fill="#ec4899" filter="url(#glow)"/>
+</svg>
