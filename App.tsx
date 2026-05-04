@@ -121,8 +121,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen p-2 sm:p-4 bg-[#0d0221]">
-      <div className="w-full max-w-[1280px] aspect-[16/9] bg-black relative shadow-2xl shadow-cyan-500/20 border-4 border-purple-800/50 overflow-hidden">
+    <div className="flex items-center justify-center min-h-screen min-h-[100dvh] bg-[#0d0221] overflow-hidden">
+      <div className="w-full h-screen h-[100dvh] bg-black relative shadow-2xl shadow-cyan-500/20 overflow-hidden">
         {renderContent()}
         <div className="crt-overlay"></div>
       </div>

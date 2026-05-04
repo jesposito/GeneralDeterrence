@@ -1,22 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useReducer } from 'react';
-import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, DispatchedCall, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, DistrictName, DispatchedCall, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
 import * as CONSTANTS from '../constants';
-import GameMap from './Map';
-import PlayerCar from './PlayerCar';
-import CivilianCar from './CivilianCar';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
-import DeterrenceBlob from './DeterrenceBlob';
-import CollectionEffect from './CollectionEffect';
-import SparksEffect from './SparksEffect';
-import SkidMarkComponent from './SkidMark';
-import FloatingScoreText from './FloatingScoreText';
-import Explosion from './Explosion';
-import PatrolPostAura from './PatrolPostAura';
 import useKeyPress from '../hooks/useKeyPress';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
+import { drawGame, CameraState, RenderState } from '../utils/gameRenderer';
 
 interface GameProps {
   onGameOver: (scoreBreakdown: FinalScoreBreakdown) => void;
@@ -27,6 +18,7 @@ type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame';
 const PATROL_PATH_SAMPLE_RATE = 30; // Record player position every 30 frames
 const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
 const COLLISION_CHECK_RADIUS_SQ = (CONSTANTS.CAR_RADIUS * 2) ** 2;
+const HUD_UPDATE_INTERVAL_MS = 100;
 
 const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node]));
 
@@ -74,7 +66,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [gameMessage, setGameMessage] = useState<string | null>(null);
   const [stationaryCountdown, setStationaryCountdown] = useState<StationaryCountdown>(null);
   const [ridsChoiceSelection, setRidsChoiceSelection] = useState<'warn' | 'enforce'>('warn');
-  const [, forceUpdate] = useReducer(x => x + 1, 0);
+  const [hudTick, setHudTick] = useState(0);
+
+  // Canvas and timing refs
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastTimeRef = useRef<number>(0);
+  const lastHudUpdateRef = useRef<number>(0);
 
   // Refs for all frequently updated game data to avoid re-renders
   const playerRef = useRef<Player>(initPlayer());
@@ -95,7 +93,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const avgDeterrenceRef = useRef(50);
   const isVigilanceBonusActiveRef = useRef(false);
   
-  const cameraRef = useRef({ zoom: 1, shake: 0 });
+  const cameraRef = useRef<CameraState>({ x: 0, y: 0, zoom: 1, shake: 0 });
   const cameraPosRef = useRef({ x: playerRef.current.pos.x, y: playerRef.current.pos.y });
   const isBrakingRef = useRef(false);
   const colleagueCallsRef = useRef(CONSTANTS.MAX_COLLEAGUE_CALLS);
@@ -134,14 +132,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     return map;
   }, []);
 
-  const speedLines = useMemo(() => {
-    return Array.from({ length: 15 }).map(() => ({
-        left: `${Math.random() * 100}%`,
-        animationDelay: `${Math.random() * 0.3}s`,
-        animationDuration: `${0.2 + Math.random() * 0.2}s`,
-    }));
-  }, []);
-  
   function initPlayer(): Player {
     const startNode = ROAD_NODES[Math.floor(Math.random() * ROAD_NODES.length)];
     const connectedSegment = ROAD_SEGMENTS.find(s => s.startNodeId === startNode.id || s.endNodeId === startNode.id);
@@ -236,7 +226,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         player.isSirenActive = false;
     }
   }, []);
-
+  
   useKeyPress(e => keysPressed.current[e.key] = true, e => keysPressed.current[e.key] = false);
   
   useEffect(() => {
@@ -325,7 +315,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     lastPlayerDistrictRef.current = getDistrictForPoint(playerRef.current.pos);
   }, [createCivilian]);
 
-    const updatePlayerMovement = (now: number) => {
+    const updatePlayerMovement = (now: number, dt: number) => {
+        const dtScale = 60 * dt; // Scale from per-frame@60fps to per-dt
         const player = playerRef.current;
         const keys = { ...keysPressed.current, ...touchStateRef.current };
         const moveForward = keys['ArrowUp'] || keys['w'] || keys['forward'];
@@ -337,28 +328,31 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         player.isBoosting = isTryingToBoost && player.boostCharge >= CONSTANTS.PLAYER_BOOST_DRAIN_RATE && moveForward && !player.isSirenActive;
 
         if (player.isBoosting) {
-            player.boostCharge = Math.max(0, player.boostCharge - CONSTANTS.PLAYER_BOOST_DRAIN_RATE);
+            player.boostCharge = Math.max(0, player.boostCharge - CONSTANTS.DT_BOOST_DRAIN_PER_SEC * dt);
         } else if (!player.isSirenActive) {
-            player.boostCharge = Math.min(CONSTANTS.PLAYER_BOOST_MAX_CHARGE, player.boostCharge + CONSTANTS.PLAYER_BOOST_RECHARGE_RATE);
+            player.boostCharge = Math.min(CONSTANTS.PLAYER_BOOST_MAX_CHARGE, player.boostCharge + CONSTANTS.DT_BOOST_RECHARGE_PER_SEC * dt);
         }
         const currentSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
         player.speed = currentSpeed;
         if (currentSpeed > 0.1) {
             const turnEffectiveness = 1.0 - Math.min(0.5, currentSpeed / (CONSTANTS.PLAYER_MAX_SPEED * 1.5));
-            if (turnLeft) player.angle -= CONSTANTS.PLAYER_HANDLING * turnEffectiveness;
-            if (turnRight) player.angle += CONSTANTS.PLAYER_HANDLING * turnEffectiveness;
+            if (turnLeft) player.angle -= CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
+            if (turnRight) player.angle += CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
         }
         let thrust = 0;
-        if (moveForward) thrust = player.isBoosting ? CONSTANTS.PLAYER_ACCELERATION * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER : CONSTANTS.PLAYER_ACCELERATION;
-        if (moveBackward) thrust = -CONSTANTS.PLAYER_ACCELERATION / 2;
+        if (moveForward) thrust = player.isBoosting ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt : CONSTANTS.DT_ACCEL_PER_SEC * dt;
+        if (moveBackward) thrust = -CONSTANTS.DT_ACCEL_PER_SEC * dt / 2;
         const rads = getRads(player.angle - 90); const forwardVec = { x: Math.cos(rads), y: Math.sin(rads) };
         player.vel.x += forwardVec.x * thrust; player.vel.y += forwardVec.y * thrust;
         const dotForward = player.vel.x * forwardVec.x + player.vel.y * forwardVec.y;
         isBrakingRef.current = moveBackward || (!moveForward && dotForward > 0.1);
         const forwardVelocity = { x: forwardVec.x * dotForward, y: forwardVec.y * dotForward };
         const lateralVelocity = { x: player.vel.x - forwardVelocity.x, y: player.vel.y - forwardVelocity.y };
-        forwardVelocity.x *= CONSTANTS.PLAYER_FORWARD_FRICTION; forwardVelocity.y *= CONSTANTS.PLAYER_FORWARD_FRICTION;
-        lateralVelocity.x *= CONSTANTS.PLAYER_LATERAL_FRICTION; lateralVelocity.y *= CONSTANTS.PLAYER_LATERAL_FRICTION;
+        // Apply friction using power formula for frame-rate independence
+        const fwdFriction = Math.pow(CONSTANTS.PLAYER_FORWARD_FRICTION, dtScale);
+        const latFriction = Math.pow(CONSTANTS.PLAYER_LATERAL_FRICTION, dtScale);
+        forwardVelocity.x *= fwdFriction; forwardVelocity.y *= fwdFriction;
+        lateralVelocity.x *= latFriction; lateralVelocity.y *= latFriction;
         player.vel.x = forwardVelocity.x + lateralVelocity.x; player.vel.y = forwardVelocity.y + lateralVelocity.y;
         const maxSpeed = player.isBoosting ? CONSTANTS.PLAYER_BOOST_MAX_SPEED : CONSTANTS.PLAYER_MAX_SPEED;
         const finalSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
@@ -370,19 +364,20 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             const backOffset = 20; const rads = getRads(player.angle - 90);
             tireSmokeRef.current.push({id: now + Math.random(), pos: {x: player.pos.x - Math.cos(rads) * backOffset, y: player.pos.y - Math.sin(rads) * backOffset}, spawnTime: now});
         }
-        player.pos.x += player.vel.x; player.pos.y += player.vel.y;
+        // Position update scaled by dt
+        player.pos.x += player.vel.x * dtScale;
+        player.pos.y += player.vel.y * dtScale;
         
-        // Track patrol path for heatmap (every 10 frames to reduce memory)
-        patrolPathFrameCounter.current++;
-        if (patrolPathFrameCounter.current >= 10) {
+        // Track patrol path (every ~0.5s)
+        patrolPathFrameCounter.current += dtScale;
+        if (patrolPathFrameCounter.current >= PATROL_PATH_SAMPLE_RATE) {
             patrolPathRef.current.push({ x: player.pos.x, y: player.pos.y });
             patrolPathFrameCounter.current = 0;
         }
     };
     
-    const updateVigilance = () => {
+    const updateVigilance = (dt: number) => {
         const player = playerRef.current;
-        const perFrame = 1 / CONSTANTS.FRAMES_PER_SECOND;
 
         const playerDistrict = getDistrictForPoint(player.pos);
         if (playerDistrict !== lastPlayerDistrictRef.current && lastPlayerDistrictRef.current !== null) {
@@ -391,17 +386,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         lastPlayerDistrictRef.current = playerDistrict;
 
         if (player.isBoosting) {
-            player.vigilance -= CONSTANTS.VIGILANCE_DECAY_PER_SECOND_BOOSTING * perFrame;
+            player.vigilance -= CONSTANTS.VIGILANCE_DECAY_PER_SECOND_BOOSTING * dt;
         } else if (player.speed < 1.0) {
-            player.vigilance -= CONSTANTS.VIGILANCE_DECAY_PER_SECOND_STATIONARY * perFrame;
+            player.vigilance -= CONSTANTS.VIGILANCE_DECAY_PER_SECOND_STATIONARY * dt;
         } else if (player.speed < CONSTANTS.PLAYER_MAX_SPEED * 0.9) {
-            player.vigilance += CONSTANTS.VIGILANCE_GAIN_PER_SECOND_PATROLLING * perFrame;
+            player.vigilance += CONSTANTS.VIGILANCE_GAIN_PER_SECOND_PATROLLING * dt;
         }
         
         player.vigilance = Math.max(0, Math.min(CONSTANTS.VIGILANCE_MAX, player.vigilance));
     };
 
-    const updateDeterrenceAndNeglect = (now: number) => {
+    const updateDeterrenceAndNeglect = (now: number, dt: number) => {
         const player = playerRef.current;
         const playerDistrictId = getDistrictForPoint(player.pos);
         let totalDeterrence = 0;
@@ -412,25 +407,24 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             const district = districtsRef.current.find(d => d.id === postDistrictId);
             if (district) {
                 const sizeModifier = Math.min(2.5, 1000000 / (district.bounds.width * district.bounds.height));
-                const postBoost = CONSTANTS.DISTRICT_PLAYER_PRESENCE_BASE_BOOST * sizeModifier * CONSTANTS.PATROL_POST_PRESENCE_MULTIPLIER;
+                const postBoost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * CONSTANTS.PATROL_POST_PRESENCE_MULTIPLIER * dt;
                 district.deterrence = Math.min(100, district.deterrence + postBoost);
             }
-            post.remainingTime--;
+            post.remainingTime -= 60 * dt; // Decrement frame counter by scaled amount
         });
         patrolPostsRef.current = patrolPostsRef.current.filter(p => p.remainingTime > 0);
         
         districtsRef.current.forEach(district => {
             let decayMultiplier = 1.0;
             if (isNeglectOfDutyActiveRef.current) decayMultiplier = CONSTANTS.NEGLECT_OF_DUTY_DETERRENCE_DECAY_MULTIPLIER;
-            district.deterrence = Math.max(0, district.deterrence - CONSTANTS.DISTRICT_DECAY_RATE * decayMultiplier);
+            district.deterrence = Math.max(0, district.deterrence - CONSTANTS.DT_DISTRICT_DECAY_PER_SEC * decayMultiplier * dt);
             
             if (district.id === playerDistrictId) {
-                // Clamp the size modifier to prevent extreme deterrence gain in very small districts.
                 const sizeModifier = Math.min(2.5, 1000000 / (district.bounds.width * district.bounds.height)); 
-                let boost = CONSTANTS.DISTRICT_PLAYER_PRESENCE_BASE_BOOST * sizeModifier;
-                if (player.isSirenActive) boost += CONSTANTS.DISTRICT_SIREN_BOOST;
+                let boost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * dt;
+                if (player.isSirenActive) boost += CONSTANTS.DT_SIREN_BOOST_PER_SEC * dt;
                 district.deterrence = Math.min(100, district.deterrence + boost);
-                presenceBoostRateRef.current = boost;
+                presenceBoostRateRef.current = boost / dt;
             }
             totalDeterrence += district.deterrence;
         });
@@ -439,7 +433,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         isVigilanceBonusActiveRef.current = districtsRef.current.every(d => d.deterrence >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD);
 
         const deterrenceMultiplier = CONSTANTS.DETERRENCE_MULTIPLIER_MIN + (avgDeterrenceRef.current / 100) * (CONSTANTS.DETERRENCE_MULTIPLIER_MAX - CONSTANTS.DETERRENCE_MULTIPLIER_MIN);
-        scoreRef.current.deterrence += (avgDeterrenceRef.current / 100) * (CONSTANTS.DETERRENCE_SCORE_RATE / CONSTANTS.FRAMES_PER_SECOND) * (isVigilanceBonusActiveRef.current ? CONSTANTS.VIGILANCE_BONUS_MULTIPLIER : 1) * deterrenceMultiplier;
+        scoreRef.current.deterrence += (avgDeterrenceRef.current / 100) * CONSTANTS.DETERRENCE_SCORE_RATE * dt * (isVigilanceBonusActiveRef.current ? CONSTANTS.VIGILANCE_BONUS_MULTIPLIER : 1) * deterrenceMultiplier;
 
         const isPlayerStationary = player.speed < 0.1;
         const currentDistrict = districtsRef.current.find(d => d.id === playerDistrictId);
@@ -502,7 +496,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
     };
 
-    const handleCollisionsAndInteractions = (now: number) => {
+    const handleCollisionsAndInteractions = (now: number, dt: number) => {
         const player = playerRef.current;
         const roadInfo = findClosestPointOnRoad(player.pos);
         if (roadInfo && roadInfo.dist > CONSTANTS.ROAD_WIDTH / 2) {
@@ -524,7 +518,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
     };
 
-    const updateCiviliansAndSpawners = (now: number) => {
+    const updateCiviliansAndSpawners = (now: number, dt: number) => {
+        const dtScale = 60 * dt;
         const player = playerRef.current;
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
@@ -588,7 +583,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         
         civiliansRef.current = civiliansRef.current.filter(c => {
             if (c.isLifeAtRisk) {
-                c.lifeAtRiskTimer -= 1;
+                c.lifeAtRiskTimer -= dtScale;
                 if (c.lifeAtRiskTimer <= 0) {
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
@@ -630,7 +625,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                     const toCivilianLen = Math.sqrt(toCivilianVec.x**2 + toCivilianVec.y**2) || 1;
                     const toCivilianDir = { x: toCivilianVec.x / toCivilianLen, y: toCivilianVec.y / toCivilianLen };
                     const dot = playerForwardVec.x * toCivilianDir.x + playerForwardVec.y * toCivilianDir.y;
-                    if (dot > 0.5) { // In a cone in front of the player
+                    if (dot > 0.5) {
                         c.isYieldingToSiren = true;
                     }
                 }
@@ -639,7 +634,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             if (c.isYieldingToSiren) {
                 targetSpeed *= CONSTANTS.SIREN_YIELD_SLOWDOWN_FACTOR;
             } else if (c.ridsType === 'Distractions') {
-                c.speedFluctuationTimer = (c.speedFluctuationTimer || 0) - 1;
+                c.speedFluctuationTimer = (c.speedFluctuationTimer || 0) - dtScale;
                 if (c.speedFluctuationTimer <= 0) {
                     c.speedFluctuationTimer = Math.random() * 120 + 60;
                     c.speedFluctuationTarget = 0.5 + Math.random();
@@ -647,12 +642,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 targetSpeed *= c.speedFluctuationTarget!;
             }
 
-            c.speed += (targetSpeed - c.speed) * 0.08;
+            c.speed += (targetSpeed - c.speed) * 0.08 * dtScale;
             c.isBraking = c.speed > targetSpeed + 0.1;
-            c.pos.x += segmentDir.x * c.speed;
-            c.pos.y += segmentDir.y * c.speed;
+            c.pos.x += segmentDir.x * c.speed * dtScale;
+            c.pos.y += segmentDir.y * c.speed * dtScale;
             if (c.ridsType === 'Impairment') {
-                c.swerveAngle = ((c.swerveAngle || 0) + 0.04) % (Math.PI * 2);
+                c.swerveAngle = ((c.swerveAngle || 0) + 0.04 * dtScale) % (Math.PI * 2);
                 const perpVec = { x: -segmentDir.y, y: segmentDir.x };
                 c.pos.x += perpVec.x * Math.sin(c.swerveAngle) * 2;
                 c.pos.y += perpVec.y * Math.sin(c.swerveAngle) * 2;
@@ -675,7 +670,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         });
     };
 
-    const updateParticlesAndEffects = (now: number) => {
+    const updateParticlesAndEffects = (now: number, dt: number) => {
+        const dtScale = 60 * dt;
         const playerPos = playerRef.current.pos;
         const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
         const auraRadius = CONSTANTS.PLAYER_AURA_RADIUS + currentVigilanceBonus;
@@ -688,7 +684,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             }
             blob.vel.x *= 0.92; blob.vel.y *= 0.92;
             const speed = Math.sqrt(blob.vel.x**2 + blob.vel.y**2); if (speed > CONSTANTS.DETERRENCE_BLOB_SPEED) { const r = CONSTANTS.DETERRENCE_BLOB_SPEED / speed; blob.vel.x *= r; blob.vel.y *= r; }
-            blob.pos.x += blob.vel.x; blob.pos.y += blob.vel.y;
+            blob.pos.x += blob.vel.x * dtScale; blob.pos.y += blob.vel.y * dtScale;
             if (getDistanceSq(playerPos, blob.pos) < 25 ** 2) {
                 const playerDistrictId = getDistrictForPoint(playerPos);
                 const district = districtsRef.current.find(d => d.id === playerDistrictId);
@@ -700,7 +696,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         
         collectionEffectsRef.current = collectionEffectsRef.current.filter(e => now - e.spawnTime < 400);
         floatingScoreTextsRef.current = floatingScoreTextsRef.current.filter(f => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
-        sparksRef.current = sparksRef.current.map(s => ({ ...s, pos: { x: s.pos.x + s.vel.x, y: s.pos.y + s.vel.y }})).filter(s => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
+        sparksRef.current = sparksRef.current.map(s => ({ ...s, pos: { x: s.pos.x + s.vel.x * dtScale, y: s.pos.y + s.vel.y * dtScale }})).filter(s => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
         skidMarksRef.current = skidMarksRef.current.filter(skid => now - skid.spawnTime < CONSTANTS.SKID_MARK_LIFESPAN);
         tireSmokeRef.current = tireSmokeRef.current.filter(smoke => now - smoke.spawnTime < CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN);
         explosionsRef.current = explosionsRef.current.filter(exp => now - exp.spawnTime < CONSTANTS.EXPLOSION_LIFESPAN);
@@ -738,9 +734,16 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
     };
     
-    const updateCamera = (now: number) => {
+    const updateCamera = (now: number, dt: number) => {
         const player = playerRef.current;
-        const targetZoom = player.isBoosting ? 0.85 : (isBrakingRef.current && player.speed > 2 ? 1.02 : 1.0);
+        const container = containerRef.current;
+        let baseZoom = 1;
+        if (container) {
+            const rect = container.getBoundingClientRect();
+            baseZoom = Math.min(rect.width / CONSTANTS.VIEWPORT_WIDTH, rect.height / CONSTANTS.VIEWPORT_HEIGHT);
+        }
+        const dynamicZoom = player.isBoosting ? 0.85 : (isBrakingRef.current && player.speed > 2 ? 1.02 : 1.0);
+        const targetZoom = baseZoom * dynamicZoom;
         cameraRef.current.zoom += (targetZoom - cameraRef.current.zoom) * 0.04;
         if (player.isBoosting) cameraRef.current.shake = Math.max(cameraRef.current.shake, 4);
         cameraRef.current.shake *= 0.92;
@@ -750,21 +753,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const targetPos = { x: player.pos.x + Math.cos(rads) * lookAheadDist, y: player.pos.y + Math.sin(rads) * lookAheadDist };
         cameraPosRef.current.x += (targetPos.x - cameraPosRef.current.x) * 0.05;
         cameraPosRef.current.y += (targetPos.y - cameraPosRef.current.y) * 0.05;
+        cameraRef.current.x = cameraPosRef.current.x;
+        cameraRef.current.y = cameraPosRef.current.y;
     };
 
   const handleEnforce = useCallback(() => {
-    // Restraints and Distractions auto-resolve without a mini-game.
-    // Outcome depends on district deterrence and Life at Risk status:
-    //   - Life at Risk → always infringement (full enforcement points)
-    //   - Low deterrence district → more likely infringement (worse offending)
-    //   - High deterrence district → more likely warning-level
     if (activeRids && (activeRids.ridsType === 'Restraints' || activeRids.ridsType === 'Distractions')) {
       const district = districtsRef.current.find(d => d.id === activeRids.car.district);
       const deterrence = district?.deterrence ?? 50;
       const isInfringement = activeRids.car.isLifeAtRisk || (Math.random() * 100) > deterrence;
 
       if (isInfringement) {
-        // Full enforcement — same reward as passing a mini-game
         const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
         let scoreToAdd = CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus;
         if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
@@ -776,7 +775,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Enforce' });
         cameraRef.current.shake = 10;
       } else {
-        // Warning-level outcome
         let scoreToAdd = CONSTANTS.WARN_SCORE_POINTS;
         if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
         scoreRef.current.enforcement += scoreToAdd;
@@ -787,7 +785,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Warn' });
       }
 
-      // Common: remove car, handle life-at-risk and dispatched calls
       civiliansRef.current = civiliansRef.current.filter(c => c.id !== activeRids.car.id);
       if (activeRids.car.isLifeAtRisk) scoreRef.current.livesSaved++;
       if (dispatchedCallRef.current?.targetVehicleId === activeRids.car.id) {
@@ -798,7 +795,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       setTargetedCarId(null);
       setGameState('Playing');
     } else {
-      // Impairment and Speed still launch mini-games
       setGameState('MiniGame');
     }
   }, [activeRids]);
@@ -869,20 +865,63 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         onGameOver(finalBreakdown);
         return;
     }
-    timeLeftRef.current -= 1 / CONSTANTS.FRAMES_PER_SECOND;
+
+    // Delta time calculation
+    if (lastTimeRef.current === 0) lastTimeRef.current = now;
+    const rawDt = (now - lastTimeRef.current) / 1000;
+    const dt = Math.min(rawDt, 0.1); // Cap at 100ms to avoid huge jumps
+    lastTimeRef.current = now;
+
+    timeLeftRef.current -= dt;
     
-    updatePlayerMovement(now);
-    updateVigilance();
-    updateCiviliansAndSpawners(now);
-    updateDeterrenceAndNeglect(now);
-    handleCollisionsAndInteractions(now);
-    updateParticlesAndEffects(now);
+    updatePlayerMovement(now, dt);
+    updateVigilance(dt);
+    updateCiviliansAndSpawners(now, dt);
+    updateDeterrenceAndNeglect(now, dt);
+    handleCollisionsAndInteractions(now, dt);
+    updateParticlesAndEffects(now, dt);
     updatePathfinding(now);
-    updateCamera(now);
+    updateCamera(now, dt);
     
-    forceUpdate();
+    // Draw to canvas
+    const canvas = canvasRef.current;
+    if (canvas && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        if (canvas.width !== Math.round(rect.width * dpr) || canvas.height !== Math.round(rect.height * dpr)) {
+            canvas.width = Math.round(rect.width * dpr);
+            canvas.height = Math.round(rect.height * dpr);
+        }
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            const renderState: RenderState = {
+                player: playerRef.current,
+                civilians: civiliansRef.current,
+                sparks: sparksRef.current,
+                skidMarks: skidMarksRef.current,
+                tireSmoke: tireSmokeRef.current,
+                floatingScoreTexts: floatingScoreTextsRef.current,
+                deterrenceBlobs: deterrenceBlobsRef.current,
+                collectionEffects: collectionEffectsRef.current,
+                explosions: explosionsRef.current,
+                patrolPosts: patrolPostsRef.current,
+                highlightedPath: highlightedPathRef.current,
+                pathfindingTargetId: pathfindingTargetIdRef.current,
+                targetedCarId: targetedCarId,
+                isBraking: isBrakingRef.current,
+            };
+            drawGame(ctx, rect.width, rect.height, cameraRef.current, renderState, now);
+        }
+    }
+
+    // Periodic HUD refresh
+    if (now - lastHudUpdateRef.current > HUD_UPDATE_INTERVAL_MS) {
+        lastHudUpdateRef.current = now;
+        setHudTick(t => t + 1);
+    }
+    
     gameLoopRef.current = requestAnimationFrame(gameLoop);
-  }, [onGameOver, spawnCivilian, segmentLookup, handleColleagueCall, gameState]);
+  }, [onGameOver, spawnCivilian, segmentLookup, handleColleagueCall, gameState, targetedCarId]);
 
   const onMiniGameComplete = useCallback((success: boolean) => {
     if (activeRids) {
@@ -912,20 +951,39 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     setTargetedCarId(null); setGameState('Playing');
   }, [activeRids]);
 
+  // Pause/resume on visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (gameLoopRef.current) {
+          cancelAnimationFrame(gameLoopRef.current);
+          gameLoopRef.current = undefined;
+        }
+      } else {
+        if ((gameState === 'Playing' || gameState === 'Starting') && !gameLoopRef.current) {
+          lastTimeRef.current = 0;
+          gameLoopRef.current = requestAnimationFrame(gameLoop);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [gameState, gameLoop]);
+
   useEffect(() => {
     if (gameState === 'Playing' || gameState === 'Starting') {
+      lastTimeRef.current = 0; // Reset delta time on resume
       gameLoopRef.current = requestAnimationFrame(gameLoop);
     } else if (gameLoopRef.current) {
       cancelAnimationFrame(gameLoopRef.current);
+      gameLoopRef.current = undefined;
     }
-    return () => { if (gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current); };
+    return () => { if (gameLoopRef.current) { cancelAnimationFrame(gameLoopRef.current); gameLoopRef.current = undefined; } };
   }, [gameState, gameLoop]);
   
   const player = playerRef.current;
   const camera = cameraRef.current;
   const cameraPos = cameraPosRef.current;
-  const shakeX = camera.shake > 0 ? Math.random() * camera.shake - camera.shake / 2 : 0;
-  const shakeY = camera.shake > 0 ? Math.random() * camera.shake - camera.shake / 2 : 0;
   const playerDistrict = getDistrictForPoint(player.pos);
   const totalScore = Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence) + (scoreRef.current.livesSaved * CONSTANTS.LIVES_SAVED_SCORE_BONUS) - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY);
   const activeLarCar = civiliansRef.current.find(c => c.isLifeAtRisk);
@@ -934,7 +992,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       : false;
 
   return (
-    <div className="w-full h-full bg-black overflow-hidden relative">
+    <div ref={containerRef} className="w-full h-full bg-black overflow-hidden relative">
        {gameState === 'Starting' && countdownText && (
             <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
                 <h1 key={countdownText} className="text-9xl font-display text-cyan-400 animate-scale-up-and-fade">
@@ -942,41 +1000,20 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 </h1>
             </div>
         )}
-      <div 
-        className="absolute top-0 left-0" 
-        style={{ 
-            width: `${CONSTANTS.WORLD_WIDTH}px`, 
-            height: `${CONSTANTS.WORLD_HEIGHT}px`,
-            transformOrigin: `${cameraPos.x}px ${cameraPos.y}px`,
-            transform: `translate(${-cameraPos.x + CONSTANTS.VIEWPORT_WIDTH/2 + shakeX}px, ${-cameraPos.y + CONSTANTS.VIEWPORT_HEIGHT/2 + shakeY}px) scale(${camera.zoom})`,
-        }}>
-        <GameMap />
-        {highlightedPathRef.current && (
-            <svg width={CONSTANTS.WORLD_WIDTH} height={CONSTANTS.WORLD_HEIGHT} className="absolute top-0 left-0 pointer-events-none" style={{ zIndex: 2 }}>
-                <polyline
-                    points={highlightedPathRef.current.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none" stroke="rgba(253, 224, 71, 0.6)" strokeWidth="30"
-                    strokeLinecap="round" strokeLinejoin="round" className="animate-path-flow" />
-            </svg>
-        )}
-        {patrolPostsRef.current.map(post => <PatrolPostAura key={post.id} post={post} />)}
-        {skidMarksRef.current.map(skid => <SkidMarkComponent key={skid.id} skid={skid} />)}
-        {tireSmokeRef.current.map(smoke => (
-            <div key={smoke.id} className="absolute w-8 h-8 bg-white/50 rounded-full animate-fade-out-smoke" style={{ left: smoke.pos.x, top: smoke.pos.y, transform: 'translate(-50%, -50%)', zIndex: 2}}></div>
-        ))}
-        {civiliansRef.current.map(car => <CivilianCar key={car.id} car={car} isTargeted={car.id === targetedCarId} isPathfindingTarget={car.id === pathfindingTargetIdRef.current} isYielding={!!car.isYieldingToSiren} />)}
-        <PlayerCar player={player} isBraking={isBrakingRef.current} />
-        {deterrenceBlobsRef.current.map(blob => <DeterrenceBlob key={blob.id} blob={blob} />)}
-        {collectionEffectsRef.current.map(effect => <CollectionEffect key={effect.id} effect={effect} />)}
-        {sparksRef.current.map(spark => <SparksEffect key={spark.id} spark={spark} />)}
-        {floatingScoreTextsRef.current.map(text => <FloatingScoreText key={text.id} data={text} />)}
-        {explosionsRef.current.map(exp => <Explosion key={exp.id} explosion={exp} />)}
-      </div>
+      <canvas 
+        ref={canvasRef}
+        className="absolute top-0 left-0 w-full h-full"
+        style={{ touchAction: 'none' }}
+      />
       <div className={`boost-overlay ${player.isBoosting ? 'active' : ''}`}></div>
       {player.isBoosting && (
         <div className="speed-lines-overlay">
-            {speedLines.map((style, i) => (
-                <div key={i} className="speed-line" style={style} />
+            {Array.from({ length: 15 }).map((_, i) => (
+                <div key={i} className="speed-line" style={{
+                    left: `${Math.random() * 100}%`,
+                    animationDelay: `${Math.random() * 0.3}s`,
+                    animationDuration: `${0.2 + Math.random() * 0.2}s`,
+                }} />
             ))}
         </div>
       )}

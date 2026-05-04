@@ -46,6 +46,18 @@ export const VIGILANCE_AURA_BONUS_MAX = 125; // Max additional pixels to aura ra
 // Patrol Post System (New)
 export const PATROL_POST_SETUP_TIME = 10; // seconds player must be stationary
 export const PATROL_POST_DURATION = 30 * FRAMES_PER_SECOND; // 30 seconds in frames
+
+// Per-second rates for delta-time based game loop
+export const DT_BOOST_DRAIN_PER_SEC = PLAYER_BOOST_DRAIN_RATE * FRAMES_PER_SECOND;
+export const DT_SIREN_DRAIN_PER_SEC = PLAYER_SIREN_DRAIN_RATE * FRAMES_PER_SECOND;
+export const DT_BOOST_RECHARGE_PER_SEC = PLAYER_BOOST_RECHARGE_RATE * FRAMES_PER_SECOND;
+export const DT_HANDLING_PER_SEC = PLAYER_HANDLING * FRAMES_PER_SECOND;
+export const DT_ACCEL_PER_SEC = PLAYER_ACCELERATION * FRAMES_PER_SECOND;
+export const DT_DISTRICT_DECAY_PER_SEC = DISTRICT_DECAY_RATE * FRAMES_PER_SECOND;
+export const DT_PRESENCE_BOOST_PER_SEC = DISTRICT_PLAYER_PRESENCE_BASE_BOOST * FRAMES_PER_SECOND;
+export const DT_SIREN_BOOST_PER_SEC = DISTRICT_SIREN_BOOST * FRAMES_PER_SECOND;
+export const DT_PATROL_POST_DURATION_SEC = 30;
+export const DT_CIVILIAN_TURN_PER_SEC = CIVILIAN_TURN_RATE * FRAMES_PER_SECOND;
 export const PATROL_POST_PRESENCE_MULTIPLIER = 1.30; // 30% more effective than standard player presence
 export const PATROL_POST_RADIUS = 150; // Visual radius of the post's aura
 export const PATROL_POST_LAR_TIME_BONUS_SECONDS = 5; // Time bonus in seconds
