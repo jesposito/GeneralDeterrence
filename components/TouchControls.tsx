@@ -5,6 +5,7 @@ type ControlAction = 'forward' | 'backward' | 'left' | 'right' | 'boost';
 
 interface TouchControlsProps {
   onControlChange: (action: ControlAction, active: boolean) => void;
+  onAnalogChange?: (x: number, y: number) => void;
   onRidsCheck: () => void;
   onSirenToggle: () => void;
   onColleagueCall: () => void;
@@ -18,9 +19,10 @@ const ACTION_BUTTON = 64;
 
 interface JoystickProps {
   onDirectionChange: (active: { forward: boolean; backward: boolean; left: boolean; right: boolean }) => void;
+  onAnalogChange?: (x: number, y: number) => void;
 }
 
-const Joystick: React.FC<JoystickProps> = ({ onDirectionChange }) => {
+const Joystick: React.FC<JoystickProps> = ({ onDirectionChange, onAnalogChange }) => {
   const baseRef = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [pressed, setPressed] = useState(false);
@@ -38,6 +40,7 @@ const Joystick: React.FC<JoystickProps> = ({ onDirectionChange }) => {
     const mag = Math.hypot(nx, ny);
     if (mag > 1) { nx /= mag; ny /= mag; }
     setKnob({ x: nx, y: ny });
+    if (onAnalogChange) onAnalogChange(nx, ny);
 
     const dir = {
       forward: ny < -JOYSTICK_DEADZONE,
@@ -57,13 +60,14 @@ const Joystick: React.FC<JoystickProps> = ({ onDirectionChange }) => {
     activePointerId.current = null;
     setPressed(false);
     setKnob({ x: 0, y: 0 });
+    if (onAnalogChange) onAnalogChange(0, 0);
     const prev = lastDirRef.current;
     if (prev.forward || prev.backward || prev.left || prev.right) {
       const off = { forward: false, backward: false, left: false, right: false };
       onDirectionChange(off);
       lastDirRef.current = off;
     }
-  }, [onDirectionChange]);
+  }, [onDirectionChange, onAnalogChange]);
 
   const handleDown = (e: React.PointerEvent) => {
     if (activePointerId.current !== null) return;
@@ -167,7 +171,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   );
 };
 
-const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCheck, onSirenToggle, onColleagueCall, isSirenActive = false }) => {
+const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onAnalogChange, onRidsCheck, onSirenToggle, onColleagueCall, isSirenActive = false }) => {
   const handleJoystickDir = useCallback((dir: { forward: boolean; backward: boolean; left: boolean; right: boolean }) => {
     onControlChange('forward', dir.forward);
     onControlChange('backward', dir.backward);
@@ -188,7 +192,7 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCh
     >
       {/* LEFT: Virtual joystick — 360 degrees, replaces 4 directional buttons */}
       <div className="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 pointer-events-auto">
-        <Joystick onDirectionChange={handleJoystickDir} />
+        <Joystick onDirectionChange={handleJoystickDir} onAnalogChange={onAnalogChange} />
       </div>
 
       {/* RIGHT: 2x2 round Xbox-style action grid */}

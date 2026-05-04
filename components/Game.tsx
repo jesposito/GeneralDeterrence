@@ -110,6 +110,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   // Refs for tracking game logic timers and state
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const touchStateRef = useRef<{ [key: string]: boolean }>({});
+  // Analog joystick magnitude (-1..1 each axis). Boolean direction still flows via
+  // touchStateRef + keysPressed for keyboard compat; this ref carries the analog
+  // intensity (0..1 magnitude) so the driving code can apply gentle vs sharp turns.
+  const analogInputRef = useRef({ x: 0, y: 0 });
   const gameLoopRef = useRef<number>();
   const lastSpawnCheckTime = useRef(Date.now());
   const lastDispatchCheckTime = useRef(Date.now());
@@ -200,6 +204,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     const clearHeldInputs = () => {
       keysPressed.current = {};
       touchStateRef.current = {};
+      analogInputRef.current.x = 0;
+      analogInputRef.current.y = 0;
       isBrakingRef.current = false;
       if (playerRef.current.isSirenActive) {
         playerRef.current.isSirenActive = false;
@@ -392,14 +398,22 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
         const currentSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
         player.speed = currentSpeed;
+        // Analog joystick intensity: |x| and |y| in 0..1. Falls back to 1.0 (full)
+        // when keyboard or thresholded touch is the active input source.
+        const analogX = Math.abs(analogInputRef.current.x);
+        const analogY = Math.abs(analogInputRef.current.y);
+        const turnIntensity = analogX > 0.01 ? analogX : 1.0;
+        const fwdIntensity = analogY > 0.01 ? analogY : 1.0;
+        const revIntensity = analogY > 0.01 ? analogY : 1.0;
+
         if (currentSpeed > 0.1) {
             const turnEffectiveness = 1.0 - Math.min(0.5, currentSpeed / (CONSTANTS.PLAYER_MAX_SPEED * 1.5));
-            if (turnLeft) player.angle -= CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
-            if (turnRight) player.angle += CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
+            if (turnLeft) player.angle -= CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness * turnIntensity;
+            if (turnRight) player.angle += CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness * turnIntensity;
         }
         let thrust = 0;
-        if (moveForward) thrust = player.isBoosting ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt : CONSTANTS.DT_ACCEL_PER_SEC * dt;
-        if (moveBackward) thrust = -CONSTANTS.DT_ACCEL_PER_SEC * dt / 2;
+        if (moveForward) thrust = (player.isBoosting ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt : CONSTANTS.DT_ACCEL_PER_SEC * dt) * fwdIntensity;
+        if (moveBackward) thrust = -CONSTANTS.DT_ACCEL_PER_SEC * dt / 2 * revIntensity;
         const rads = getRads(player.angle - 90); const forwardVec = { x: Math.cos(rads), y: Math.sin(rads) };
         player.vel.x += forwardVec.x * thrust; player.vel.y += forwardVec.y * thrust;
         const dotForward = player.vel.x * forwardVec.x + player.vel.y * forwardVec.y;
@@ -1119,6 +1133,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
        {isTouchDevice && gameState === 'Playing' && (
         <TouchControls
             onControlChange={handleControlChange}
+            onAnalogChange={(x, y) => { analogInputRef.current.x = x; analogInputRef.current.y = y; }}
             onRidsCheck={handleRidsCheck}
             onSirenToggle={handleSirenToggle}
             onColleagueCall={handleColleagueCall}
