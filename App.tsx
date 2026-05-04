@@ -4,6 +4,7 @@ import MainMenu from './components/MainMenu';
 import Game from './components/Game';
 import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
+import MuteToggle from './components/MuteToggle';
 
 const API_BASE = (window as any).LEADERBOARD_API || '/api';
 
@@ -116,6 +117,7 @@ const App: React.FC = () => {
       <div className="w-full app-vh bg-black relative overflow-hidden">
         {renderContent()}
         <div className="crt-overlay"></div>
+        <MuteToggle />
       </div>
     </div>
   );
