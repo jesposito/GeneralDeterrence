@@ -169,8 +169,8 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCh
         </div>
 
         {/* Action stack: right side, above throttle, RIDS biggest */}
-        {/* On <=400h landscape (iPhone SE/8+), shrink + lower to avoid HUD minimap overlap; gap-2 keeps WCAG 2.5.5 AA spacing */}
-        <div className="absolute right-3 bottom-[11.5rem] [@media(max-height:400px)]:bottom-[8rem] flex flex-col gap-2 pointer-events-auto items-end">
+        {/* On <=500h landscape (covers iPhone SE/8+/12/14 Pro Max), lower to avoid HUD minimap overlap; <=400h additionally shrinks button heights. gap-2 keeps WCAG 2.5.5 AA spacing. */}
+        <div className="absolute right-3 bottom-[11.5rem] [@media(max-height:500px)]:bottom-[8rem] flex flex-col gap-2 pointer-events-auto items-end">
           <TapButton ariaLabel="Run RIDS check on nearby driver" onTap={onRidsCheck}
             className="w-28 h-14 [@media(max-height:400px)]:h-10 bg-yellow-500/80 rounded-xl text-black text-base active:bg-yellow-400 shadow-lg">
             RIDS CHECK
