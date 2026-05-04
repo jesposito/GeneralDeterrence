@@ -1054,9 +1054,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         className="absolute top-0 left-0 w-full h-full block"
         style={{ touchAction: 'none' }}
       />
-      <div className="absolute top-2 left-2 z-50 bg-black/70 text-yellow-400 text-xs font-mono p-2 rounded pointer-events-none">
-        {debugInfo}
-      </div>
+      {typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug') && (
+        <div className="absolute top-2 left-2 z-50 bg-black/70 text-yellow-400 text-xs font-mono p-2 rounded pointer-events-none">
+          {debugInfo}
+        </div>
+      )}
       <div className={`boost-overlay ${player.isBoosting ? 'active' : ''}`}></div>
       {player.isBoosting && (
         <div className="speed-lines-overlay">
