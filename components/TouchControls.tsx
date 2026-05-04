@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import * as audio from '../utils/audio';
 
 type ControlAction = 'forward' | 'backward' | 'left' | 'right' | 'boost';
 
@@ -67,6 +68,7 @@ const Joystick: React.FC<JoystickProps> = ({ onDirectionChange }) => {
   const handleDown = (e: React.PointerEvent) => {
     if (activePointerId.current !== null) return;
     e.preventDefault();
+    audio.unlockAudio();
     activePointerId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
     setPressed(true);
@@ -137,6 +139,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({
 }) => {
   const handleDown = (e: React.PointerEvent) => {
     e.preventDefault();
+    audio.unlockAudio();
+    audio.click();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (onPointerDown) onPointerDown();
     if (onTap) onTap();

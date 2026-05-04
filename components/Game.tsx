@@ -9,6 +9,7 @@ import TouchControls from './TouchControls';
 import RotateDevicePrompt from './RotateDevicePrompt';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
 import { drawGame, CameraState, RenderState } from '../utils/gameRenderer';
+import * as audio from '../utils/audio';
 
 interface GameProps {
   onGameOver: (scoreBreakdown: FinalScoreBreakdown) => void;
@@ -187,6 +188,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         playerRef.current.isSirenActive = false;
         sirenStartTimeRef.current = null;
       }
+      audio.sirenStop();
       playerRef.current.isBoosting = false;
     };
     const onVisibility = () => { if (document.hidden) clearHeldInputs(); };
@@ -256,9 +258,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (!player.isSirenActive && player.boostCharge > 0) {
         sirenStartTimeRef.current = Date.now();
         player.isSirenActive = true;
+        audio.sirenStart();
     } else {
         sirenStartTimeRef.current = null;
         player.isSirenActive = false;
+        audio.sirenStop();
     }
   }, []);
   
@@ -292,6 +296,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         setActiveRids({ car: nearbyCar, ridsType: nearbyCar.ridsType! });
         setTargetedCarId(nearbyCar.id);
         setGameMessage('TARGET LOCKED');
+        audio.beep();
         setRidsChoiceSelection('warn'); // Reset selection
         setGameState('RidsChoice');
         if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
@@ -622,6 +627,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 if (c.lifeAtRiskTimer <= 0) {
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
+                    audio.thud();
                     return false;
                 }
                 if (!c.patrolPostBonusApplied) {
@@ -976,6 +982,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const onMiniGameComplete = useCallback((success: boolean) => {
     if (activeRids) {
       if (success) {
+        audio.zap();
         const district = districtsRef.current.find(d => d.id === activeRids.car.district);
         const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
         let scoreToAdd = CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus;
