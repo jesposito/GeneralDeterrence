@@ -29,7 +29,7 @@ const DistrictMeters: React.FC<DistrictMetersProps> = ({ districts, playerDistri
                            <p className={`text-xs font-bold tracking-wide ${isCurrent ? 'text-cyan-300' : 'text-gray-400'}`}>{district.name.toUpperCase()}</p>
                            {isCurrent && presenceBoostRate > 0 && (
                                 <span className="text-xs font-mono text-green-400 animate-pulse">
-                                    +{(presenceBoostRate * CONSTANTS.FRAMES_PER_SECOND).toFixed(2)}/s
+                                    +{presenceBoostRate.toFixed(2)}/s
                                 </span>
                             )}
                         </div>
