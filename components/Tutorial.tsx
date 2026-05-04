@@ -64,7 +64,15 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
             <div className="text-center mt-6 sm:mt-10">
                 <button
                     ref={buttonRef}
-                    onClick={onComplete}
+                    onClick={() => {
+                        // Best-effort fullscreen request on user gesture. iOS Safari support is
+                        // variable; if unsupported, the .catch() swallows it and the game still
+                        // launches normally inside the browser chrome.
+                        const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+                        const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+                        if (req) { try { req()?.catch(() => { /* ignore */ }); } catch { /* ignore */ } }
+                        onComplete();
+                    }}
                     className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-4 px-12 rounded-lg text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
                 >
                     Start Patrol

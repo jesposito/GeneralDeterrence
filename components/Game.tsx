@@ -403,24 +403,58 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
         const currentSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
         player.speed = currentSpeed;
-        // Analog joystick intensity: |x| and |y| in 0..1. Falls back to 1.0 (full)
-        // when keyboard or thresholded touch is the active input source.
-        const analogX = Math.abs(analogInputRef.current.x);
-        const analogY = Math.abs(analogInputRef.current.y);
-        const turnIntensity = analogX > 0.01 ? analogX : 1.0;
-        const fwdIntensity = analogY > 0.01 ? analogY : 1.0;
-        const revIntensity = analogY > 0.01 ? analogY : 1.0;
-
-        if (currentSpeed > 0.1) {
-            const turnEffectiveness = 1.0 - Math.min(0.5, currentSpeed / (CONSTANTS.PLAYER_MAX_SPEED * 1.5));
-            if (turnLeft) player.angle -= CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness * turnIntensity;
-            if (turnRight) player.angle += CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness * turnIntensity;
-        }
+        // Cardinal joystick mode: when the analog joystick magnitude is non-trivial,
+        // treat the joystick as a world-direction vector — push north = move north,
+        // regardless of car heading. Visual angle smoothly rotates toward velocity
+        // direction so the car still 'faces' where it's going. Snaps instantly when
+        // prefers-reduced-motion is set.
+        const jx = analogInputRef.current.x;
+        const jy = analogInputRef.current.y;
+        const joystickMag = Math.hypot(jx, jy);
+        const cardinalActive = joystickMag > 0.05;
         let thrust = 0;
-        if (moveForward) thrust = (player.isBoosting ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt : CONSTANTS.DT_ACCEL_PER_SEC * dt) * fwdIntensity;
-        if (moveBackward) thrust = -CONSTANTS.DT_ACCEL_PER_SEC * dt / 2 * revIntensity;
+
+        if (cardinalActive) {
+            // Apply velocity directly in joystick direction. Magnitude controls thrust intensity.
+            const baseAccel = player.isBoosting
+                ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt
+                : CONSTANTS.DT_ACCEL_PER_SEC * dt;
+            const thrustForFrame = baseAccel * Math.min(1, joystickMag);
+            const ndx = jx / joystickMag;
+            const ndy = jy / joystickMag;
+            player.vel.x += ndx * thrustForFrame;
+            player.vel.y += ndy * thrustForFrame;
+            // Visual rotation toward joystick direction.
+            // Game angle convention: 0 = facing up (north), +90 = right, etc. (player.angle - 90 → world rads).
+            const targetAngleDeg = Math.atan2(ndy, ndx) * (180 / Math.PI) + 90;
+            let delta = targetAngleDeg - player.angle;
+            while (delta > 180) delta -= 360;
+            while (delta < -180) delta += 360;
+            const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduceMotion) {
+                player.angle = targetAngleDeg;
+            } else {
+                player.angle += delta * Math.min(1, dt * 8);
+            }
+            thrust = thrustForFrame; // expose to downstream isBraking heuristic below
+        } else {
+            // Tank mode: keyboard (WASD/arrows) or thresholded boolean touch.
+            if (currentSpeed > 0.1) {
+                const turnEffectiveness = 1.0 - Math.min(0.5, currentSpeed / (CONSTANTS.PLAYER_MAX_SPEED * 1.5));
+                if (turnLeft) player.angle -= CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
+                if (turnRight) player.angle += CONSTANTS.DT_HANDLING_PER_SEC * dt * turnEffectiveness;
+            }
+            if (moveForward) thrust = (player.isBoosting ? CONSTANTS.DT_ACCEL_PER_SEC * CONSTANTS.PLAYER_BOOST_ACCELERATION_MULTIPLIER * dt : CONSTANTS.DT_ACCEL_PER_SEC * dt);
+            if (moveBackward) thrust = -CONSTANTS.DT_ACCEL_PER_SEC * dt / 2;
+            const tankRads = getRads(player.angle - 90);
+            const tankForwardVec = { x: Math.cos(tankRads), y: Math.sin(tankRads) };
+            player.vel.x += tankForwardVec.x * thrust;
+            player.vel.y += tankForwardVec.y * thrust;
+        }
+        // forwardVec is the player's facing direction (now possibly steered by either
+        // tank or cardinal logic above). Velocity is already applied inside the branches —
+        // we only use forwardVec here for the dotForward / lateralVelocity friction split.
         const rads = getRads(player.angle - 90); const forwardVec = { x: Math.cos(rads), y: Math.sin(rads) };
-        player.vel.x += forwardVec.x * thrust; player.vel.y += forwardVec.y * thrust;
         const dotForward = player.vel.x * forwardVec.x + player.vel.y * forwardVec.y;
         isBrakingRef.current = moveBackward || (!moveForward && dotForward > 0.1);
         const forwardVelocity = { x: forwardVec.x * dotForward, y: forwardVec.y * dotForward };
