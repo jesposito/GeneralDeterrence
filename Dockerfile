@@ -42,8 +42,11 @@ ENV DATA_DIR=/data
 
 EXPOSE 3000
 
-# Health check
+# Health check — use 127.0.0.1 explicitly. `localhost` resolves to IPv6 ::1
+# inside Alpine while node listens on IPv4, which causes spurious 'starting' /
+# 'unhealthy' status even when the app is serving traffic. Documented in
+# docs/staging-adguard-hetzner.md.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 CMD ["node", "index.js"]
