@@ -1074,7 +1074,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       <HUD 
           score={totalScore} timeLeft={Math.ceil(timeLeftRef.current)} player={player} civilians={civiliansRef.current}
           districts={districtsRef.current} playerDistrict={playerDistrict} livesLost={scoreRef.current.livesLost}
-          dispatchedCall={dispatchedCallRef.current} isTouchDevice={isTouchDevice} camera={{x: cameraPos.x - (CONSTANTS.VIEWPORT_WIDTH/camera.zoom)/2, y: cameraPos.y - (CONSTANTS.VIEWPORT_HEIGHT/camera.zoom)/2}}
+          dispatchedCall={dispatchedCallRef.current} camera={{x: cameraPos.x - (CONSTANTS.VIEWPORT_WIDTH/camera.zoom)/2, y: cameraPos.y - (CONSTANTS.VIEWPORT_HEIGHT/camera.zoom)/2}}
           minimapMode={minimapMode} colleagueCalls={colleagueCallsRef.current} gameMessage={gameMessage}
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
           stationaryCountdown={stationaryCountdown}

@@ -246,7 +246,6 @@ interface HUDProps {
   playerDistrict: DistrictName;
   livesLost: number;
   dispatchedCall: DispatchedCall | null;
-  isTouchDevice: boolean;
   camera: { x: number; y: number };
   minimapMode: MinimapMode;
   colleagueCalls: number;
@@ -258,7 +257,7 @@ interface HUDProps {
   shouldFlashColleagueAssist: boolean;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, isTouchDevice, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -373,7 +372,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
             <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
             <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
           </div>
-          <div className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24">
+          <div className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
              <Minimap
                 player={player} 
                 civilians={civilians} 
@@ -386,12 +385,10 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       </div>
 
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-col items-center">
-        {!isTouchDevice && (
-            <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50">
-                 <VigilanceMeter vigilance={player.vigilance} isGaining={vigilanceGained} />
-            </div>
-        )}
-        <div className={`${isTouchDevice ? 'hidden' : 'flex'} flex-col items-center`}>
+        <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50 [@media(pointer:coarse)]:hidden">
+             <VigilanceMeter vigilance={player.vigilance} isGaining={vigilanceGained} />
+        </div>
+        <div className="flex flex-col items-center [@media(pointer:coarse)]:hidden">
             <div className="flex items-end space-x-4 bg-black/50 px-4 pt-2 pb-1 rounded-t-lg border-x-2 border-t-2 border-purple-500/50">
                 <div className={`bg-black/70 p-2 rounded-lg shadow-lg flex flex-col items-center border-2 ${shouldFlashColleagueAssist ? 'border-red-400 animate-urgent-pulse' : 'border-yellow-500/50'}`}>
                     <span className="text-xs font-bold text-yellow-400 text-glow-yellow">ASSIST</span>

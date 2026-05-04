@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { GameState, LeaderboardEntry, FinalScoreBreakdown } from './types';
 import MainMenu from './components/MainMenu';
@@ -6,7 +5,6 @@ import Game from './components/Game';
 import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
 
-// API base URL - will be set via environment or default to relative path
 const API_BASE = (window as any).LEADERBOARD_API || '/api';
 
 const App: React.FC = () => {
@@ -15,7 +13,6 @@ const App: React.FC = () => {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [isOnline, setIsOnline] = useState(true);
 
-  // Fetch leaderboard from API on mount
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
@@ -30,7 +27,6 @@ const App: React.FC = () => {
       } catch (error) {
         console.log('Using local leaderboard (API unavailable)');
         setIsOnline(false);
-        // Fallback to localStorage
         try {
           const saved = localStorage.getItem('leaderboard');
           setLeaderboard(saved ? JSON.parse(saved) : []);
@@ -61,14 +57,12 @@ const App: React.FC = () => {
 
   const handleAddToLeaderboard = useCallback(async (name: string, email?: string) => {
     if (!finalScoreBreakdown) return;
-    
     const newEntry: LeaderboardEntry = { 
       name, 
       score: finalScoreBreakdown.finalScore,
       email,
       timestamp: Date.now()
     };
-
     if (isOnline) {
       try {
         const response = await fetch(`${API_BASE}/leaderboard`, {
@@ -76,7 +70,6 @@ const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newEntry),
         });
-        
         if (response.ok) {
           const updatedLeaderboard = await response.json();
           setLeaderboard(updatedLeaderboard);
@@ -86,8 +79,6 @@ const App: React.FC = () => {
         console.error('Failed to submit to API, saving locally:', error);
       }
     }
-    
-    // Fallback to local storage
     const newLeaderboard = [...leaderboard, newEntry]
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);

@@ -169,18 +169,19 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onRidsCh
         </div>
 
         {/* Action stack: right side, above throttle, RIDS biggest */}
-        <div className="absolute right-3 bottom-[11.5rem] flex flex-col gap-2 pointer-events-auto items-end">
+        {/* On <=400h landscape (iPhone SE/8+), shrink + lower to avoid HUD minimap overlap; gap-2 keeps WCAG 2.5.5 AA spacing */}
+        <div className="absolute right-3 bottom-[11.5rem] [@media(max-height:400px)]:bottom-[8rem] flex flex-col gap-2 pointer-events-auto items-end">
           <TapButton ariaLabel="Run RIDS check on nearby driver" onTap={onRidsCheck}
-            className="w-28 h-14 bg-yellow-500/80 rounded-xl text-black text-base active:bg-yellow-400 shadow-lg">
+            className="w-28 h-14 [@media(max-height:400px)]:h-10 bg-yellow-500/80 rounded-xl text-black text-base active:bg-yellow-400 shadow-lg">
             RIDS CHECK
           </TapButton>
           <div className="flex gap-2">
             <HoldButton ariaLabel="Boost" glyph="BOOST" glyphClass="text-sm"
-              className="w-16 h-12 bg-cyan-600/80 active:bg-cyan-400/80 !rounded-xl"
+              className="w-16 h-12 [@media(max-height:400px)]:h-10 bg-cyan-600/80 active:bg-cyan-400/80 !rounded-xl"
               onPointerDown={() => handleAction('boost', true)} onPointerUp={() => handleAction('boost', false)} />
             <TapButton ariaLabel={isSirenActive ? 'Deactivate siren' : 'Activate siren'} ariaPressed={isSirenActive}
               onTap={onSirenToggle}
-              className={`w-16 h-12 rounded-xl text-white text-sm border-2 border-red-400/50 transition-colors ${isSirenActive ? 'bg-red-500/70 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}>
+              className={`w-16 h-12 [@media(max-height:400px)]:h-10 rounded-xl text-white text-sm border-2 border-red-400/50 transition-colors ${isSirenActive ? 'bg-red-500/70 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}>
               SIREN
             </TapButton>
           </div>

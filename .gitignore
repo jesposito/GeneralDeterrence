@@ -349,3 +349,4 @@ scripts/migration-validator/.claude-tasks/
 .dolt/
 *.db
 .beads-credential-key
+.gstack/
