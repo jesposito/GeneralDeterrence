@@ -34,7 +34,11 @@ const RidsChoiceModal: React.FC<{
     onEnforce: () => void;
     onWarn: () => void;
     selection: 'warn' | 'enforce';
-}> = ({ onEnforce, onWarn, selection }) => (
+    ridsType: RIDSType;
+}> = ({ onEnforce, onWarn, selection, ridsType }) => {
+    const isAutoResolve = ridsType === 'Restraints' || ridsType === 'Distractions';
+    const enforceLabel = isAutoResolve ? 'Instant, Variable Reward' : 'Slow, High Reward';
+    return (
     <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn">
         <div className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50">
             <h2 className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Interaction</h2>
@@ -50,13 +54,13 @@ const RidsChoiceModal: React.FC<{
                     onClick={onEnforce}
                     className={`flex-1 bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus:outline-none ${selection === 'enforce' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
                 >
-                    Enforce <br/><span className="text-sm font-sans font-normal">(Slow, High Reward)</span>
+                    Enforce <br/><span className="text-sm font-sans font-normal">({enforceLabel})</span>
                 </button>
             </div>
             <p className="text-sm text-gray-400 mt-6 font-sans">Use <span className="font-bold text-white">←</span> / <span className="font-bold text-white">→</span> or <span className="font-bold text-white">A</span> / <span className="font-bold text-white">D</span> to select, <span className="font-bold text-white">ENTER</span> / <span className="font-bold text-white">SPACE</span> to confirm.</p>
         </div>
     </div>
-);
+);};
 
 
 const Game: React.FC<GameProps> = ({ onGameOver }) => {
@@ -748,7 +752,56 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         cameraPosRef.current.y += (targetPos.y - cameraPosRef.current.y) * 0.05;
     };
 
-  const handleEnforce = useCallback(() => { setGameState('MiniGame'); }, []);
+  const handleEnforce = useCallback(() => {
+    // Restraints and Distractions auto-resolve without a mini-game.
+    // Outcome depends on district deterrence and Life at Risk status:
+    //   - Life at Risk → always infringement (full enforcement points)
+    //   - Low deterrence district → more likely infringement (worse offending)
+    //   - High deterrence district → more likely warning-level
+    if (activeRids && (activeRids.ridsType === 'Restraints' || activeRids.ridsType === 'Distractions')) {
+      const district = districtsRef.current.find(d => d.id === activeRids.car.district);
+      const deterrence = district?.deterrence ?? 50;
+      const isInfringement = activeRids.car.isLifeAtRisk || (Math.random() * 100) > deterrence;
+
+      if (isInfringement) {
+        // Full enforcement — same reward as passing a mini-game
+        const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
+        let scoreToAdd = CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus;
+        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
+        scoreRef.current.enforcement += scoreToAdd;
+        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd} INFRINGEMENT`, spawnTime: Date.now() });
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
+        if (district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST);
+        enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Enforce' });
+        cameraRef.current.shake = 10;
+      } else {
+        // Warning-level outcome
+        let scoreToAdd = CONSTANTS.WARN_SCORE_POINTS;
+        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
+        scoreRef.current.enforcement += scoreToAdd;
+        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd} WARNING`, spawnTime: Date.now() });
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
+        if (district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.WARN_DETERRENCE_BOOST);
+        enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Warn' });
+      }
+
+      // Common: remove car, handle life-at-risk and dispatched calls
+      civiliansRef.current = civiliansRef.current.filter(c => c.id !== activeRids.car.id);
+      if (activeRids.car.isLifeAtRisk) scoreRef.current.livesSaved++;
+      if (dispatchedCallRef.current?.targetVehicleId === activeRids.car.id) {
+        scoreRef.current.enforcement += CONSTANTS.DISPATCH_CALL_SCORE_BONUS;
+        dispatchedCallRef.current = null;
+      }
+      setActiveRids(null);
+      setTargetedCarId(null);
+      setGameState('Playing');
+    } else {
+      // Impairment and Speed still launch mini-games
+      setGameState('MiniGame');
+    }
+  }, [activeRids]);
   
   const handleWarn = useCallback(() => {
       if (activeRids) {
@@ -935,7 +988,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
           stationaryCountdown={stationaryCountdown}
           shouldFlashColleagueAssist={shouldFlashColleagueAssist} />
-      {gameState === 'RidsChoice' && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} />}
+      {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} ridsType={activeRids.ridsType} />}
       {gameState === 'MiniGame' && activeRids && (
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} />
       )}
