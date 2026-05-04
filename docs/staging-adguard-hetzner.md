@@ -192,6 +192,98 @@ creation, it may have cached a negative lookup from before the DNS record
 existed. Use `game.esponet.me` as the alternate test hostname or clear the
 device/browser DNS cache.
 
+## Mobile Staging Deployment (staging2.esponet.me)
+
+A second container runs the `feat/mobile-overhaul` branch builds. Used as the
+fast-iteration staging URL while the mobile rewrite is in progress. Lives on
+the SAME AdGuard Hetzner host alongside the production-style `general-deterrence-staging`
+container — do not confuse them.
+
+- Public URL: `https://staging2.esponet.me`
+- Container: `general-deterrence-mobile-staging`
+- Host bind: `127.0.0.1:3101 -> container :3000`
+- Image tag in use: `ghcr.io/jesposito/generaldeterrence:staging`
+- Data directory: `/opt/general-deterrence/data` (SHARED with `general-deterrence-staging` — both containers write to the same SQLite leaderboard. Intentional? Unverified. Treat any leaderboard write here as visible on `gd.esponet.me` as well.)
+
+### Caddy block (do not modify other blocks)
+
+```caddyfile
+staging2.esponet.me {
+    tls internal
+    header Cache-Control "no-cache, no-store, must-revalidate"
+    header Pragma "no-cache"
+    header Expires "0"
+    reverse_proxy 127.0.0.1:3101
+}
+```
+
+The `no-cache` headers are intentional — the mobile rewrite is iterating fast
+and we want every refresh to hit the latest bundle hash, not a CDN-cached one.
+
+### Image source
+
+`ghcr.io/jesposito/generaldeterrence:staging` is NOT produced by `.github/workflows/docker-publish.yml`
+(that workflow only fires on `v*` tags, building the `:latest` tag). The `:staging` tag
+is built and shipped MANUALLY from a developer machine:
+
+```bash
+# On dev machine, in repo root, on the branch you want staged:
+docker build -t generaldeterrence:staging-fix .
+docker save generaldeterrence:staging-fix | gzip | \
+  ssh root@100.69.57.107 'gunzip | docker load'
+```
+
+Then on the host, retag and recreate the container:
+
+```bash
+ssh root@100.69.57.107
+docker tag generaldeterrence:staging-fix ghcr.io/jesposito/generaldeterrence:staging
+docker stop general-deterrence-mobile-staging
+docker rm general-deterrence-mobile-staging
+docker run -d \
+  --name general-deterrence-mobile-staging \
+  --restart unless-stopped \
+  -p 127.0.0.1:3101:3000 \
+  -v /opt/general-deterrence/data:/data \
+  -e PORT=3000 \
+  -e DATA_DIR=/data \
+  --health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1" \
+  --health-interval=30s \
+  --health-timeout=3s \
+  --health-start-period=5s \
+  --health-retries=3 \
+  ghcr.io/jesposito/generaldeterrence:staging
+```
+
+Verify the new bundle hash is being served:
+
+```bash
+curl -s https://staging2.esponet.me/ | grep -oE 'index-[A-Za-z0-9_-]+\.js'
+# Should match the hash in your local dist/index.html after npm run build
+```
+
+### Rollback
+
+```bash
+docker stop general-deterrence-mobile-staging
+docker rm general-deterrence-mobile-staging
+# Re-run with the previous image tag, or leave stopped — staging2.esponet.me will 502
+# until the container comes back. Production stays intact on port 3100.
+```
+
+Removing the `staging2` Caddy block is safe and isolated. Do NOT touch the
+`gd.esponet.me`, `game.esponet.me`, `adguard.esponet.me`, `dns.esponet.me`,
+`monitor.esponet.me`, `sync.esponet.me`, or `ntfy.esponet.me` blocks.
+
+### Other services on this host (do not break)
+
+- `caddy` (the reverse proxy itself)
+- `general-deterrence-staging` (port 3100, `gd.esponet.me`/`game.esponet.me`)
+- `ntfy`, `uptime-kuma`, `adguardhome-sync`, `chromium`, AdGuardHome, Tailscale
+
+Any restart, image swap, or Caddy reload should be scoped to the mobile-staging
+container and the `staging2.esponet.me` Caddy block only.
+
 ## DNS
 
 `gd.esponet.me`, `generaldeterrence.esponet.me`, and `game.esponet.me` did not
