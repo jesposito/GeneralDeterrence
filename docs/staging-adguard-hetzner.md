@@ -131,6 +131,67 @@ Use public HTTPS for police-issued phones unless the required internal CA is
 already trusted on those devices. PWA/mobile browser behavior is usually
 simpler with publicly trusted TLS.
 
+## Current Staging Deployment
+
+Deployed on 2026-05-04:
+
+- Public URL: `https://gd.esponet.me`
+- Alternate URL: `https://game.esponet.me`
+- Cloudflare DNS record id: `e4352e6be79b0bd1eb2b126e5ede09b6`
+- Alternate Cloudflare DNS record id: `c747b9968057d3ca5bd9566242ce71be`
+- DNS record: proxied `A` record, `gd.esponet.me -> 89.167.53.198`
+- Alternate DNS record: proxied `A` record, `game.esponet.me -> 89.167.53.198`
+- Container: `general-deterrence-staging`
+- Image digest observed during pull: `sha256:63b61b3fd8856579a4d0ebc6fa11851d6a5ea2aa9de9f4585f600ee01ee16f4c`
+- Host bind: `127.0.0.1:3100 -> container :3000`
+- Data directory: `/opt/general-deterrence/data`
+- Caddy backup before route add: `/opt/caddy/Caddyfile.before-gd-20260504-003211`
+- Caddy backup before alternate route add: `/opt/caddy/Caddyfile.before-game-20260504-003711`
+
+The container was recreated once to override the image healthcheck. The image
+healthcheck uses `localhost`, which resolved to IPv6 `::1` inside the Alpine
+container while the Node app was reachable on IPv4. The deployed container uses
+this IPv4 healthcheck:
+
+```bash
+--health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"
+```
+
+Current deployed command shape:
+
+```bash
+docker run -d \
+  --name general-deterrence-staging \
+  --restart unless-stopped \
+  --pull always \
+  -p 127.0.0.1:3100:3000 \
+  -v /opt/general-deterrence/data:/data \
+  -e PORT=3000 \
+  -e DATA_DIR=/data \
+  --health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1" \
+  --health-interval=30s \
+  --health-timeout=3s \
+  --health-start-period=5s \
+  --health-retries=3 \
+  ghcr.io/jesposito/generaldeterrence:latest
+```
+
+Verification after deployment:
+
+- `https://gd.esponet.me` returned HTTP 200 through Cloudflare.
+- `https://gd.esponet.me/api/health` returned `{"status":"ok","db":"sqlite"}`.
+- `https://game.esponet.me` returned HTTP 200 through Cloudflare.
+- `https://game.esponet.me/api/health` returned `{"status":"ok","db":"sqlite"}`.
+- Docker health for `general-deterrence-staging` was `healthy`.
+- Existing `adguard.esponet.me` and `monitor.esponet.me` still returned their
+  Cloudflare Access redirects.
+- Existing `ntfy.esponet.me` returned HTTP 200.
+
+If a device saw `ERR_NAME_NOT_RESOLVED` for `gd.esponet.me` immediately after
+creation, it may have cached a negative lookup from before the DNS record
+existed. Use `game.esponet.me` as the alternate test hostname or clear the
+device/browser DNS cache.
+
 ## DNS
 
 `gd.esponet.me`, `generaldeterrence.esponet.me`, and `game.esponet.me` did not
@@ -152,7 +213,8 @@ Observed Cloudflare zone:
 
 Observed DNS records:
 
-- `gd.esponet.me`: no record exists yet
+- `gd.esponet.me`: proxied `A` record to `89.167.53.198`
+- `game.esponet.me`: proxied `A` record to `89.167.53.198`
 - `adguard.esponet.me`: proxied `A` record to `89.167.53.198`
 
 Safe DNS shape for the game:
@@ -185,6 +247,8 @@ After adding the Caddy route and DNS:
 ```bash
 curl -I https://gd.esponet.me
 curl -fsS https://gd.esponet.me/api/health
+curl -I https://game.esponet.me
+curl -fsS https://game.esponet.me/api/health
 ```
 
 Check the existing services still respond:
