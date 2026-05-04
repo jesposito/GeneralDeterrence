@@ -354,7 +354,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     </div>
                 </div>
             </div>
-            <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors`}>
+            <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
                 <DistrictMeters districts={districts} playerDistrict={playerDistrict} isVigilanceBonusActive={isVigilanceBonusActive} presenceBoostRate={presenceBoostRate} />
             </div>
         </div>
@@ -369,12 +369,12 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
         </div>
         
         <div className="flex flex-col items-end space-y-2 md:space-y-3">
-          <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50">
-            <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink">SHIFT ENDS IN</div>
-            <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''}`}>{timeString}</div>
+          <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50 [@media(max-height:500px)]:p-1">
+            <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
+            <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
           </div>
-          <div className="w-36 h-36 md:w-52 md:h-52">
-             <Minimap 
+          <div className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24">
+             <Minimap
                 player={player} 
                 civilians={civilians} 
                 districts={districts}

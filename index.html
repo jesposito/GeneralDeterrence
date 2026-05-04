@@ -434,6 +434,15 @@
     to { transform: translateY(800px); }
   }
 
+  /* Touch controls: brief fade on appearance / orientation flip — keeps user oriented */
+  .touch-controls-fade {
+    animation: touch-controls-fade-in 180ms ease-out;
+  }
+  @keyframes touch-controls-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   /* Honor user motion preferences */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
