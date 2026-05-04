@@ -140,6 +140,26 @@ Existing `adguard.esponet.me` and `monitor.esponet.me` resolved through
 Cloudflare anycast IPv6, so DNS for a new public hostname likely needs to be
 created wherever `esponet.me` is managed.
 
+Cloudflare access was verified on 2026-05-04 using the existing Facet Cloud
+Cloudflare token from local secrets. Do not write token values into this repo.
+
+Observed Cloudflare zone:
+
+- Zone: `esponet.me`
+- Zone id: `0107333a493bf09049f14bae2df7cf68`
+- Status: `active`
+- Type: `full`
+
+Observed DNS records:
+
+- `gd.esponet.me`: no record exists yet
+- `adguard.esponet.me`: proxied `A` record to `89.167.53.198`
+
+Safe DNS shape for the game:
+
+- Add a new proxied `A` record for `gd.esponet.me` to `89.167.53.198`
+- Leave every existing `esponet.me` record unchanged
+
 Do not modify existing DNS records for:
 
 - `dns.esponet.me`
@@ -194,4 +214,3 @@ The SQLite leaderboard data lives under:
 ```
 
 Do not delete that directory unless explicitly asked.
-
