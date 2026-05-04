@@ -69,6 +69,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [ridsChoiceSelection, setRidsChoiceSelection] = useState<'warn' | 'enforce'>('warn');
   const [hudTick, setHudTick] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string>('initializing...');
+  const isDebugMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug'), []);
 
   // Canvas and timing refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -958,8 +959,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
     }
 
-    // Update debug info periodically
-    if (now % 500 < 20) {
+    // Update debug info periodically (only when ?debug is in URL — saves ~2 React re-renders/sec in production)
+    if (isDebugMode && now % 500 < 20) {
         setDebugInfo(`loop:${gameState} canvas:${canvas ? 'yes' : 'no'} sz:${canvas?.width}x${canvas?.height} draw:${drawOk} cam:${cameraRef.current.zoom.toFixed(2)} cars:${civiliansRef.current.length}`);
     }
 
@@ -1054,7 +1055,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         className="absolute top-0 left-0 w-full h-full block"
         style={{ touchAction: 'none' }}
       />
-      {typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug') && (
+      {isDebugMode && (
         <div className="absolute top-2 left-2 z-50 bg-black/70 text-yellow-400 text-xs font-mono p-2 rounded pointer-events-none">
           {debugInfo}
         </div>
