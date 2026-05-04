@@ -14,6 +14,11 @@ let sirenOsc1: OscillatorNode | null = null;
 let sirenOsc2: OscillatorNode | null = null;
 let sirenGain: GainNode | null = null;
 
+// Continuous engine drone nodes — kept around so we can modulate + stop
+let engineOsc: OscillatorNode | null = null;
+let engineFilter: BiquadFilterNode | null = null;
+let engineGain: GainNode | null = null;
+
 function getCtx(): AudioContext | null {
   if (ctx) return ctx;
   if (typeof window === 'undefined') return null;
@@ -185,6 +190,60 @@ function scheduleSirenLoop(c: AudioContext, g: GainNode, highFirst: boolean, sta
   for (let i = 1; i < 4; i++) {
     g.gain.setValueCurveAtTime(buildSirenCurve(highFirst), startTime + i * cycle, cycle);
   }
+}
+
+// Continuous engine drone tied to player speed.
+// engineStart() lazily creates the oscillator chain. setEngineLevel(0..1) modulates
+// frequency + gain. engineStop() tears down. Idempotent — safe to call repeatedly.
+export function engineStart(): void {
+  if (muted || engineOsc) return;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  engineGain = c.createGain();
+  engineGain.gain.value = 0.04;
+  engineFilter = c.createBiquadFilter();
+  engineFilter.type = 'lowpass';
+  engineFilter.frequency.value = 600;
+  engineFilter.Q.value = 4;
+  engineOsc = c.createOscillator();
+  engineOsc.type = 'sawtooth';
+  engineOsc.frequency.value = 80;
+  engineOsc.connect(engineFilter).connect(engineGain).connect(masterGain);
+  engineOsc.start();
+}
+
+export function setEngineLevel(level: number): void {
+  if (!engineOsc || !engineGain || !engineFilter) return;
+  const c = getCtx();
+  if (!c) return;
+  const now = c.currentTime;
+  const lv = Math.max(0, Math.min(1, level));
+  // Idle 80 Hz → max 240 Hz (3x range, sounds like an engine revving)
+  const targetFreq = 80 + lv * 160;
+  // Gain 0.04 idle → 0.14 max (low background; doesn't drown discrete sounds)
+  const targetGain = 0.04 + lv * 0.10;
+  // Filter cutoff opens with revving for brighter sound
+  const targetCutoff = 600 + lv * 1400;
+  engineOsc.frequency.linearRampToValueAtTime(targetFreq, now + 0.1);
+  engineGain.gain.linearRampToValueAtTime(targetGain, now + 0.1);
+  engineFilter.frequency.linearRampToValueAtTime(targetCutoff, now + 0.1);
+}
+
+export function engineStop(): void {
+  const c = getCtx();
+  if (!c) return;
+  const now = c.currentTime;
+  if (engineGain) {
+    engineGain.gain.cancelScheduledValues(now);
+    engineGain.gain.setValueAtTime(engineGain.gain.value, now);
+    engineGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+  }
+  if (engineOsc) {
+    try { engineOsc.stop(now + 0.2); } catch { /* ignore */ }
+    engineOsc = null;
+  }
+  engineFilter = null;
+  engineGain = null;
 }
 
 export function sirenStop(): void {

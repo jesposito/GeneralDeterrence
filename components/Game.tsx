@@ -181,6 +181,19 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     return () => timeouts.forEach(clearTimeout);
   }, [gameState]);
 
+  // Engine drone lifecycle: start when patrol begins, stop on every other state
+  // (RidsChoice, MiniGame, GameOver) AND on component unmount. Visibility/blur
+  // also stops it via clearHeldInputs above.
+  useEffect(() => {
+    if (gameState === 'Playing') {
+      audio.engineStart();
+      audio.setEngineLevel(0);
+    } else {
+      audio.engineStop();
+    }
+    return () => { audio.engineStop(); audio.sirenStop(); };
+  }, [gameState]);
+
   // Clear held inputs on app switch / focus loss / orientation change so
   // the player doesn't return to a stuck-down d-pad or boost button.
   useEffect(() => {
@@ -193,6 +206,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         sirenStartTimeRef.current = null;
       }
       audio.sirenStop();
+      audio.engineStop();
       playerRef.current.isBoosting = false;
     };
     const onVisibility = () => { if (document.hidden) clearHeldInputs(); };
@@ -980,8 +994,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (now - lastHudUpdateRef.current > HUD_UPDATE_INTERVAL_MS) {
         lastHudUpdateRef.current = now;
         setHudTick(t => t + 1);
+        // Modulate engine drone with current speed (~10 Hz update rate, lerped over 100ms inside audio.ts)
+        audio.setEngineLevel(playerRef.current.speed / CONSTANTS.PLAYER_MAX_SPEED);
     }
-    
+
     gameLoopRef.current = requestAnimationFrame(gameLoop);
   }, [onGameOver, spawnCivilian, segmentLookup, handleColleagueCall, gameState, targetedCarId]);
 
