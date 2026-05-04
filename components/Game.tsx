@@ -153,20 +153,52 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     };
   }
 
+  // Touch-primary detection (matches phones/tablets, excludes hybrid laptops with touch)
   useEffect(() => {
-    const touchSupported = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    setIsTouchDevice(touchSupported);
-    
-    if (gameState === 'Starting') {
-      const timeouts = [
-          setTimeout(() => setCountdownText('2'), 1000),
-          setTimeout(() => setCountdownText('1'), 2000),
-          setTimeout(() => setCountdownText('GO!'), 3000),
-          setTimeout(() => { setGameState('Playing'); setCountdownText(''); }, 4000)
-      ];
-      return () => timeouts.forEach(clearTimeout);
-    }
+    const mq = window.matchMedia('(hover: none) and (pointer: coarse)');
+    const update = () => setIsTouchDevice(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // Pre-shift countdown
+  useEffect(() => {
+    if (gameState !== 'Starting') return;
+    const timeouts = [
+      setTimeout(() => setCountdownText('2'), 1000),
+      setTimeout(() => setCountdownText('1'), 2000),
+      setTimeout(() => setCountdownText('GO!'), 3000),
+      setTimeout(() => { setGameState('Playing'); setCountdownText(''); }, 4000),
+    ];
+    return () => timeouts.forEach(clearTimeout);
   }, [gameState]);
+
+  // Clear held inputs on app switch / focus loss / orientation change so
+  // the player doesn't return to a stuck-down d-pad or boost button.
+  useEffect(() => {
+    const clearHeldInputs = () => {
+      keysPressed.current = {};
+      touchStateRef.current = {};
+      isBrakingRef.current = false;
+      if (playerRef.current.isSirenActive) {
+        playerRef.current.isSirenActive = false;
+        sirenStartTimeRef.current = null;
+      }
+      playerRef.current.isBoosting = false;
+    };
+    const onVisibility = () => { if (document.hidden) clearHeldInputs(); };
+    window.addEventListener('blur', clearHeldInputs);
+    window.addEventListener('pagehide', clearHeldInputs);
+    window.addEventListener('orientationchange', clearHeldInputs);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('blur', clearHeldInputs);
+      window.removeEventListener('pagehide', clearHeldInputs);
+      window.removeEventListener('orientationchange', clearHeldInputs);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   const handleColleagueCall = useCallback(() => {
     if (colleagueCallsRef.current <= 0 || gameState !== 'Playing') return;
