@@ -67,6 +67,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [stationaryCountdown, setStationaryCountdown] = useState<StationaryCountdown>(null);
   const [ridsChoiceSelection, setRidsChoiceSelection] = useState<'warn' | 'enforce'>('warn');
   const [hudTick, setHudTick] = useState(0);
+  const [debugInfo, setDebugInfo] = useState<string>('initializing...');
 
   // Canvas and timing refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -885,6 +886,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     
     // Draw to canvas
     const canvas = canvasRef.current;
+    let drawOk = false;
     if (canvas && containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -896,26 +898,36 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
         const ctx = canvas.getContext('2d');
         if (ctx) {
-            // Clear full pixel buffer (not just CSS-sized area)
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const renderState: RenderState = {
-                player: playerRef.current,
-                civilians: civiliansRef.current,
-                sparks: sparksRef.current,
-                skidMarks: skidMarksRef.current,
-                tireSmoke: tireSmokeRef.current,
-                floatingScoreTexts: floatingScoreTextsRef.current,
-                deterrenceBlobs: deterrenceBlobsRef.current,
-                collectionEffects: collectionEffectsRef.current,
-                explosions: explosionsRef.current,
-                patrolPosts: patrolPostsRef.current,
-                highlightedPath: highlightedPathRef.current,
-                pathfindingTargetId: pathfindingTargetIdRef.current,
-                targetedCarId: targetedCarId,
-                isBraking: isBrakingRef.current,
-            };
-            drawGame(ctx, cssWidth, cssHeight, cameraRef.current, renderState, now);
+            try {
+                // Clear full pixel buffer (not just CSS-sized area)
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const renderState: RenderState = {
+                    player: playerRef.current,
+                    civilians: civiliansRef.current,
+                    sparks: sparksRef.current,
+                    skidMarks: skidMarksRef.current,
+                    tireSmoke: tireSmokeRef.current,
+                    floatingScoreTexts: floatingScoreTextsRef.current,
+                    deterrenceBlobs: deterrenceBlobsRef.current,
+                    collectionEffects: collectionEffectsRef.current,
+                    explosions: explosionsRef.current,
+                    patrolPosts: patrolPostsRef.current,
+                    highlightedPath: highlightedPathRef.current,
+                    pathfindingTargetId: pathfindingTargetIdRef.current,
+                    targetedCarId: targetedCarId,
+                    isBraking: isBrakingRef.current,
+                };
+                drawGame(ctx, cssWidth, cssHeight, cameraRef.current, renderState, now);
+                drawOk = true;
+            } catch (e) {
+                console.error('Draw error:', e);
+            }
         }
+    }
+
+    // Update debug info periodically
+    if (now % 500 < 20) {
+        setDebugInfo(`loop:${gameState} canvas:${canvas ? 'yes' : 'no'} sz:${canvas?.width}x${canvas?.height} draw:${drawOk} cam:${cameraRef.current.zoom.toFixed(2)} cars:${civiliansRef.current.length}`);
     }
 
     // Periodic HUD refresh
@@ -1007,8 +1019,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       <canvas 
         ref={canvasRef}
         className="absolute top-0 left-0 w-full h-full block"
-        style={{ touchAction: 'none', backgroundColor: '#0d0221' }}
+        style={{ touchAction: 'none' }}
       />
+      <div className="absolute top-2 left-2 z-50 bg-black/70 text-yellow-400 text-xs font-mono p-2 rounded pointer-events-none">
+        {debugInfo}
+      </div>
       <div className={`boost-overlay ${player.isBoosting ? 'active' : ''}`}></div>
       {player.isBoosting && (
         <div className="speed-lines-overlay">
