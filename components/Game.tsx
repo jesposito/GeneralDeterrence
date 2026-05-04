@@ -103,6 +103,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   // gameLoop. Used by HUD off-screen indicator math so arrows fire on the actual
   // visible bounds rather than the fixed 1280x720 design viewport.
   const viewportRef = useRef({ width: CONSTANTS.VIEWPORT_WIDTH, height: CONSTANTS.VIEWPORT_HEIGHT });
+  // Last integer second on which we played the time-pressure tick. Reset to a
+  // value > 10 on game start so the first crossing into the final-10 window fires.
+  const lastBeepedSecondRef = useRef<number>(11);
   const isBrakingRef = useRef(false);
   const colleagueCallsRef = useRef(CONSTANTS.MAX_COLLEAGUE_CALLS);
   const presenceBoostRateRef = useRef(0);
@@ -187,11 +190,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   // Engine drone lifecycle: start when patrol begins, stop on every other state
   // (RidsChoice, MiniGame, GameOver) AND on component unmount. Visibility/blur
-  // also stops it via clearHeldInputs above.
+  // also stops it via clearHeldInputs above. Also reset the time-pressure tick
+  // tracker so a fresh shift gets the full 10-tick + final-zap sequence.
   useEffect(() => {
     if (gameState === 'Playing') {
       audio.engineStart();
       audio.setEngineLevel(0);
+      lastBeepedSecondRef.current = 11;
     } else {
       audio.engineStop();
     }
@@ -1010,6 +1015,20 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         setHudTick(t => t + 1);
         // Modulate engine drone with current speed (~10 Hz update rate, lerped over 100ms inside audio.ts)
         audio.setEngineLevel(playerRef.current.speed / CONSTANTS.PLAYER_MAX_SPEED);
+    }
+
+    // Time-pressure ticks: one short beep on each integer-second crossing in the
+    // final 10 seconds, with rising pitch. Final-zero plays a zap. lastBeepedSecondRef
+    // is reset to 11 on game-state → 'Playing' so each shift gets the full sequence.
+    if (gameState === 'Playing') {
+        const seconds = Math.ceil(timeLeftRef.current);
+        if (seconds <= 10 && seconds > 0 && seconds !== lastBeepedSecondRef.current) {
+            lastBeepedSecondRef.current = seconds;
+            audio.tick(800 + (10 - seconds) * 60);
+        } else if (seconds === 0 && lastBeepedSecondRef.current !== 0) {
+            lastBeepedSecondRef.current = 0;
+            audio.zap();
+        }
     }
 
     gameLoopRef.current = requestAnimationFrame(gameLoop);

@@ -81,6 +81,25 @@ export function click(): void {
   osc.stop(now + 0.07);
 }
 
+// Short metronome tick — for time-pressure countdown in the final seconds of a shift.
+// Reuses masterGain + the muted check via the early-return guard.
+export function tick(pitchHz = 800): void {
+  if (muted) return;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const osc = c.createOscillator();
+  const env = c.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(pitchHz, now);
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.18, now + 0.005);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+  osc.connect(env).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.06);
+}
+
 // Higher-pitched confirmation beep — for RIDS check, dispatch lock-on, etc.
 export function beep(): void {
   if (muted) return;
