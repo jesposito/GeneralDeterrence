@@ -344,3 +344,8 @@ scripts/migration-validator/.claude-tasks/
 .beads/sync_base.jsonl
 # Local per-user agent skill memory
 .agent-skills/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
