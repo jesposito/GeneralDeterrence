@@ -315,7 +315,15 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   const isBoostReady = player.boostCharge === CONSTANTS.PLAYER_BOOST_MAX_CHARGE && !player.isSirenActive && !player.isBoosting;
 
   return (
-    <div className="absolute inset-0 p-2 md:p-4 flex flex-col justify-between items-start text-white pointer-events-none z-10 font-display">
+    <div
+      className="absolute inset-0 p-2 md:p-4 flex flex-col justify-between items-start text-white pointer-events-none z-10 font-display"
+      style={{
+        paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
+        paddingLeft: 'max(0.5rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.5rem, env(safe-area-inset-right))',
+        paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+      }}
+    >
       {player.isSirenActive && <div className="absolute inset-0 pointer-events-none animate-hud-siren-flash z-0"></div>}
       {livesAtRiskCount > 0 && <div className="life-at-risk-vignette"></div>}
       {isVigilanceBonusActive && <div className="vigilance-border"></div>}
