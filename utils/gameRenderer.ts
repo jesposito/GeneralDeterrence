@@ -86,6 +86,13 @@ function generateDecorations(): Decoration[] {
   return decs;
 }
 
+// Static map cache — the entire world background, district grounds, grid, decorations,
+// roads (kerb + surface), intersection hubs, and lane markings are all static once the
+// map data and decorations are computed. Render them ONCE to an offscreen canvas and
+// drawImage it under the same camera transform every frame, replacing thousands of
+// canvas operations per frame with a single blit.
+let staticMapCanvas: HTMLCanvasElement | null = null;
+
 // District ground color cache
 const districtColorCache = new Map<string, string>();
 function getDistrictGroundColor(x: number, y: number): string {
@@ -98,6 +105,177 @@ function getDistrictGroundColor(x: number, y: number): string {
   const color = district ? district.theme.groundColor : '#0d0221';
   districtColorCache.set(key, color);
   return color;
+}
+
+function buildStaticMap(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = CONSTANTS.WORLD_WIDTH;
+  c.height = CONSTANTS.WORLD_HEIGHT;
+  const sctx = c.getContext('2d');
+  if (!sctx) throw new Error('Static map canvas: 2d context unavailable');
+
+  // World background
+  sctx.fillStyle = '#0d0221';
+  sctx.fillRect(0, 0, CONSTANTS.WORLD_WIDTH, CONSTANTS.WORLD_HEIGHT);
+
+  // District grounds
+  for (const district of DISTRICT_DEFINITIONS) {
+    sctx.fillStyle = district.theme.groundColor;
+    sctx.fillRect(district.bounds.x, district.bounds.y, district.bounds.width, district.bounds.height);
+  }
+
+  // Grid pattern
+  sctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  sctx.lineWidth = 1;
+  for (let x = 0; x < CONSTANTS.WORLD_WIDTH; x += 80) {
+    sctx.beginPath();
+    sctx.moveTo(x, 0);
+    sctx.lineTo(x, CONSTANTS.WORLD_HEIGHT);
+    sctx.stroke();
+  }
+  for (let y = 0; y < CONSTANTS.WORLD_HEIGHT; y += 80) {
+    sctx.beginPath();
+    sctx.moveTo(0, y);
+    sctx.lineTo(CONSTANTS.WORLD_WIDTH, y);
+    sctx.stroke();
+  }
+
+  // Decorations
+  const decorations = generateDecorations();
+  for (const d of decorations) {
+    sctx.strokeStyle = d.color;
+    sctx.lineWidth = 2;
+    sctx.globalAlpha = 0.5;
+    switch (d.type) {
+      case 'tree': {
+        sctx.beginPath();
+        sctx.moveTo(d.x - 10, d.y + 10);
+        sctx.lineTo(d.x, d.y - 15);
+        sctx.lineTo(d.x + 10, d.y + 10);
+        sctx.moveTo(d.x, d.y - 15);
+        sctx.lineTo(d.x, d.y + 15);
+        sctx.stroke();
+        break;
+      }
+      case 'house':
+      case 'building':
+      case 'warehouse': {
+        sctx.save();
+        sctx.translate(d.x, d.y);
+        sctx.rotate((d.rot! * Math.PI) / 180);
+        sctx.strokeRect(-d.width! / 2, -d.height! / 2, d.width!, d.height!);
+        sctx.restore();
+        break;
+      }
+    }
+    sctx.globalAlpha = 1;
+  }
+
+  // Roads (kerb outline)
+  sctx.lineCap = 'round';
+  sctx.lineJoin = 'round';
+  sctx.strokeStyle = '#4f46e5';
+  sctx.lineWidth = CONSTANTS.ROAD_WIDTH + 8;
+  for (const segment of ROAD_SEGMENTS) {
+    const start = nodePosMap.get(segment.startNodeId);
+    const end = nodePosMap.get(segment.endNodeId);
+    if (!start || !end) continue;
+    sctx.beginPath();
+    sctx.moveTo(start.x, start.y);
+    sctx.lineTo(end.x, end.y);
+    sctx.stroke();
+  }
+
+  // Road surfaces
+  for (const segment of ROAD_SEGMENTS) {
+    const start = nodePosMap.get(segment.startNodeId);
+    const end = nodePosMap.get(segment.endNodeId);
+    if (!start || !end) continue;
+    const district = DISTRICT_DEFINITIONS.find(d =>
+      start.x >= d.bounds.x && start.x <= d.bounds.x + d.bounds.width &&
+      start.y >= d.bounds.y && start.y <= d.bounds.y + d.bounds.height
+    );
+    sctx.strokeStyle = district ? district.theme.roadColor : '#374151';
+    sctx.lineWidth = CONSTANTS.ROAD_WIDTH;
+    sctx.beginPath();
+    sctx.moveTo(start.x, start.y);
+    sctx.lineTo(end.x, end.y);
+    sctx.stroke();
+  }
+
+  // Intersection hubs
+  for (const node of ROAD_NODES) {
+    const district = DISTRICT_DEFINITIONS.find(d =>
+      node.pos.x >= d.bounds.x && node.pos.x <= d.bounds.x + d.bounds.width &&
+      node.pos.y >= d.bounds.y && node.pos.y <= d.bounds.y + d.bounds.height
+    );
+    const roadColor = district ? district.theme.roadColor : '#374151';
+    const groundColor = district ? district.theme.groundColor : '#0d0221';
+
+    sctx.fillStyle = '#4f46e5';
+    sctx.beginPath();
+    sctx.arc(node.pos.x, node.pos.y, (CONSTANTS.ROAD_WIDTH / 2) + 20 + 4, 0, Math.PI * 2);
+    sctx.fill();
+
+    sctx.fillStyle = roadColor;
+    sctx.beginPath();
+    sctx.arc(node.pos.x, node.pos.y, (CONSTANTS.ROAD_WIDTH / 2) + 20, 0, Math.PI * 2);
+    sctx.fill();
+
+    sctx.fillStyle = groundColor;
+    sctx.strokeStyle = '#00ffff';
+    sctx.lineWidth = 3;
+    sctx.beginPath();
+    sctx.arc(node.pos.x, node.pos.y, 20, 0, Math.PI * 2);
+    sctx.fill();
+    sctx.stroke();
+  }
+
+  // Road markings
+  for (const segment of ROAD_SEGMENTS) {
+    const start = nodePosMap.get(segment.startNodeId);
+    const end = nodePosMap.get(segment.endNodeId);
+    if (!start || !end) continue;
+
+    let strokeColor = 'none';
+    let lineWidth = 3;
+    sctx.setLineDash([]);
+
+    switch (segment.type) {
+      case 'Motorway':
+        strokeColor = '#facc15';
+        lineWidth = 5;
+        break;
+      case 'Primary':
+      case 'Suburban':
+        strokeColor = 'white';
+        sctx.setLineDash([20, 25]);
+        break;
+      case 'Industrial':
+        strokeColor = '#facc15';
+        break;
+      case 'Rural':
+      default:
+        continue;
+    }
+
+    sctx.strokeStyle = strokeColor;
+    sctx.lineWidth = lineWidth;
+    sctx.globalAlpha = 0.6;
+    sctx.beginPath();
+    sctx.moveTo(start.x, start.y);
+    sctx.lineTo(end.x, end.y);
+    sctx.stroke();
+    sctx.globalAlpha = 1;
+    sctx.setLineDash([]);
+  }
+
+  return c;
+}
+
+function getStaticMap(): HTMLCanvasElement {
+  if (!staticMapCanvas) staticMapCanvas = buildStaticMap();
+  return staticMapCanvas;
 }
 
 export interface CameraState {
@@ -146,166 +324,10 @@ export function drawGame(
   ctx.scale(camera.zoom, camera.zoom);
   ctx.translate(-camera.x, -camera.y);
 
-  // Draw world background
-  ctx.fillStyle = '#0d0221';
-  ctx.fillRect(0, 0, CONSTANTS.WORLD_WIDTH, CONSTANTS.WORLD_HEIGHT);
-
-  // Draw district grounds
-  for (const district of DISTRICT_DEFINITIONS) {
-    ctx.fillStyle = district.theme.groundColor;
-    ctx.fillRect(district.bounds.x, district.bounds.y, district.bounds.width, district.bounds.height);
-  }
-
-  // Draw grid pattern
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < CONSTANTS.WORLD_WIDTH; x += 80) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, CONSTANTS.WORLD_HEIGHT);
-    ctx.stroke();
-  }
-  for (let y = 0; y < CONSTANTS.WORLD_HEIGHT; y += 80) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(CONSTANTS.WORLD_WIDTH, y);
-    ctx.stroke();
-  }
-
-  // Draw decorations
-  const decorations = generateDecorations();
-  for (const d of decorations) {
-    ctx.strokeStyle = d.color;
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.5;
-    switch (d.type) {
-      case 'tree': {
-        ctx.beginPath();
-        ctx.moveTo(d.x - 10, d.y + 10);
-        ctx.lineTo(d.x, d.y - 15);
-        ctx.lineTo(d.x + 10, d.y + 10);
-        ctx.moveTo(d.x, d.y - 15);
-        ctx.lineTo(d.x, d.y + 15);
-        ctx.stroke();
-        break;
-      }
-      case 'house':
-      case 'building':
-      case 'warehouse': {
-        ctx.save();
-        ctx.translate(d.x, d.y);
-        ctx.rotate((d.rot! * Math.PI) / 180);
-        ctx.strokeRect(-d.width! / 2, -d.height! / 2, d.width!, d.height!);
-        ctx.restore();
-        break;
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  // Draw roads (kerb outline)
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#4f46e5';
-  ctx.lineWidth = CONSTANTS.ROAD_WIDTH + 8;
-  for (const segment of ROAD_SEGMENTS) {
-    const start = nodePosMap.get(segment.startNodeId);
-    const end = nodePosMap.get(segment.endNodeId);
-    if (!start || !end) continue;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-  }
-
-  // Draw road surfaces
-  for (const segment of ROAD_SEGMENTS) {
-    const start = nodePosMap.get(segment.startNodeId);
-    const end = nodePosMap.get(segment.endNodeId);
-    if (!start || !end) continue;
-    ctx.strokeStyle = getDistrictGroundColor(start.x, start.y) === '#0d0221' ? '#374151' : getDistrictGroundColor(start.x, start.y);
-    // Use district road color
-    const district = DISTRICT_DEFINITIONS.find(d =>
-      start.x >= d.bounds.x && start.x <= d.bounds.x + d.bounds.width &&
-      start.y >= d.bounds.y && start.y <= d.bounds.y + d.bounds.height
-    );
-    ctx.strokeStyle = district ? district.theme.roadColor : '#374151';
-    ctx.lineWidth = CONSTANTS.ROAD_WIDTH;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-  }
-
-  // Draw intersection hubs
-  for (const node of ROAD_NODES) {
-    const district = DISTRICT_DEFINITIONS.find(d =>
-      node.pos.x >= d.bounds.x && node.pos.x <= d.bounds.x + d.bounds.width &&
-      node.pos.y >= d.bounds.y && node.pos.y <= d.bounds.y + d.bounds.height
-    );
-    const roadColor = district ? district.theme.roadColor : '#374151';
-    const groundColor = district ? district.theme.groundColor : '#0d0221';
-
-    // Roundabout kerb
-    ctx.fillStyle = '#4f46e5';
-    ctx.beginPath();
-    ctx.arc(node.pos.x, node.pos.y, (CONSTANTS.ROAD_WIDTH / 2) + 20 + 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Roundabout surface
-    ctx.fillStyle = roadColor;
-    ctx.beginPath();
-    ctx.arc(node.pos.x, node.pos.y, (CONSTANTS.ROAD_WIDTH / 2) + 20, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Central island
-    ctx.fillStyle = groundColor;
-    ctx.strokeStyle = '#00ffff';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(node.pos.x, node.pos.y, 20, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  // Draw road markings
-  for (const segment of ROAD_SEGMENTS) {
-    const start = nodePosMap.get(segment.startNodeId);
-    const end = nodePosMap.get(segment.endNodeId);
-    if (!start || !end) continue;
-
-    let strokeColor = 'none';
-    let lineWidth = 3;
-    ctx.setLineDash([]);
-
-    switch (segment.type) {
-      case 'Motorway':
-        strokeColor = '#facc15';
-        lineWidth = 5;
-        break;
-      case 'Primary':
-      case 'Suburban':
-        strokeColor = 'white';
-        ctx.setLineDash([20, 25]);
-        break;
-      case 'Industrial':
-        strokeColor = '#facc15';
-        break;
-      case 'Rural':
-      default:
-        continue;
-    }
-
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = lineWidth;
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.setLineDash([]);
-  }
+  // Draw cached static map (background, district grounds, grid, decorations,
+  // road kerbs/surfaces, intersection hubs, lane markings) — single drawImage
+  // replaces thousands of canvas operations per frame. Built once on first call.
+  ctx.drawImage(getStaticMap(), 0, 0);
 
   // Draw GPS path
   if (state.highlightedPath && state.highlightedPath.length > 1) {
