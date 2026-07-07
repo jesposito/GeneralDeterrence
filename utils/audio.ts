@@ -13,6 +13,13 @@ let unlocked = false;
 let sirenOsc1: OscillatorNode | null = null;
 let sirenOsc2: OscillatorNode | null = null;
 let sirenGain: GainNode | null = null;
+let sirenLfo: OscillatorNode | null = null;
+
+// Ambient music-pad nodes.
+let musicOscs: OscillatorNode[] = [];
+let musicGain: GainNode | null = null;
+let musicFilter: BiquadFilterNode | null = null;
+let musicLfo: OscillatorNode | null = null;
 
 // Continuous engine drone nodes — kept around so we can modulate + stop
 let engineOsc: OscillatorNode | null = null;
@@ -161,54 +168,44 @@ export function thud(): void {
   noise.stop(now + 0.32);
 }
 
-// Looping two-tone siren — call sirenStart() on activate, sirenStop() on deactivate.
+// Looping two-tone siren driven by one continuous LFO sweeping the oscillator
+// frequencies. No finite scheduling, so it never decays into a dead tone (the old
+// setValueCurve loop only covered ~5.6s). sirenStart() on activate, sirenStop() to end.
 export function sirenStart(): void {
   if (muted || sirenOsc1) return; // already playing
   const c = getCtx();
   if (!c || !masterGain) return;
-  const now = c.currentTime;
   sirenGain = c.createGain();
   sirenGain.gain.value = 0.12;
   sirenGain.connect(masterGain);
 
-  // Two oscillators alternating in volume to create the wail
+  sirenLfo = c.createOscillator();
+  sirenLfo.type = 'sine';
+  sirenLfo.frequency.value = 0.9; // ~1.1s per wail cycle
+
+  // High wail voice: centre 760 Hz, swept +/- 220 Hz.
   sirenOsc1 = c.createOscillator();
   sirenOsc1.type = 'sawtooth';
-  sirenOsc1.frequency.value = 900;
-  const g1 = c.createGain();
-  g1.gain.setValueCurveAtTime(buildSirenCurve(true), now, 1.4);
-  // Use periodic schedule for continuous wail
-  scheduleSirenLoop(c, g1, true, now);
-  sirenOsc1.connect(g1).connect(sirenGain);
-  sirenOsc1.start(now);
+  sirenOsc1.frequency.value = 760;
+  const depth1 = c.createGain();
+  depth1.gain.value = 220;
+  sirenLfo.connect(depth1).connect(sirenOsc1.frequency);
+  sirenOsc1.connect(sirenGain);
 
+  // Low body voice an octave down, swept less, quieter.
   sirenOsc2 = c.createOscillator();
-  sirenOsc2.type = 'sawtooth';
-  sirenOsc2.frequency.value = 650;
+  sirenOsc2.type = 'square';
+  sirenOsc2.frequency.value = 400;
+  const depth2 = c.createGain();
+  depth2.gain.value = 90;
+  sirenLfo.connect(depth2).connect(sirenOsc2.frequency);
   const g2 = c.createGain();
-  g2.gain.setValueCurveAtTime(buildSirenCurve(false), now, 1.4);
-  scheduleSirenLoop(c, g2, false, now);
+  g2.gain.value = 0.45;
   sirenOsc2.connect(g2).connect(sirenGain);
-  sirenOsc2.start(now);
-}
 
-function buildSirenCurve(highFirst: boolean): Float32Array {
-  // 64 samples over 1.4s — alternating gain envelope for one wail cycle
-  const arr = new Float32Array(64);
-  for (let i = 0; i < arr.length; i++) {
-    const t = i / arr.length;
-    const phase = highFirst ? Math.sin(t * Math.PI) : Math.sin((t + 0.5) * Math.PI);
-    arr[i] = Math.max(0, phase) * 0.9;
-  }
-  return arr;
-}
-
-function scheduleSirenLoop(c: AudioContext, g: GainNode, highFirst: boolean, startTime: number): void {
-  // Schedule the wail curve to repeat for ~4s; sirenStop will tear down before that
-  const cycle = 1.4;
-  for (let i = 1; i < 4; i++) {
-    g.gain.setValueCurveAtTime(buildSirenCurve(highFirst), startTime + i * cycle, cycle);
-  }
+  sirenLfo.start();
+  sirenOsc1.start();
+  sirenOsc2.start();
 }
 
 // Continuous engine drone tied to player speed.
@@ -282,5 +279,84 @@ export function sirenStop(): void {
     try { sirenOsc2.stop(now + 0.1); } catch { /* ignore */ }
     sirenOsc2 = null;
   }
+  if (sirenLfo) {
+    try { sirenLfo.stop(now + 0.1); } catch { /* ignore */ }
+    sirenLfo = null;
+  }
   sirenGain = null;
+}
+
+// Soft high blip for collecting a deterrence pickup (kept quiet — collected often).
+export function pickup(): void {
+  if (muted) return;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const osc = c.createOscillator();
+  const env = c.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(1400, now);
+  osc.frequency.exponentialRampToValueAtTime(2100, now + 0.06);
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.08, now + 0.01);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+  osc.connect(env).connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.12);
+}
+
+// Ambient minor-chord pad bed — low, slow, non-intrusive. A very slow LFO opens/closes
+// the filter for gentle movement. musicStart() on shift start, musicStop() on end.
+export function musicStart(): void {
+  if (muted || musicGain) return;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  musicGain = c.createGain();
+  musicGain.gain.value = 0.06;
+  musicFilter = c.createBiquadFilter();
+  musicFilter.type = 'lowpass';
+  musicFilter.frequency.value = 500;
+  musicFilter.Q.value = 2;
+  musicFilter.connect(musicGain).connect(masterGain);
+
+  // A-minor pad: A2, E3, A3, C4.
+  for (const f of [110, 164.81, 220, 261.63]) {
+    const osc = c.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = f;
+    const g = c.createGain();
+    g.gain.value = 0.25;
+    osc.connect(g).connect(musicFilter);
+    osc.start();
+    musicOscs.push(osc);
+  }
+
+  musicLfo = c.createOscillator();
+  musicLfo.type = 'sine';
+  musicLfo.frequency.value = 0.05; // ~20s cycle
+  const depth = c.createGain();
+  depth.gain.value = 350;
+  musicLfo.connect(depth).connect(musicFilter.frequency);
+  musicLfo.start();
+}
+
+export function musicStop(): void {
+  const c = getCtx();
+  if (!c) return;
+  const now = c.currentTime;
+  if (musicGain) {
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
+    musicGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+  }
+  for (const osc of musicOscs) {
+    try { osc.stop(now + 0.5); } catch { /* ignore */ }
+  }
+  musicOscs = [];
+  if (musicLfo) {
+    try { musicLfo.stop(now + 0.5); } catch { /* ignore */ }
+    musicLfo = null;
+  }
+  musicFilter = null;
+  musicGain = null;
 }

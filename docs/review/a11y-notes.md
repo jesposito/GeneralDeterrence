@@ -38,3 +38,22 @@ review work survives context compaction. Maps to gd-0wi.23/.24/.25/.26 + doc fin
 - **M4** key casing/stranding (`:298`,`:391-395`) → fixed via normalizeKey (gd-0wi.18). WCAG 2.1.1.
 - **m3** E/C/M lacked e.repeat → guarded (gd-0wi.19). NOTE M3's focus/double-fire cleanup is beyond
   the e.repeat guard and remains for batch 8.
+
+## components/HUD.tsx (reviewed 2026-07-07)
+
+HUD is a `pointer-events-none` overlay — nothing focusable, so findings are non-text/color/status only.
+
+- **F1 (Major, WCAG 1.4.1 Use of Color)** — off-screen indicators use the same `▲` glyph, differing
+  only by hue: life-at-risk red (`HUD.tsx:334`) vs dispatch yellow (`:337`), glyph at `:104`.
+  Fix: add a `glyph` prop — filled `▲` (life-at-risk) vs outline `△` (dispatch); add `aria-hidden` on `:94`.
+- **F2 (Minor, 1.1.1/4.1.2)** — meters are bare `<div style=width%>` with no name/value: deterrence bars
+  `:37-40`, vigilance `:173-179`, boost/siren `:414-417`, speedo SVG `:129-158`. Add `role="progressbar"`
+  + `aria-label`/`aria-valuenow/min/max`. Speedo already renders text km/h `:160` → `aria-hidden` the SVG.
+  **TRAP:** meters update ~per frame — `role="progressbar"` is read on nav (safe); NEVER wrap in
+  aria-live, and the Game.tsx live region must announce DISCRETE transitions only, not meter values.
+- **F3 (4.1.3)** — game-message toast `:431-435`: when Game.tsx live region lands, add `aria-hidden` to
+  the toast (`:432`) so it isn't duplicated. (key→content fix already landed in batch 3.)
+- **F4 (parity, no WCAG fail)** — touch hides vigilance `:391` + bottom cluster `:394`, and `max-height`
+  hides districts `:359`. `hidden`=display:none is correct (no phantom AT). Restore parity via the
+  Game.tsx live region announcing boost-ready/siren/vigilance-bonus/assist, not sr-only meter dupes.
+- **minor** — assist emoji `:401` repeats `aria-label` N times; use one labelled container, emojis aria-hidden.

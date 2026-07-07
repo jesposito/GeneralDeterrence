@@ -196,11 +196,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (gameState === 'Playing') {
       audio.engineStart();
       audio.setEngineLevel(0);
+      audio.musicStart();
       lastBeepedSecondRef.current = 11;
     } else {
       audio.engineStop();
+      audio.musicStop();
     }
-    return () => { audio.engineStop(); audio.sirenStop(); };
+    return () => { audio.engineStop(); audio.sirenStop(); audio.musicStop(); };
   }, [gameState]);
 
   // Clear held inputs on app switch / focus loss / orientation change so
@@ -705,6 +707,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
                     audio.thud();
+                    cameraRef.current.shake = 10;
+                    setGameMessage('LIFE LOST');
+                    if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+                    gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2000);
                     return false;
                 }
                 if (!c.patrolPostBonusApplied) {
@@ -808,6 +814,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 const district = districtsRef.current.find(d => d.id === playerDistrictId);
                 if(district) district.deterrence = Math.min(100, district.deterrence + blob.value * 4);
                 collectionEffectsRef.current.push({ id: Math.random(), pos: blob.pos, spawnTime: now });
+                audio.pickup();
                 return false;
             } return true;
         });
@@ -877,6 +884,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   const handleEnforce = useCallback(() => {
     if (activeRids && (activeRids.ridsType === 'Restraints' || activeRids.ridsType === 'Distractions')) {
+      audio.zap();
       const district = districtsRef.current.find(d => d.id === activeRids.car.district);
       const deterrence = district?.deterrence ?? 50;
       const isInfringement = activeRids.car.isLifeAtRisk || (Math.random() * 100) > deterrence;
@@ -919,6 +927,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   
   const handleWarn = useCallback(() => {
       if (activeRids) {
+        audio.zap();
         let scoreToAdd = CONSTANTS.WARN_SCORE_POINTS;
         if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
         scoreRef.current.enforcement += scoreToAdd;

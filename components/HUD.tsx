@@ -429,7 +429,9 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       {stationaryCountdown && stationaryCountdown.timeLeft > 0 && <StationaryCountdownTimer countdown={stationaryCountdown} />}
 
        {gameMessage && (
-        <div key={Date.now()} className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
+        // key is the message text (not Date.now()) so the fade animation plays once per
+        // distinct message instead of restarting every render (which read as a flicker).
+        <div key={gameMessage} className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
             {gameMessage}
         </div>
        )}
