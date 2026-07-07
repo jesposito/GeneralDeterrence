@@ -179,7 +179,7 @@ export function thud(): void {
 // frequencies. No finite scheduling, so it never decays into a dead tone (the old
 // setValueCurve loop only covered ~5.6s). sirenStart() on activate, sirenStop() to end.
 export function sirenStart(): void {
-  if (muted || sirenOsc1) return; // already playing
+  if (sirenOsc1) return; // already playing (governed by masterGain, so it exists even when muted)
   const c = getCtx();
   if (!c || !masterGain) return;
   sirenGain = c.createGain();
@@ -219,7 +219,7 @@ export function sirenStart(): void {
 // engineStart() lazily creates the oscillator chain. setEngineLevel(0..1) modulates
 // frequency + gain. engineStop() tears down. Idempotent — safe to call repeatedly.
 export function engineStart(): void {
-  if (muted || engineOsc) return;
+  if (engineOsc) return; // governed by masterGain, so it exists even when muted
   const c = getCtx();
   if (!c || !masterGain) return;
   engineGain = c.createGain();
@@ -315,7 +315,7 @@ export function pickup(): void {
 // Ambient minor-chord pad bed — low, slow, non-intrusive. A very slow LFO opens/closes
 // the filter for gentle movement. musicStart() on shift start, musicStop() on end.
 export function musicStart(): void {
-  if (muted || musicGain) return;
+  if (musicGain) return; // governed by masterGain, so it exists even when muted
   const c = getCtx();
   if (!c || !masterGain) return;
   musicGain = c.createGain();

@@ -17,12 +17,9 @@ const MuteToggle: React.FC = () => {
   const toggle = useCallback(() => {
     setMuted(prev => {
       const next = !prev;
+      // masterGain=0 already silences the continuous engine/siren/music; don't stop the nodes
+      // (that permanently killed the drone, and start-muted never started it).
       audio.setMuted(next);
-      // If muting, stop any currently-playing continuous sounds immediately
-      if (next) {
-        audio.engineStop();
-        audio.sirenStop();
-      }
       try { localStorage.setItem(STORAGE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
       return next;
     });
@@ -32,7 +29,7 @@ const MuteToggle: React.FC = () => {
     <button
       type="button"
       aria-pressed={muted}
-      aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+      aria-label="Mute sound effects"
       onClick={toggle}
       onContextMenu={(e) => e.preventDefault()}
       style={{

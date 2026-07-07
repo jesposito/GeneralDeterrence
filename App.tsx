@@ -6,7 +6,10 @@ import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
 import MuteToggle from './components/MuteToggle';
 
-const API_BASE = (window as any).LEADERBOARD_API || '/api';
+declare global {
+  interface Window { LEADERBOARD_API?: string }
+}
+const API_BASE = window.LEADERBOARD_API || '/api';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>('MainMenu');

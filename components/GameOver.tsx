@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LeaderboardEntry, FinalScoreBreakdown, EnforcementAction, ColleagueCallAction } from '../types';
 import Leaderboard from './Leaderboard';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS } from '../utils/mapData';
@@ -258,11 +258,21 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
     }
   };
 
-  const isHighScore = leaderboard.length < 10 || finalScore > (leaderboard[leaderboard.length - 1]?.score ?? 0);
+  // finalScore can be negative (livesLostPenalty); don't prompt the required name/email form for a
+  // zero/negative shift.
+  const isHighScore = finalScore > 0 && (leaderboard.length < 10 || finalScore > (leaderboard[leaderboard.length - 1]?.score ?? 0));
+
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const playAgainRef = useRef<HTMLButtonElement>(null);
+  // Move focus to the results heading on mount so AT announces the new screen (not the input —
+  // that pops the mobile keyboard over the score and skips the breakdown).
+  useEffect(() => { headingRef.current?.focus(); }, []);
+  // After submit the form (holding focus) unmounts; move focus to Play Again.
+  useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
 
   return (
     <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
-      <h1 className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink">Shift Over</h1>
+      <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
       <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-6 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
       
@@ -271,7 +281,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
         <div className="lg:col-span-1 h-64 lg:h-auto">
             <div className="h-full flex flex-col">
                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-sm font-display text-cyan-400">PATROL REPORT</h3>
+                    <h2 className="text-sm font-display text-cyan-400">PATROL REPORT</h2>
                     <button
                         onClick={() => setShowHeatmap(!showHeatmap)}
                         className="text-xs bg-cyan-800 hover:bg-cyan-700 px-2 py-1 rounded border border-cyan-600 font-sans"
@@ -332,7 +342,9 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                  {isHighScore && !submitted && (
                      <form onSubmit={handleSubmit} className="flex flex-col items-center space-y-3">
                         <h2 className="text-xl md:text-2xl font-semibold text-green-400 font-display">New High Score!</h2>
+                        <label htmlFor="hs-name" className="sr-only">Your name</label>
                         <input
+                            id="hs-name"
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -341,28 +353,31 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                             required
                             className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-display tracking-widest"
                         />
+                        <label htmlFor="hs-email" className="sr-only">Email (optional)</label>
                         <input
+                            id="hs-email"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="EMAIL (optional - to update score)"
+                            aria-describedby="hs-email-help"
                             className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-sans text-sm"
                         />
-                        <p className="text-xs text-gray-500 font-sans">Email lets you update your score if you beat it later</p>
+                        <p id="hs-email-help" className="text-xs text-gray-400 font-sans">Email lets you update your score if you beat it later</p>
                         <button type="submit" className="w-full bg-green-600 hover:bg-green-500 border-2 border-green-400 text-white font-bold py-2 px-4 rounded transition font-display tracking-wider">
                             Submit Score
                         </button>
                     </form>
                 )}
                 {submitted && (
-                    <p className="text-lg text-green-400 text-center animate-fadeIn">Score Submitted!</p>
+                    <p role="status" className="text-lg text-green-400 text-center animate-fadeIn">Score Submitted!</p>
                 )}
                 {!isHighScore && (
                     <p className="text-lg text-gray-400 text-center">Good work, Officer.</p>
                 )}
             </div>
 
-            <button onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider">
+            <button ref={playAgainRef} onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider">
                 Play Again
             </button>
             
