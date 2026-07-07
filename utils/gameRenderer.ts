@@ -546,7 +546,16 @@ export function drawGame(
   // Draw cached static map (background, district grounds, grid, decorations,
   // road kerbs/surfaces, intersection hubs, lane markings) — single drawImage
   // replaces thousands of canvas operations per frame. Built once on first call.
-  ctx.drawImage(getStaticMap(), 0, 0);
+  // Source-rect blit: sample only the visible world region (reusing the cull rect)
+  // instead of pushing the full 3840x2160 texture through the GPU every frame —
+  // the single biggest mobile win (batch A deferral, landed here with measurement).
+  {
+    const sx = Math.max(0, cminX);
+    const sy = Math.max(0, cminY);
+    const sw = Math.min(CONSTANTS.WORLD_WIDTH, cmaxX) - sx;
+    const sh = Math.min(CONSTANTS.WORLD_HEIGHT, cmaxY) - sy;
+    if (sw > 0 && sh > 0) ctx.drawImage(getStaticMap(), sx, sy, sw, sh, sx, sy, sw, sh);
+  }
 
   // Draw GPS path
   if (state.highlightedPath && state.highlightedPath.length > 1) {

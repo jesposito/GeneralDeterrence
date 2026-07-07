@@ -345,7 +345,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
 
       <div className="w-full flex justify-between items-start">
         <div className="flex flex-col space-y-2 md:space-y-3">
-            <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
+            <div data-testid="hud-score" className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
                 <div className="text-xs md:text-sm font-semibold text-cyan-400 tracking-wider text-glow-cyan">SCORE</div>
                 <div className={`text-2xl md:text-3xl font-bold text-glow-yellow ${scorePop ? 'animate-score-pop' : ''}`}>{scoreDisplay.toLocaleString()}</div>
                 <div className="flex justify-between items-center text-center mt-1">
@@ -421,7 +421,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
             <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
             <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
           </div>
-          <div className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
+          <div data-testid="hud-minimap" className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
              <Minimap
                 player={player} 
                 civilians={civilians} 

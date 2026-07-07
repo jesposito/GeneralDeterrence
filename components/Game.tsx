@@ -32,9 +32,17 @@ const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
 const COLLISION_CHECK_RADIUS_SQ = (CONSTANTS.CAR_RADIUS * 2) ** 2;
 const HUD_UPDATE_INTERVAL_MS = 100;
 
-// Haptic tap on the big moments (enforce/save/loss). No-op where unsupported (iOS Safari).
-const buzz = (pattern: number | number[]) => {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern);
+// Haptic vocabulary — one consistent language (gd-ml5): short tap = success,
+// heavy triple = failure, long build = the big bust, steady triple = overtime.
+// No-op where unsupported (iOS Safari).
+const BUZZ = {
+    success: 30,
+    fail: [60, 40, 60],
+    epic: [40, 30, 40, 30, 80],
+    overtime: [40, 40, 40],
+} as const;
+const buzz = (pattern: number | readonly number[]) => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern as number | number[]);
 };
 
 // Vehicle mix per district archetype (weights) + per-type speed multipliers.
@@ -1052,7 +1060,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
                     audio.thud();
-                    buzz([60, 40, 60]); // heavier pattern than an intervention — this is the failure state
+                    buzz(BUZZ.fail); // failure state: heavier than an intervention
                     cameraRef.current.shake = 10;
                     hitStopUntilRef.current = now + 110; // hit-stop: freeze the sim for a beat on the biggest failure
                     setGameMessage('LIFE LOST');
@@ -1270,7 +1278,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 40 }, text: `+${deterrenceBoost} DETERRENCE`, spawnTime: Date.now() });
     const district = districtsRef.current.find(d => d.id === car.district);
     if (district) district.deterrence = Math.min(100, district.deterrence + deterrenceBoost);
-    buzz(30);
+    buzz(BUZZ.success);
     enforcementActionsRef.current.push({ pos: car.pos, ridsType: car.ridsType!, actionType });
     civiliansRef.current = civiliansRef.current.filter(c => c.id !== car.id);
     if (shake) cameraRef.current.shake = shake;
@@ -1282,7 +1290,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             interdictionResultRef.current = { crime: car.specialCrime.crime, detail: car.specialCrime.detail, outcome: 'busted' };
             scoreRef.current.enforcement += CONSTANTS.INTERDICTION_BONUS;
             hitStopUntilRef.current = Date.now() + 110; // the other big moment
-            buzz([40, 30, 40, 30, 80]);
+            buzz(BUZZ.epic);
             audio.zap();
             setGameMessage(`${car.specialCrime.reveal}  +${CONSTANTS.INTERDICTION_BONUS}`);
             if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
@@ -1381,7 +1389,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             lastBeepedSecondRef.current = 31; // re-arm the final-10s tick sequence
             playRadio('OVERTIME APPROVED. Full coverage held. 30 more seconds, make them count.');
             audio.zap();
-            buzz([40, 40, 40]);
+            buzz(BUZZ.overtime);
             hitStopUntilRef.current = now + 110;
         } else {
             gameOverFiredRef.current = true;

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e:mobile": "node scripts/e2e-mobile.mjs",
+    "perf:mobile": "node scripts/perf-mobile.mjs"
   },
   "dependencies": {
     "@fontsource/orbitron": "^5.2.8",
@@ -21,6 +23,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.5.2",
+    "playwright": "^1.61.1",
     "postcss": "^8.5.16",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.8.2",
