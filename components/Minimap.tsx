@@ -3,6 +3,9 @@ import { Player, Civilian, District, DispatchedCall, MinimapMode } from '../type
 import * as CONSTANTS from '../constants';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
 
+// Static — derived purely from ROAD_NODES; hoisted so it isn't rebuilt every render.
+const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node.pos]));
+
 interface MinimapProps {
   player: Player;
   civilians: Civilian[];
@@ -14,8 +17,6 @@ interface MinimapProps {
 const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatchedCall, mode }) => {
   const ridsCars = civilians.filter(c => c.ridsType);
   const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
-
-  const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node.pos]));
 
   const getZoneColor = (deterrence: number) => {
     const hue = (deterrence / 100) * 120; // 0 (red) to 120 (green)
@@ -40,6 +41,7 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
             height="100%" 
             viewBox={viewBox}
             preserveAspectRatio="xMidYMid slice"
+            aria-hidden="true"
         >
             <g transform={isTactical ? `rotate(${-player.angle} ${player.pos.x} ${player.pos.y})` : ''}>
                 {/* Background */}
