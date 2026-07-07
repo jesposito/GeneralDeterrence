@@ -77,6 +77,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [gameMessage, setGameMessage] = useState<string | null>(null);
   const [stationaryCountdown, setStationaryCountdown] = useState<StationaryCountdown>(null);
   const lastCountdownSigRef = useRef<string>('null'); // throttles the 60fps countdown re-render (gd-0wi.6)
+  const gameOverFiredRef = useRef(false); // the final score is submitted at most once, even on a stray double-RAF
   const [ridsChoiceSelection, setRidsChoiceSelection] = useState<'warn' | 'enforce'>('warn');
   const [hudTick, setHudTick] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string>('initializing...');
@@ -187,10 +188,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   // Pre-shift countdown
   useEffect(() => {
     if (gameState !== 'Starting') return;
+    audio.tick(700); // "3" — pre-shift countdown now has audio
     const timeouts = [
-      setTimeout(() => setCountdownText('2'), 1000),
-      setTimeout(() => setCountdownText('1'), 2000),
-      setTimeout(() => setCountdownText('GO!'), 3000),
+      setTimeout(() => { setCountdownText('2'); audio.tick(700); }, 1000),
+      setTimeout(() => { setCountdownText('1'); audio.tick(700); }, 2000),
+      setTimeout(() => { setCountdownText('GO!'); audio.tick(1200); }, 3000),
       setTimeout(() => { setGameState('Playing'); setCountdownText(''); }, 4000),
     ];
     return () => timeouts.forEach(clearTimeout);
@@ -336,7 +338,14 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1200);
     } else {
         const anyCarNearby = civiliansRef.current.some(c => getDistanceSq(player.pos, c.pos) < checkRadiusSq);
-        if (anyCarNearby) timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK);
+        if (anyCarNearby) {
+            // Feedback for a wasted check (was a silent -3s time penalty).
+            timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK);
+            audio.thud();
+            setGameMessage(`NO VIOLATION  -${CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK}s`);
+            if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+            gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1500);
+        }
     }
   }, [gameState]);
   
@@ -398,7 +407,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const turnRight = keys['ArrowRight'] || keys['d'] || keys['right'];
         const isTryingToBoost = keys['Shift'] || keys['boost'];
         
-        player.isBoosting = isTryingToBoost && player.boostCharge >= CONSTANTS.PLAYER_BOOST_DRAIN_RATE && moveForward && !player.isSirenActive;
+        // Boost works with any movement intent — keyboard forward OR joystick deflection (touch driving
+        // is omnidirectional, so gating on 'forward' silently broke boost in most headings).
+        const hasMoveIntent = moveForward || Math.hypot(analogInputRef.current.x, analogInputRef.current.y) > 0.05;
+        player.isBoosting = isTryingToBoost && player.boostCharge >= CONSTANTS.PLAYER_BOOST_DRAIN_RATE && hasMoveIntent && !player.isSirenActive;
 
         if (player.isBoosting) {
             player.boostCharge = Math.max(0, player.boostCharge - CONSTANTS.DT_BOOST_DRAIN_PER_SEC * dt);
@@ -950,6 +962,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     const now = Date.now();
     
     if (timeLeftRef.current <= 0) {
+        if (gameOverFiredRef.current) return;
+        gameOverFiredRef.current = true;
         const finalBreakdown: FinalScoreBreakdown = {
             ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
             patrolPath: patrolPathRef.current,
