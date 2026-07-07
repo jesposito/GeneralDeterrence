@@ -14,7 +14,7 @@ interface TouchControlsProps {
 
 const JOYSTICK_BASE = 128;
 const JOYSTICK_KNOB = 56;
-const JOYSTICK_DEADZONE = 0.3;
+const JOYSTICK_DEADZONE = 0.12;
 const ACTION_BUTTON = 64;
 
 interface JoystickProps {
@@ -27,26 +27,34 @@ const Joystick: React.FC<JoystickProps> = ({ onDirectionChange, onAnalogChange }
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [pressed, setPressed] = useState(false);
   const activePointerId = useRef<number | null>(null);
+  const originRef = useRef({ x: 0, y: 0 });
   const lastDirRef = useRef({ forward: false, backward: false, left: false, right: false });
 
   const compute = (clientX: number, clientY: number) => {
-    if (!baseRef.current) return;
-    const rect = baseRef.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const r = rect.width / 2;
-    let nx = (clientX - cx) / r;
-    let ny = (clientY - cy) / r;
+    // Floating origin: deflection is measured from the touch-DOWN point, not the base centre, so
+    // touch-down is always neutral (no lurch). Radius = half the visual base.
+    const r = JOYSTICK_BASE / 2;
+    let nx = (clientX - originRef.current.x) / r;
+    let ny = (clientY - originRef.current.y) / r;
     const mag = Math.hypot(nx, ny);
     if (mag > 1) { nx /= mag; ny /= mag; }
     setKnob({ x: nx, y: ny });
-    if (onAnalogChange) onAnalogChange(nx, ny);
+
+    // Dead-zone remap: analog thrust ramps from 0 at the dead-zone edge to 1 at full deflection —
+    // no creep near neutral, no 0->30% step at the edge.
+    let ax = 0, ay = 0;
+    if (mag > JOYSTICK_DEADZONE) {
+      const scaled = (mag - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE);
+      ax = (nx / mag) * scaled;
+      ay = (ny / mag) * scaled;
+    }
+    if (onAnalogChange) onAnalogChange(ax, ay);
 
     const dir = {
-      forward: ny < -JOYSTICK_DEADZONE,
-      backward: ny > JOYSTICK_DEADZONE,
-      left: nx < -JOYSTICK_DEADZONE,
-      right: nx > JOYSTICK_DEADZONE,
+      forward: ay < -0.001,
+      backward: ay > 0.001,
+      left: ax < -0.001,
+      right: ax > 0.001,
     };
     const prev = lastDirRef.current;
     if (dir.forward !== prev.forward || dir.backward !== prev.backward
@@ -76,6 +84,7 @@ const Joystick: React.FC<JoystickProps> = ({ onDirectionChange, onAnalogChange }
     activePointerId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
     setPressed(true);
+    originRef.current = { x: e.clientX, y: e.clientY }; // floating origin = touch-down point
     compute(e.clientX, e.clientY);
   };
   const handleMove = (e: React.PointerEvent) => {
@@ -147,9 +156,18 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     audio.click();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (onPointerDown) onPointerDown();
-    if (onTap) onTap();
   };
+  // Commit the tap on pointer-UP, and only if released within the button — sliding off aborts it
+  // (WCAG 2.5.2 Pointer Cancellation). BOOST uses onPointerDown/Up (hold) and is unaffected.
   const handleUp = (e: React.PointerEvent) => {
+    e.preventDefault();
+    if (onPointerUp) onPointerUp();
+    if (onTap) {
+      const r = e.currentTarget.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) onTap();
+    }
+  };
+  const handleCancel = (e: React.PointerEvent) => {
     e.preventDefault();
     if (onPointerUp) onPointerUp();
   };
@@ -160,8 +178,8 @@ const ActionButton: React.FC<ActionButtonProps> = ({
       aria-pressed={ariaPressed}
       onPointerDown={handleDown}
       onPointerUp={handleUp}
-      onPointerCancel={handleUp}
-      onPointerLeave={handleUp}
+      onPointerCancel={handleCancel}
+      onPointerLeave={handleCancel}
       onContextMenu={(e) => e.preventDefault()}
       style={{ width: size, height: size, touchAction: 'manipulation' }}
       className={`rounded-full border-4 flex items-center justify-center font-bold text-xs leading-tight text-center select-none shadow-lg transition-colors ${className}`}
@@ -204,7 +222,7 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onAnalog
           BOOST
         </ActionButton>
         {/* Top-right: SIREN (red, toggle) */}
-        <ActionButton ariaLabel={isSirenActive ? 'Deactivate siren' : 'Activate siren'} ariaPressed={isSirenActive}
+        <ActionButton ariaLabel="Siren" ariaPressed={isSirenActive}
           className={`text-white border-red-400/60 ${isSirenActive ? 'bg-red-500/80 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}
           onTap={onSirenToggle}>
           SIREN
