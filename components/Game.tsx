@@ -775,7 +775,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             }
         }
         
-        civiliansRef.current = civiliansRef.current.filter(c => {
+        retainInPlace(civiliansRef.current, (c: Civilian) => {
             if (c.isLifeAtRisk) {
                 c.lifeAtRiskTimer -= dtScale;
                 if (c.lifeAtRiskTimer <= 0) {
