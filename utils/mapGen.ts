@@ -27,7 +27,8 @@ export type DecorType =
     | 'tree' | 'house' | 'building' | 'warehouse'
     | 'cabbageTree' | 'ponga' | 'pohutukawa' | 'flax'
     | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui'
-    | 'steamVent' | 'boulder' | 'vineyard';
+    | 'steamVent' | 'boulder' | 'vineyard'
+    | 'clothesline' | 'trampoline' | 'rugbyPosts';
 
 export interface MapRegion {
     name: string;
@@ -41,7 +42,7 @@ const REGIONS: MapRegion[] = [
         themeNames: ['Neon Night', 'Rainshift'],
         decorProfile: {
             'Karori North': [{ type: 'pohutukawa', count: 50 }, { type: 'flax', count: 50 }, { type: 'sheep', count: 40 }, { type: 'tree', count: 60 }, { type: 'kiwi', count: 8 }],
-            'Karori West': [{ type: 'house', count: 80 }, { type: 'pohutukawa', count: 20 }, { type: 'tui', count: 14 }],
+            'Karori West': [{ type: 'house', count: 70 }, { type: 'pohutukawa', count: 18 }, { type: 'tui', count: 12 }, { type: 'clothesline', count: 14 }, { type: 'trampoline', count: 10 }, { type: 'rugbyPosts', count: 2 }],
             'Karori Central': [{ type: 'building', count: 45 }, { type: 'pukeko', count: 8 }, { type: 'flax', count: 10 }],
             'Karori East': [{ type: 'warehouse', count: 28 }, { type: 'flax', count: 28 }, { type: 'pukeko', count: 10 }],
             'Karori': [{ type: 'pohutukawa', count: 26 }, { type: 'kereru', count: 10 }, { type: 'house', count: 10 }],
@@ -52,7 +53,7 @@ const REGIONS: MapRegion[] = [
         themeNames: ['Frostbeat', 'Aurora Watch'],
         decorProfile: {
             'Karori North': [{ type: 'boulder', count: 60 }, { type: 'sheep', count: 110 }, { type: 'tree', count: 40 }, { type: 'flax', count: 25 }],
-            'Karori West': [{ type: 'house', count: 70 }, { type: 'cabbageTree', count: 20 }, { type: 'boulder', count: 15 }],
+            'Karori West': [{ type: 'house', count: 62 }, { type: 'cabbageTree', count: 18 }, { type: 'boulder', count: 12 }, { type: 'clothesline', count: 12 }, { type: 'trampoline', count: 8 }, { type: 'rugbyPosts', count: 2 }],
             'Karori Central': [{ type: 'building', count: 40 }, { type: 'ponga', count: 8 }],
             'Karori East': [{ type: 'warehouse', count: 26 }, { type: 'boulder', count: 20 }, { type: 'flax', count: 15 }],
             'Karori': [{ type: 'boulder', count: 16 }, { type: 'flax', count: 14 }, { type: 'house', count: 8 }],
@@ -63,7 +64,7 @@ const REGIONS: MapRegion[] = [
         themeNames: ['Dusk Patrol', 'Ember Line'],
         decorProfile: {
             'Karori North': [{ type: 'vineyard', count: 70 }, { type: 'sheep', count: 80 }, { type: 'cabbageTree', count: 40 }, { type: 'kiwi', count: 6 }],
-            'Karori West': [{ type: 'house', count: 75 }, { type: 'cabbageTree', count: 25 }, { type: 'tui', count: 10 }],
+            'Karori West': [{ type: 'house', count: 66 }, { type: 'cabbageTree', count: 22 }, { type: 'tui', count: 8 }, { type: 'clothesline', count: 12 }, { type: 'trampoline', count: 9 }, { type: 'rugbyPosts', count: 2 }],
             'Karori Central': [{ type: 'building', count: 42 }, { type: 'pukeko', count: 8 }],
             'Karori East': [{ type: 'warehouse', count: 34 }, { type: 'vineyard', count: 18 }, { type: 'flax', count: 15 }],
             'Karori': [{ type: 'vineyard', count: 14 }, { type: 'house', count: 12 }, { type: 'kereru', count: 6 }],
@@ -74,7 +75,7 @@ const REGIONS: MapRegion[] = [
         themeNames: ['Ember Line', 'Aurora Watch'],
         decorProfile: {
             'Karori North': [{ type: 'steamVent', count: 45 }, { type: 'ponga', count: 55 }, { type: 'flax', count: 35 }, { type: 'kiwi', count: 10 }],
-            'Karori West': [{ type: 'house', count: 70 }, { type: 'ponga', count: 22 }, { type: 'tui', count: 10 }],
+            'Karori West': [{ type: 'house', count: 62 }, { type: 'ponga', count: 20 }, { type: 'tui', count: 8 }, { type: 'clothesline', count: 12 }, { type: 'trampoline', count: 8 }, { type: 'rugbyPosts', count: 2 }],
             'Karori Central': [{ type: 'building', count: 42 }, { type: 'steamVent', count: 8 }, { type: 'ponga', count: 8 }],
             'Karori East': [{ type: 'warehouse', count: 28 }, { type: 'steamVent', count: 14 }, { type: 'flax', count: 12 }],
             'Karori': [{ type: 'steamVent', count: 14 }, { type: 'ponga', count: 12 }, { type: 'kereru', count: 8 }],
@@ -85,7 +86,7 @@ const REGIONS: MapRegion[] = [
         themeNames: ['Neon Night', 'Rainshift'],
         decorProfile: {
             'Karori North': [{ type: 'tree', count: 90 }, { type: 'sheep', count: 40 }, { type: 'cabbageTree', count: 30 }, { type: 'flax', count: 20 }],
-            'Karori West': [{ type: 'house', count: 110 }, { type: 'tui', count: 18 }, { type: 'cabbageTree', count: 15 }],
+            'Karori West': [{ type: 'house', count: 95 }, { type: 'tui', count: 15 }, { type: 'cabbageTree', count: 12 }, { type: 'clothesline', count: 16 }, { type: 'trampoline', count: 12 }, { type: 'rugbyPosts', count: 3 }],
             'Karori Central': [{ type: 'building', count: 65 }, { type: 'pukeko', count: 10 }, { type: 'ponga', count: 8 }],
             'Karori East': [{ type: 'warehouse', count: 40 }, { type: 'flax', count: 18 }, { type: 'pukeko', count: 10 }],
             'Karori': [{ type: 'house', count: 16 }, { type: 'pohutukawa', count: 12 }, { type: 'kereru', count: 8 }],

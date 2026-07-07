@@ -9,6 +9,8 @@ const NAMES = [
     'Sam', 'Ana', 'Rawiri', 'Katie', 'Manu', 'Dave', 'Moana', 'Nikau', 'Sophie', 'Tane',
     'Lena', 'Kauri', 'Bex', 'Fetu', 'Marama', 'Trev', 'Anika', 'Mikaere', 'Shaz', 'Pita',
     'Holly', 'Rangi', 'Deb', 'Losa', 'Hana', 'Bruce', 'Kiri', 'Eru', 'Milly', 'Taika',
+    'Gaz', 'Ngaire', 'Sefa', 'Tui', 'Baz', 'Amiria', 'Vili', 'Petra', 'Hone', 'Cushla',
+    'Rewi', 'Tessa', 'Mataio', 'Jade', 'Wiki', 'Stew', 'Ripeka', 'Col', 'Awhina', 'Duncan',
 ];
 
 const MUNDANE = [
@@ -20,7 +22,7 @@ const MUNDANE = [
     '{name} remembered to buy milk on the way home. Trim, as requested.',
     '{name} went on to mow the lawns every second Sunday for 40 more years.',
     '{name} finally fixed the squeaky gate. The neighbours sent a card.',
-    '{name} made it to their kid\'s netball game. They lost 24–3. Great day anyway.',
+    '{name} made it to their kid\'s netball game. They lost 24-3. Great day anyway.',
     '{name} got the washing in before the southerly hit. Legend behaviour.',
     '{name} kept their dentist appointment. No fillings. Told everyone.',
     '{name} finally descaled the jug. The tea tastes better. Life is good.',
@@ -32,6 +34,26 @@ const MUNDANE = [
     '{name} watered the tomatoes all summer. Got four tomatoes. Worth it.',
     "{name} finally watched that show everyone's been on about. It was fine.",
     '{name} went home, hugged the dog, and fell asleep on the couch by nine.',
+    '{name} got a park right outside the dairy. Right outside.',
+    '{name} made a mean feed of fush and chups on Friday. Extra scoop, shared with the seagulls. Reluctantly.',
+    '{name} finally took the glass to the recycling. All seventeen bottles. In one trip.',
+    '{name} put the bins out the night before for once. Slept the sleep of the righteous.',
+    "{name} bumped into an old mate at Bunnings and talked for 45 minutes by the sausage sizzle.",
+    '{name} bought a Lotto ticket, a pie, and a Moro bar. The full servo experience.',
+    '{name} waved at the digger driver. The digger driver waved back. Perfect interaction.',
+    '{name} got the good trolley at the supermarket. All four wheels agreed on a direction.',
+    "{name} watched the sunset from the ute tray with a cuppa. Didn't even check the phone.",
+    '{name} finally found the other jandal. It was under the couch the whole time.',
+    '{name} took nana to the garden centre. She critiqued every rose. They stayed three hours.',
+    '{name} taught the kids to play knucklebones. Got absolutely thrashed.',
+    '{name} had a mean kōrero over the fence with the neighbour. Solved nothing. Loved it.',
+    '{name} entered the office tipping comp and came dead last. Again. Undeterred.',
+    "{name} de-fluffed the clothesline and it spins like new. Life's rich pageant.",
+    '{name} stopped for one of those roadside corn stalls. Honesty box. Paid double, took one.',
+    '{name} finally cleaned the ute out. Found three high-vis vests and a fossilised pie.',
+    '{name} made it home for the school pickup and got the big run-and-hug.',
+    '{name} watched the kids do a haka at assembly and pretended not to cry. Failed.',
+    '{name} spent Sunday at the beach. Got sunburnt in July somehow. Classic.',
 ];
 
 const FUNNY = [
@@ -55,6 +77,29 @@ const FUNNY = [
     "{name} knitted a jersey for the neighbour's alpaca. The alpaca wears it with dignity.",
     '{name} got a personalised plate that just says CHUR. Waiting list was two years.',
     '{name} claims to have invented the mince and cheese toastie. Cannot be disproven locally.',
+    "{name} won the town's giant-vegetable contest with a pumpkin they'd honestly forgotten about.",
+    '{name} started a petition to make the town build a giant fruit statue. The council said yes. Nobody can agree on the fruit.',
+    '{name} trained for the gumboot throw for a full year. Threw it backwards on the day. Crowd went wild.',
+    "{name} maintains the pavlova is ours and will produce documents at the mention of Australia.",
+    '{name} got banned from the school quiz night for being, quote, statistically improbable.',
+    "{name} runs a possum-trapping line and names every trap after an ex.",
+    '{name} tried to shear a sheep after watching one video. The sheep now has a mullet. It suits her.',
+    "{name} put their townhouse on wheels and moved it to the Coast. As you do.",
+    '{name} got stuck behind the same tractor for 40 minutes and now they exchange Christmas cards.',
+    "{name} taught the kea to say 'chur'. DOC has opinions. The kea does not care.",
+    '{name} entered the birdcall competition as the pūkeko. Placed second. To an actual pūkeko.',
+    "{name} organised the street's Matariki hāngī. Dug the pit in the wrong yard. New tradition now.",
+    '{name} bought a coffee cart and parks it wherever the surf report says. GPS coordinates on Instagram.',
+    "{name} whittles tiny jandals for garden gnomes. There's a waitlist.",
+    '{name} got their L&P bottle collection valued. Insurance premium went up. Worth it.',
+    "{name} referees under-8s rugby. Has never once seen a forward pass. Refuses to.",
+    '{name} adopted the school eeling trip as a personal ministry. Knows every eel by name.',
+    "{name} swears the takahē winked at them at the sanctuary. Has told everyone. Twice.",
+    '{name} attempted a Guinness record for most Pineapple Lumps eaten while doing the Tongariro Crossing. Unofficial. Glorious.',
+    "{name} runs the community Facebook page with the calm authority of a UN peacekeeper.",
+    '{name} built a flying fox for the grandkids. Council came to inspect it. Council had a go.',
+    "{name} found Shrek the sheep's spiritual successor in their back paddock. The wool jersey fits four people.",
+    '{name} does the tuatara voice for the sanctuary school tours. Kids believe the tuatara talks. Adults do too.',
 ];
 
 const AMAZING = [
@@ -76,6 +121,22 @@ const AMAZING = [
     '{name} fostered 31 kids over twenty years. All 31 came back for their 60th.',
     '{name} discovered a new species of wētā in their compost bin and gave it their nana\'s name.',
     '{name} set up the community patrol that halved burglaries in their suburb.',
+    '{name} crews the rescue helicopter now. Forty-one winch saves and counting.',
+    '{name} became a surf lifesaver and pulled a family of five out of a rip at Piha.',
+    '{name} rebuilt the marae kitchen after the flood, then stayed to cook for the workers. For a year.',
+    '{name} started the boot camp that got thirty dads off the couch and onto the trails.',
+    '{name} became the volunteer firefighter who talked the whole street out during the hill fire.',
+    '{name} taught te reo night classes in the school hall. The first class had four people. Now it needs the gym.',
+    "{name} fostered every 'difficult' dog the shelter had. There were no difficult dogs, it turns out.",
+    '{name} became a Coastguard skipper and answered a mayday on Christmas morning.',
+    '{name} funded the school lunches quietly for a decade. The principal only found out at the retirement do.',
+    '{name} led the replanting that brought the stream back. Kids catch kōura there now.',
+    '{name} drove the community van to every hospital appointment in the district for 15 years.',
+    '{name} became the riding-for-the-disabled coach whose kids win ribbons and keep them forever.',
+    '{name} organised the town rebuild after the slip. The new hall has their name on a chair. Just a chair. They insisted.',
+    '{name} donated bone marrow to a stranger in Invercargill. They meet every year at the halfway point. It is a pie shop.',
+    '{name} became the DOC ranger who carried a sick kākāpō chick four hours down a mountain inside their jacket.',
+    '{name} started the men\'s shed that quietly saved a dozen blokes\' lives. They built the town\'s best playground while they were at it.',
 ];
 
 export interface SavedLifeStory {
@@ -118,6 +179,21 @@ const RADIO_CHATTER = [
     "Someone's shouted the station chocolate fish. Morale is high.",
     'Speed camera van broke down. It’s all you tonight.',
     'Kererū flew into the station window. Bird is fine. Window is not.',
+    'Sausage sizzle outside Bunnings. Not a job. Just intel. Morale intel.',
+    "Lost tourist asking where the hobbits live. Third one today.",
+    "The mayor's cat is up the pōhutukawa again. Fire service says it's character building. For the cat.",
+    'Man in a dressing gown directing traffic on the main road. Honestly? Doing a great job.',
+    'Escaped pig at the farmers market. It has won. We are negotiating.',
+    'Kārearea keeps dive-bombing the speed camera. Nature finds a way.',
+    'Mobility scooter clocked doing walking pace in the school zone. Model citizen.',
+    "It's Raewyn's birthday at the station. There is cake. Repeat: there is cake.",
+    'Bunch of cows on the highway by the bridge. The farmer knows. The cows also know.',
+    'Someone returned a wallet with all the cash. Faith in humanity: restored until further notice.',
+    "Trampoline loose on the bypass after the gusts. If it beats you home, don't chase it.",
+    'The whitebaiters are disputing a spot again. Bring patience, not a ticket book.',
+    'School gala tomorrow. Expect one thousand cars and one very stressed principal.',
+    'Someone taped a chocolate fish to the station door with a thank-you note. Unclear who. Investigating slowly.',
+    "Report of 'suspicious singing' near the domain. It's the kapa haka group. Case closed. They're brilliant.",
 ];
 
 export function pickRadioChatter(): string {
@@ -134,14 +210,29 @@ const CAR_CHATTER = [
     'Couple mean pies in the back.', 'Just ducking to the dairy.',
     'Aw yeah, all good.', 'Bit fresh out, eh.', 'Chocka traffic today.',
     'Wheres the best chip shop, officer?', 'Running on petrol fumes and a dream.',
+    'Yeah nah yeah.', 'Nah yeah nah.', 'Keen as.', 'Bit of a mish, eh.',
+    'Kia ora!', 'Mōrena!', 'Chur chur.', 'Stoked, bro.', 'Sweet as, bro.',
+    'Off to footy prac.', "Cuzzy's 21st tonight.", 'Bunnings snag run.',
+    "She'll be right. Probably.", 'Giz a toot!', 'Eh bro.', 'Hard case, you.',
+    'L&P and a mince pie. Living the dream.', 'The boot is FULL of pinecones.',
+    'Late for smoko.', 'Whitebait season, baby!', 'Got a pav in the back seat. Precious cargo.',
+    'Dropping scones to nana.', 'Togs togs togs… undies.', 'Straight outta Timaru.',
+    'The dog booked the vet himself, mate.', 'Six kids, one van, pray for me.',
+    'Just done the big shop. Trolley had a mind of its own.',
+    'Following the surf report, officer.', 'On a pie pilgrimage.',
 ];
 const WARN_REACTIONS = [
     'Yeah nah, sorry officer.', 'My bad, chur.', "Won't happen again, eh.", 'All good, slowing down.',
     'Good as gold, officer.', 'Cheers for the heads up, aye.', 'Hard case. Sorted now.',
+    'Choice, thanks officer.', 'Sweet, my bad bro.', 'Aroha mai, officer.',
+    'Tā, officer. Slowing down.', 'True that. Easing off.', 'Ka pai, message received.',
 ];
 const ENFORCE_REACTIONS = [
     'Fair cop.', 'Aw, not even ow.', 'Shot, officer…', 'The missus is gonna hear about this.',
     'Stink one.', 'Busted, eh.', "Mum's gonna kill me.", 'Nek minnit… ticket.',
+    'There goes the pie money.', 'The group chat cannot know.', 'Aw, stink buzz.',
+    'My nan drives faster than this ticket says.', 'Fair enough, fair enough.',
+    "That's me told.", 'Cheaper than a crash, I suppose. Ka pai.',
 ];
 
 export const pickCarChatter = (): string => CAR_CHATTER[Math.floor(Math.random() * CAR_CHATTER.length)];
@@ -195,6 +286,36 @@ const INTERDICTIONS: Interdiction[] = [
         detail: 'Crowbar, gloves, and a hand-written list of addresses. Three burglaries that never happened.',
         missed: 'One drove on: a crowbar, gloves, and a list of addresses rode past in the back seat.',
     },
+    {
+        crime: 'Stolen beehives',
+        reveal: 'INTERDICTION: STOLEN HIVES RECOVERED',
+        detail: 'Forty stolen beehives on the trailer. Mānuka season. The apiarist cried. The bees were furious at everyone equally.',
+        missed: 'One drove on: forty hives of someone\'s livelihood, buzzing quietly under a tarp.',
+    },
+    {
+        crime: 'Poached pāua',
+        reveal: 'INTERDICTION: PĀUA HAUL SEIZED',
+        detail: 'Three hundred pāua in the chilly bins, ten times the limit. Fisheries sent their sternest email of the year.',
+        missed: 'One drove on: chilly bins riding low on the axles, and a reef stripped bare somewhere behind them.',
+    },
+    {
+        crime: 'Kiwifruit heist',
+        reveal: 'INTERDICTION: STOLEN CROP RECOVERED',
+        detail: 'A full consignment of stolen gold kiwifruit bound for the port. The orchardist shouted the station pies for a month.',
+        missed: 'One drove on: a season\'s stolen kiwifruit, export-bound under someone else\'s name.',
+    },
+    {
+        crime: 'Copper wire theft',
+        reveal: 'INTERDICTION: STOLEN COPPER FOUND',
+        detail: 'A boot full of stripped copper from the rail corridor. That explains the weekend signal faults.',
+        missed: 'One drove on: the boot full of copper that shut the trains down again a week later.',
+    },
+    {
+        crime: 'Ram-raid kit',
+        reveal: 'INTERDICTION: RAM-RAID PREVENTED',
+        detail: 'Stolen plates, sledgehammers, and a shopping list of dairies. Four shopkeepers slept fine and never knew why.',
+        missed: 'One drove on: stolen plates and sledgehammers, and somewhere a dairy owner about to have the worst week.',
+    },
 ];
 
 export const pickInterdiction = (): Interdiction =>
@@ -211,6 +332,13 @@ const BRIEFING_FACTS = [
     'High-visibility presence protects roads you never drive. Word travels faster than you do.',
     'A warning delivered well can change behaviour as much as a ticket. Pick the right tool.',
     'Deterrence decays. A district patrolled yesterday is not a district patrolled today.',
+    'A wave to a kid in a car seat is road-safety marketing that lasts twenty years.',
+    'The best shift is the boring one. Boring means everyone got home.',
+    'Drivers slow down for the patrol car they saw an hour ago. Memory is a speed camera.',
+    'Parked visibly at a school crossing beats parked invisibly anywhere.',
+    'You cannot ticket your way to a safe district. You can be seen into one.',
+    'Routine stops find un-routine things. That is why they matter.',
+    'The offender you never met, deterred by the lights you left on: still a win.',
 ];
 
 export const pickBriefingFact = (): string =>

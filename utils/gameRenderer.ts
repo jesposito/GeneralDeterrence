@@ -29,7 +29,8 @@ interface Decoration {
   type: 'tree' | 'house' | 'building' | 'warehouse'
       | 'cabbageTree' | 'ponga' | 'pohutukawa' | 'flax'
       | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui'
-      | 'steamVent' | 'boulder' | 'vineyard';
+      | 'steamVent' | 'boulder' | 'vineyard'
+      | 'clothesline' | 'trampoline' | 'rugbyPosts';
   x: number;
   y: number;
   width?: number;
@@ -362,6 +363,40 @@ function buildStaticMap(): HTMLCanvasElement {
         }
         sctx.stroke();
         sctx.restore();
+        break;
+      }
+      case 'clothesline': { // the rotary hills hoist, from above: rim + crossed arms
+        sctx.save();
+        sctx.translate(d.x, d.y);
+        sctx.rotate((d.rot! * Math.PI) / 180);
+        sctx.beginPath();
+        sctx.rect(-9, -9, 18, 18);
+        sctx.moveTo(-9, -9); sctx.lineTo(9, 9);
+        sctx.moveTo(9, -9); sctx.lineTo(-9, 9);
+        sctx.stroke();
+        // a couple of pegged tea towels
+        sctx.fillStyle = 'rgba(255,255,255,0.35)';
+        sctx.fillRect(-8, -9, 5, 4);
+        sctx.fillRect(3, 7, 5, 4);
+        sctx.restore();
+        break;
+      }
+      case 'trampoline': { // backyard tramp from above: dark mat, sprung rim
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 11, 0, Math.PI * 2);
+        sctx.stroke();
+        sctx.fillStyle = 'rgba(0,0,0,0.45)';
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 8, 0, Math.PI * 2);
+        sctx.fill();
+        break;
+      }
+      case 'rugbyPosts': { // the park H, both ends implied by one set
+        sctx.beginPath();
+        sctx.moveTo(d.x - 7, d.y + 12); sctx.lineTo(d.x - 7, d.y - 14);
+        sctx.moveTo(d.x + 7, d.y + 12); sctx.lineTo(d.x + 7, d.y - 14);
+        sctx.moveTo(d.x - 7, d.y); sctx.lineTo(d.x + 7, d.y);
+        sctx.stroke();
         break;
       }
     }
