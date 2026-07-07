@@ -72,3 +72,40 @@ committed portable E2E — candidate for batch 9.) Run: `node <scratchpad>/smoke
 - **Siren energy (gd-0wi.11)** now drains the shared boost pool (`PLAYER_SIREN_DRAIN_RATE`) and
   auto-disables when drained or past `PLAYER_SIREN_MAX_DURATION` — constants that already
   existed but were never applied.
+
+## Batch 9 — medium/low tail (the audit appendix)
+
+The 90 medium/low findings weren't filed as beads issues; worked directly from the audit
+appendix, grouped by file, in ~a dozen small committed sub-batches (9a…). Highlights:
+
+- **Dead-code purge**: 10 unused React-DOM-per-entity components (−706 LOC, superseded by the
+  canvas renderer) + dead tuning constants.
+- **A11y** (each behind an accessibility-lead review): GameOver labels/heading/focus/announcement;
+  App per-screen title + route-change focus; MainMenu contrast + h1-focus + `<main>`; Leaderboard
+  markup; MuteToggle drone bug + label; TouchControls floating-origin joystick + dead-zone + tap
+  pointer-cancel (WCAG 2.5.2); Minimap aria-hidden; QuickTimeEvent reduced-motion assist path;
+  canvas role=img + aria-live game-state region; CRT flicker 6.7Hz→0.33Hz.
+- **Correctness/perf**: HUD vigilance-flash latch + score-count-up interval churn; boost
+  direction-gate (touch); silent incorrect-check feedback; onGameOver idempotency; geometry
+  alloc; audio limiter; server email index; Fly healthcheck.
+- **PWA icons**: rasterized `icon.svg` → 192/512/maskable/180 PNGs (headless-chrome
+  `--screenshot`), manifest + apple-touch-icon updated.
+- **Balance** (per audit, reversible, `ponytail:tune`): minigame-fail 7s→3s, presence rate 10→25.
+
+### Deliberately NOT done (needs a human, not a blind edit)
+
+Residual audit items — each is either unverifiable headlessly or genuinely the user's call, so
+documented here rather than shipped as a false "done":
+
+- **Subjective game-feel** — difficulty scaling (PrecisionSlider/QTE), hit-stop/juice, a 90s-shift
+  climax, Enforce-vs-Warn micro-balance for Restraints/Distractions, wiring the unused
+  MatchingGame "referral" pillar. All change how the game *feels*; can't be validated without
+  playtesting (the reality-check rule forbids claiming these "done" from a headless build).
+- **Features beyond the findings** — key rebinding, gamepad support, SPACE input buffering.
+- **RotateDevicePrompt** — orientation-lock + re-show + live-region shipped; moving it across all
+  screens + pausing the shift timer scoped out (review flagged background-`inert` + cross-Game
+  coupling as risky for mobile-only polish; the lock makes portrait-in-play rare).
+- **Entity/particle pool GC** — per-frame `.filter()` realloc; deferred to the gd-0wi.2 sim
+  extraction (needs the movement-math tests as a guard before a hot-loop rewrite).
+- **gd-0wi.2** — full god-component teardown (pure `sim/` + `useGameLoop` + `useInput`). Structural
+  wins landed; the full rewrite needs interactive QA.
