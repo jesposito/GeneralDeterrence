@@ -108,6 +108,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTimeRef = useRef<number>(0);
+  const hitStopUntilRef = useRef(0); // brief sim freeze (hit-stop) on the biggest moments
   const lastHudUpdateRef = useRef<number>(0);
 
   // Refs for all frequently updated game data to avoid re-renders
@@ -748,6 +749,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
                     audio.thud();
                     cameraRef.current.shake = 10;
+                    hitStopUntilRef.current = now + 110; // hit-stop: freeze the sim for a beat on the biggest failure
                     setGameMessage('LIFE LOST');
                     if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
                     gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2000);
@@ -1001,7 +1003,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     // Delta time calculation
     if (lastTimeRef.current === 0) lastTimeRef.current = now;
     const rawDt = (now - lastTimeRef.current) / 1000;
-    const dt = Math.min(rawDt, 0.1); // Cap at 100ms to avoid huge jumps
+    // Hit-stop: freeze sim motion for a beat on high-impact moments (dt=0) while render + camera
+    // shake keep running. lastTimeRef stays current so dt resumes cleanly (no post-freeze jump).
+    const dt = now < hitStopUntilRef.current ? 0 : Math.min(rawDt, 0.1); // Cap at 100ms to avoid huge jumps
     lastTimeRef.current = now;
 
     timeLeftRef.current -= dt;
