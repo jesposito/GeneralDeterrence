@@ -103,7 +103,7 @@ export const MAX_DETERRENCE_BLOBS_PER_OFFENDER = 5;
 // RIDS
 export const RIDS_SPAWN_INTERVAL = 500; // Faster spawn interval
 export const RIDS_TIME_PENALTY_INCORRECT_CHECK = 3; // seconds
-export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 7; // seconds
+export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 3; // was 7 (per audit: a 7s fail skewed choice toward the safe Warn). ponytail: tune to taste after playtest
 
 export const RIDS_SPAWN_CHANCE_BY_ROAD_TYPE: Record<RoadType, Record<RIDSType, number>> = {
     Motorway:   { Speed: 0.8, Distractions: 0.2, Impairment: 0, Restraints: 0 },
@@ -124,7 +124,7 @@ export const BASE_ENFORCEMENT_POINTS: { [key in RIDSType]: number } = {
 export const RURAL_BONUS = 100;
 export const REFERRAL_BONUS = 200;
 export const ENFORCEMENT_BONUS_POINTS = 150;
-export const DETERRENCE_SCORE_RATE = 10; // Points per second for 100% avg deterrence
+export const DETERRENCE_SCORE_RATE = 25; // was 10 — per audit, passive presence (the core teaching activity) had the weakest reward signal; pairs with the LAR nerf. ponytail: tune to taste after playtest
 export const FINAL_DETERRENCE_SCORE_MULTIPLIER = 50; // Points per percentage point over/under 50
 export const DETERRENCE_MULTIPLIER_MIN = 1.0;
 export const DETERRENCE_MULTIPLIER_MAX = 1.5;
