@@ -877,7 +877,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
         const auraRadius = CONSTANTS.PLAYER_AURA_RADIUS + currentVigilanceBonus;
 
-        retainInPlace(deterrenceBlobsRef.current, blob => {
+        retainInPlace(deterrenceBlobsRef.current, (blob: DeterrenceBlobType) => {
             if (now - blob.spawnTime > CONSTANTS.DETERRENCE_BLOB_LIFESPAN) return false;
             if (getDistanceSq(playerPos, blob.pos) < auraRadius ** 2) {
                 const dist = getDistance(playerPos, blob.pos);
@@ -896,15 +896,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             } return true;
         });
         
-        retainInPlace(collectionEffectsRef.current, e => now - e.spawnTime < 400);
-        retainInPlace(floatingScoreTextsRef.current, f => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
+        retainInPlace(collectionEffectsRef.current, (e: CollectionEffectType) => now - e.spawnTime < 400);
+        retainInPlace(floatingScoreTextsRef.current, (f: FloatingScoreTextType) => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
         // Sparks: advance position in place (was `.map(s => ({...s, pos:{...}}))` — a fresh object per
         // spark per frame) then compact by age. No per-frame allocation.
         for (const s of sparksRef.current) { s.pos.x += s.vel.x * dtScale; s.pos.y += s.vel.y * dtScale; }
-        retainInPlace(sparksRef.current, s => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
-        retainInPlace(skidMarksRef.current, skid => now - skid.spawnTime < CONSTANTS.SKID_MARK_LIFESPAN);
-        retainInPlace(tireSmokeRef.current, smoke => now - smoke.spawnTime < CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN);
-        retainInPlace(explosionsRef.current, exp => now - exp.spawnTime < CONSTANTS.EXPLOSION_LIFESPAN);
+        retainInPlace(sparksRef.current, (s: SparkParticle) => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
+        retainInPlace(skidMarksRef.current, (skid: SkidMark) => now - skid.spawnTime < CONSTANTS.SKID_MARK_LIFESPAN);
+        retainInPlace(tireSmokeRef.current, (smoke: TireSmokeParticle) => now - smoke.spawnTime < CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN);
+        retainInPlace(explosionsRef.current, (exp: ExplosionType) => now - exp.spawnTime < CONSTANTS.EXPLOSION_LIFESPAN);
     };
 
     const updatePathfinding = (now: number) => {
