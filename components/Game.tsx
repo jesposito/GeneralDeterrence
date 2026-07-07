@@ -5,6 +5,7 @@ import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
 import useKeyPress, { normalizeKey } from '../hooks/useKeyPress';
 import { loadBindings, type Bindings } from '../utils/keybindings';
+import { retainInPlace } from '../utils/pool';
 import { computeScoreBreakdown } from '../utils/scoring';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
@@ -876,7 +877,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
         const auraRadius = CONSTANTS.PLAYER_AURA_RADIUS + currentVigilanceBonus;
 
-        deterrenceBlobsRef.current = deterrenceBlobsRef.current.filter(blob => {
+        retainInPlace(deterrenceBlobsRef.current, blob => {
             if (now - blob.spawnTime > CONSTANTS.DETERRENCE_BLOB_LIFESPAN) return false;
             if (getDistanceSq(playerPos, blob.pos) < auraRadius ** 2) {
                 const dist = getDistance(playerPos, blob.pos);
@@ -895,12 +896,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             } return true;
         });
         
-        collectionEffectsRef.current = collectionEffectsRef.current.filter(e => now - e.spawnTime < 400);
-        floatingScoreTextsRef.current = floatingScoreTextsRef.current.filter(f => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
-        sparksRef.current = sparksRef.current.map(s => ({ ...s, pos: { x: s.pos.x + s.vel.x * dtScale, y: s.pos.y + s.vel.y * dtScale }})).filter(s => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
-        skidMarksRef.current = skidMarksRef.current.filter(skid => now - skid.spawnTime < CONSTANTS.SKID_MARK_LIFESPAN);
-        tireSmokeRef.current = tireSmokeRef.current.filter(smoke => now - smoke.spawnTime < CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN);
-        explosionsRef.current = explosionsRef.current.filter(exp => now - exp.spawnTime < CONSTANTS.EXPLOSION_LIFESPAN);
+        retainInPlace(collectionEffectsRef.current, e => now - e.spawnTime < 400);
+        retainInPlace(floatingScoreTextsRef.current, f => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
+        // Sparks: advance position in place (was `.map(s => ({...s, pos:{...}}))` — a fresh object per
+        // spark per frame) then compact by age. No per-frame allocation.
+        for (const s of sparksRef.current) { s.pos.x += s.vel.x * dtScale; s.pos.y += s.vel.y * dtScale; }
+        retainInPlace(sparksRef.current, s => now - s.spawnTime < CONSTANTS.SPARK_LIFESPAN);
+        retainInPlace(skidMarksRef.current, skid => now - skid.spawnTime < CONSTANTS.SKID_MARK_LIFESPAN);
+        retainInPlace(tireSmokeRef.current, smoke => now - smoke.spawnTime < CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN);
+        retainInPlace(explosionsRef.current, exp => now - exp.spawnTime < CONSTANTS.EXPLOSION_LIFESPAN);
     };
 
     const updatePathfinding = (now: number) => {
