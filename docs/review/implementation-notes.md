@@ -97,11 +97,15 @@ appendix, grouped by file, in ~a dozen small committed sub-batches (9a…). High
 Residual audit items — each is either unverifiable headlessly or genuinely the user's call, so
 documented here rather than shipped as a false "done":
 
-- **Subjective game-feel** — difficulty scaling (PrecisionSlider/QTE), hit-stop/juice, a 90s-shift
-  climax, Enforce-vs-Warn micro-balance for Restraints/Distractions, wiring the unused
-  MatchingGame "referral" pillar. All change how the game *feels*; can't be validated without
-  playtesting (the reality-check rule forbids claiming these "done" from a headless build).
-- **Features beyond the findings** — key rebinding, gamepad support, SPACE input buffering.
+- **Subjective game-feel** — SHIPPED (feel-unverified, `ponytail:tune`): difficulty scaling
+  (PrecisionSlider/QTE by shift progress), the 90s climax ramp, fail-penalty + presence-rate
+  balance, patrol-post/neglect + compass teaching. STILL OPEN: **hit-stop/juice** (skips sim frames
+  — a loop-timing change I can't verify releases cleanly from a headless build; needs interactive
+  QA); **Enforce-vs-Warn micro-balance** (partly addressed — Enforce now requires winning the
+  concept mini-game, so real risk/reward exists); **MatchingGame "referral" pillar** (wiring it is a
+  *new gameplay path* — a design decision, not a bug fix).
+- **Features beyond the findings** — key rebinding (needs a settings UI + persistence), gamepad
+  support (can't verify a mapping without hardware), SPACE input buffering.
 - **RotateDevicePrompt** — orientation-lock + re-show + live-region shipped; moving it across all
   screens + pausing the shift timer scoped out (review flagged background-`inert` + cross-Game
   coupling as risky for mobile-only polish; the lock makes portrait-in-play rare).
