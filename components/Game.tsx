@@ -406,7 +406,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
         if (player.isBoosting) {
             player.boostCharge = Math.max(0, player.boostCharge - CONSTANTS.DT_BOOST_DRAIN_PER_SEC * dt);
-        } else if (!player.isSirenActive) {
+        } else if (player.isSirenActive) {
+            // gd-0wi.11: siren now costs energy (shares the boost pool) and auto-disables when
+            // drained or past its max duration — previously it was free + unlimited.
+            player.boostCharge = Math.max(0, player.boostCharge - CONSTANTS.DT_SIREN_DRAIN_PER_SEC * dt);
+            const sirenElapsed = sirenStartTimeRef.current ? now - sirenStartTimeRef.current : 0;
+            if (player.boostCharge <= 0 || sirenElapsed > CONSTANTS.PLAYER_SIREN_MAX_DURATION) {
+                player.isSirenActive = false;
+                sirenStartTimeRef.current = null;
+                audio.sirenStop();
+            }
+        } else {
             player.boostCharge = Math.min(CONSTANTS.PLAYER_BOOST_MAX_CHARGE, player.boostCharge + CONSTANTS.DT_BOOST_RECHARGE_PER_SEC * dt);
         }
         const currentSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
@@ -883,47 +893,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     };
 
   const handleEnforce = useCallback(() => {
-    if (activeRids && (activeRids.ridsType === 'Restraints' || activeRids.ridsType === 'Distractions')) {
-      audio.zap();
-      const district = districtsRef.current.find(d => d.id === activeRids.car.district);
-      const deterrence = district?.deterrence ?? 50;
-      const isInfringement = activeRids.car.isLifeAtRisk || (Math.random() * 100) > deterrence;
-
-      if (isInfringement) {
-        const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
-        let scoreToAdd = CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus;
-        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
-        scoreRef.current.enforcement += scoreToAdd;
-        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd} INFRINGEMENT`, spawnTime: Date.now() });
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
-        if (district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST);
-        enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Enforce' });
-        cameraRef.current.shake = 10;
-      } else {
-        let scoreToAdd = CONSTANTS.WARN_SCORE_POINTS;
-        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
-        scoreRef.current.enforcement += scoreToAdd;
-        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd} WARNING`, spawnTime: Date.now() });
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
-        if (district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.WARN_DETERRENCE_BOOST);
-        enforcementActionsRef.current.push({ pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Warn' });
-      }
-
-      civiliansRef.current = civiliansRef.current.filter(c => c.id !== activeRids.car.id);
-      if (activeRids.car.isLifeAtRisk) scoreRef.current.livesSaved++;
-      if (dispatchedCallRef.current?.targetVehicleId === activeRids.car.id) {
-        scoreRef.current.enforcement += CONSTANTS.DISPATCH_CALL_SCORE_BONUS;
-        dispatchedCallRef.current = null;
-      }
-      setActiveRids(null);
-      setTargetedCarId(null);
-      setGameState('Playing');
-    } else {
-      setGameState('MiniGame');
-    }
-  }, [activeRids]);
+    // gd-0wi.10: every enforcement runs a mini-game (Impairment=breath test, Speed=slider,
+    // Restraints/Distractions=deterrence-concept check) — this is what makes the retooled
+    // concept mini-game reachable. Scoring, LAR and dispatch handling all live in
+    // onMiniGameComplete. Warn stays the quick, low-reward inline path.
+    setGameState('MiniGame');
+  }, []);
   
   const handleWarn = useCallback(() => {
       if (activeRids) {

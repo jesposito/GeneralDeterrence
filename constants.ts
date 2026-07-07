@@ -64,8 +64,11 @@ export const EXPLOSION_MAX_RADIUS = 150; // pixels
 // "Lives at Risk" System
 export const LIFE_AT_RISK_CHANCE = 0.25; // Chance for a high-risk RIDS to be "Life at Risk"
 export const LIFE_AT_RISK_TIMER_SECONDS = 15; // How long player has to intervene
-export const LIVES_SAVED_SCORE_BONUS = 5000; // Increased from 2500
-export const LIVES_LOST_PENALTY = 3000; // New penalty for lives lost
+// Rebalanced (gd-0wi.12): a single LAR save was 5000 (~10-16 enforcements) and dominated
+// scoring, rewarding reactive LAR-chasing over the general-deterrence patrol the game teaches.
+// Halved so saves matter but sustained deterrence + enforcement stay the main economy.
+export const LIVES_SAVED_SCORE_BONUS = 2500;
+export const LIVES_LOST_PENALTY = 2500;
 export const LIFE_AT_RISK_DISTRICT_MODIFIER: Record<DistrictName, number> = {
     'Karori North': 1.5,   // Rural: 50% higher chance
     'Karori West': 1.0,    // Suburban: Baseline
