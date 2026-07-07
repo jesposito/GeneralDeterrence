@@ -767,16 +767,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             c.pos.y += segmentDir.y * c.speed * dtScale;
             if (c.ridsType === 'Impairment') {
                 c.swerveAngle = ((c.swerveAngle || 0) + 0.04 * dtScale) % (Math.PI * 2);
-                const perpVec = { x: -segmentDir.y, y: segmentDir.x };
-                c.pos.x += perpVec.x * Math.sin(c.swerveAngle) * 2 * dtScale;
-                c.pos.y += perpVec.y * Math.sin(c.swerveAngle) * 2 * dtScale;
+                // gd-0wi.9: inline the perpendicular (no per-car perpVec allocation).
+                const swerve = Math.sin(c.swerveAngle) * 2 * dtScale;
+                c.pos.x += -segmentDir.y * swerve;
+                c.pos.y += segmentDir.x * swerve;
             }
             c.angle = Math.atan2(segmentDir.y, segmentDir.x) * (180 / Math.PI) + 90;
             c.vel.x = segmentDir.x * c.speed; c.vel.y = segmentDir.y * c.speed;
-            const carVec = { x: c.pos.x - startNode.pos.x, y: c.pos.y - startNode.pos.y };
-            const distAlongSegment = carVec.x * segmentDir.x + carVec.y * segmentDir.y;
+            // gd-0wi.9: inline the dot product (no per-car carVec allocation).
+            const distAlongSegment = (c.pos.x - startNode.pos.x) * segmentDir.x + (c.pos.y - startNode.pos.y) * segmentDir.y;
             if (distAlongSegment >= segmentLen) {
-                c.pos = { ...targetPos };
+                c.pos.x = targetPos.x; c.pos.y = targetPos.y; // mutate in place (no allocation)
                 c.pathIndex++;
             }
             const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
