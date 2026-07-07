@@ -99,13 +99,14 @@ documented here rather than shipped as a false "done":
 
 - **Subjective game-feel** — SHIPPED (feel-unverified, `ponytail:tune`): difficulty scaling
   (PrecisionSlider/QTE by shift progress), the 90s climax ramp, fail-penalty + presence-rate
-  balance, patrol-post/neglect + compass teaching. STILL OPEN: **hit-stop/juice** (skips sim frames
-  — a loop-timing change I can't verify releases cleanly from a headless build; needs interactive
-  QA); **Enforce-vs-Warn micro-balance** (partly addressed — Enforce now requires winning the
-  concept mini-game, so real risk/reward exists); **MatchingGame "referral" pillar** (wiring it is a
-  *new gameplay path* — a design decision, not a bug fix).
+  balance, patrol-post/neglect + compass teaching, **hit-stop on life-lost** (dt=0 freeze — safe,
+  no sim path divides by dt), **RIDS decision timer** (auto-resolves to the safe Warn), the
+  Interaction/Intervention terminology fix. STILL OPEN: **Enforce-vs-Warn micro-balance** (largely
+  addressed — Enforce now requires winning the concept mini-game, so real risk/reward exists);
+  **MatchingGame "referral" pillar** (wiring it in is a *new gameplay path* — a design decision).
 - **Features beyond the findings** — key rebinding (needs a settings UI + persistence), gamepad
-  support (can't verify a mapping without hardware), SPACE input buffering.
+  support (can't verify a mapping without hardware), SPACE input buffering (marginal — the aura is
+  generous; coyote-time needs continuous proximity eval).
 - **RotateDevicePrompt** — orientation-lock + re-show + live-region shipped; moving it across all
   screens + pausing the shift timer scoped out (review flagged background-`inert` + cross-Game
   coupling as risky for mobile-only polish; the lock makes portrait-in-play rare).
