@@ -18,6 +18,12 @@ docker run -d --name general-deterrence --restart unless-stopped \
 ```
 (`docker-compose.yml` is still valid for anyone on Compose v2 / `docker compose`.)
 
+**Headless gameplay smoke** (verifies the game actually loads + runs, not just tsc/build):
+a Playwright script at `scratchpad/smoke.js` launches system google-chrome, loads localhost:3000,
+clicks Start Shift → Start Patrol, drives with keys, and asserts **zero console errors** + canvas
+renders. Passes for batches 1–6a. (Uses machine-local chrome + the npx-cached playwright; not yet a
+committed portable E2E — candidate for batch 9.) Run: `node <scratchpad>/smoke.js`.
+
 ## Batch 6 — architecture
 
 - **Dispatched-Call removal (gd-0wi.3)** stripped the dead subsystem from the game loop
