@@ -110,8 +110,6 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
     const arcPathRef = useRef<SVGPathElement>(null);
     const [arcLength, setArcLength] = useState(0);
 
-    const radius = 50;
-    const circumference = Math.PI * radius; // Half circumference for a 180-degree arc
     const maxKmh = 160;
     const speedKmh = Math.round((speed / maxSpeed) * maxKmh);
 
@@ -141,8 +139,8 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
                     stroke={isBoosting ? "url(#boostGradient)" : "url(#normalGradient)"}
                     strokeWidth="10"
                     strokeLinecap="round"
-                    strokeDasharray={arcLength}
-                    strokeDashoffset={strokeDashoffset}
+                    strokeDasharray={arcLength || 1000}
+                    strokeDashoffset={arcLength ? strokeDashoffset : 9999}
                     style={{ transition: 'stroke-dashoffset 0.2s ease-out' }}
                 />
                 <defs>

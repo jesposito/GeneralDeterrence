@@ -36,7 +36,7 @@
     background-size: 100% 4px, 6px 100%;
     z-index: 100;
     pointer-events: none;
-    animation: flicker 0.15s infinite;
+    animation: flicker 3s infinite; /* was 0.15s (~6.7Hz) — slowed well below 3Hz for WCAG 2.3.1 */
   }
 
   @keyframes flicker {

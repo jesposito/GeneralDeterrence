@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import * as audio from '../utils/audio';
 
 interface TutorialProps {
   onComplete: () => void;
@@ -74,6 +75,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                 <button
                     ref={buttonRef}
                     onClick={() => {
+                        // Unlock/resume audio on this guaranteed last gesture before gameplay (gd audit).
+                        audio.unlockAudio();
                         // Best-effort fullscreen request on user gesture. iOS Safari support is
                         // variable; if unsupported, the .catch() swallows it and the game still
                         // launches normally inside the browser chrome.
