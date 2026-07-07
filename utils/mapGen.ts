@@ -4,6 +4,7 @@ import {
     RoadNode, RoadSegment, DistrictDefinition,
 } from './mapData';
 import { mulberry32, pick, range, type Rng } from './rng';
+import { rollWeather, currentWeatherRef, type Season } from './weather';
 
 // Procedural map generator. Builds a connected road network + district layout in a
 // canonical frame (motorway east, rural north — the shape of the original hand map),
@@ -350,10 +351,23 @@ function commit(built: Built, theme: Theme): void {
  * Consumers (geometry caches, renderer static-map cache, per-mount nodeMaps) pick the new
  * map up via mapVersionRef. Falls back to the hand-authored map if validation fails.
  */
+// Season nudges the look: winter leans cold themes, summer leans warm/neon.
+const SEASON_THEME_BIAS: Record<Season, string[]> = {
+    summer: ['Neon Night', 'Ember Line'],
+    autumn: ['Dusk Patrol', 'Ember Line'],
+    winter: ['Frostbeat', 'Rainshift'],
+    spring: ['Aurora Watch', 'Rainshift'],
+};
+
 export function regenerateMap(seed: number): GeneratedMapMeta {
     const rng = mulberry32(seed);
     const region = pick(rng, REGIONS);
-    const theme = THEMES.find(t => t.name === pick(rng, region.themeNames)) ?? THEMES[0];
+    const weather = rollWeather(rng);
+    currentWeatherRef.current = weather;
+    // Theme: intersect the region's palette with the season's mood when possible.
+    const seasonal = region.themeNames.filter(n => SEASON_THEME_BIAS[weather.season].includes(n));
+    const themeName = pick(rng, seasonal.length ? seasonal : region.themeNames);
+    const theme = THEMES.find(t => t.name === themeName) ?? THEMES[0];
     const built = buildCanonical(rng);
     const flipX = rng() < 0.5;
     const flipY = rng() < 0.5;
@@ -374,8 +388,8 @@ export function regenerateMap(seed: number): GeneratedMapMeta {
 
     currentRegionRef.current = region;
     commit(built, theme);
-    // Label the map by its town centre + regional character ("Te Aro District · Geothermal").
+    // Label: town centre + regional character + conditions ("Te Aro District · Geothermal · Rain, Winter").
     const centre = built.districts.find(d => d.id === 'Karori Central');
-    const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District · ${region.name}`;
+    const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District · ${region.name} · ${weather.label}`;
     return { seed, themeName: theme.name, layoutName };
 }

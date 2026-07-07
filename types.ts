@@ -28,12 +28,16 @@ export interface District {
   deterrence: number;
 }
 
+export type VehicleType = 'car' | 'ute' | 'truck' | 'bus' | 'bike' | 'camper';
+
 export interface Civilian extends Vehicle {
   ridsType: RIDSType | null;
   /** The once-per-shift interdiction car: an Enforce on it uncovers a major crime. */
   specialCrime?: { crime: string; reveal: string; detail: string; missed: string };
   /** Yesterday's daily #1, patrolling tonight's map as a friendly unit. Never an offender. */
   isChampion?: boolean;
+  /** Traffic variety: size/speed/render vary; campers wander a little (tourists, eh). */
+  vehicleType?: VehicleType;
   zone: RoadZone;
   district: DistrictName;
   path: string[];

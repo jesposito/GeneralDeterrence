@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
+import { Player, Civilian, RIDSType, VehicleType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
+import { currentWeatherRef, weatherRadioLine } from '../utils/weather';
 import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
@@ -35,6 +36,26 @@ const HUD_UPDATE_INTERVAL_MS = 100;
 const buzz = (pattern: number | number[]) => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern);
 };
+
+// Vehicle mix per district archetype (weights) + per-type speed multipliers.
+const VEHICLE_SPEED_MULT: Record<VehicleType, number> = {
+    car: 1, ute: 1, truck: 0.8, bus: 0.75, bike: 1.25, camper: 0.7,
+};
+const VEHICLE_WEIGHTS: Record<DistrictName, [VehicleType, number][]> = {
+    'Karori North': [['ute', 4], ['car', 3], ['camper', 2], ['bike', 1], ['truck', 1]],
+    'Karori West': [['car', 6], ['ute', 2], ['bus', 1], ['bike', 1]],
+    'Karori Central': [['car', 6], ['bus', 2], ['bike', 1], ['ute', 1]],
+    'Karori East': [['car', 4], ['truck', 3], ['camper', 1], ['ute', 1], ['bus', 1]],
+    'Karori': [['camper', 3], ['car', 3], ['ute', 1], ['bike', 1]],
+};
+function pickVehicleType(district: DistrictName): VehicleType {
+    const weights = VEHICLE_WEIGHTS[district] || VEHICLE_WEIGHTS['Karori West'];
+    let total = 0;
+    for (const [, w] of weights) total += w;
+    let r = Math.random() * total;
+    for (const [t, w] of weights) { r -= w; if (r <= 0) return t; }
+    return 'car';
+}
 
 const RidsChoiceModal: React.FC<{
     onEnforce: () => void;
@@ -233,7 +254,11 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   // PATROL_PATH_SAMPLE_RATE frames ≈ 0.5s), lerped between samples.
   const ghostElapsedRef = useRef(0);
   const ghostPosRef = useRef<{ x: number; y: number; angle: number } | null>(null);
-  const championIntroPendingRef = useRef(!!championName);
+  // Queued dispatch lines: weather intro first (if any), then the champion intro.
+  const pendingRadioRef = useRef<string[]>([
+      ...(weatherRadioLine(currentWeatherRef.current) ? [weatherRadioLine(currentWeatherRef.current)!] : []),
+      ...(championName ? [`Insp. ${championName} is out with you tonight. Yesterday's top patrol.`] : []),
+  ]);
   const [radioLine, setRadioLine] = useState<string | null>(null); // 📻 dispatch banner
   const radioTimerRef = useRef<number | null>(null);
   const nextRadioAtRef = useRef(0);
@@ -338,7 +363,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         // First dispatch line = the briefing fact: readable for a full 6s + announced to AT
         // (the countdown overlay only showed it ~4s, and never announced it).
         playRadio(briefingFact);
-        nextRadioAtRef.current = Date.now() + 25000 + Math.random() * 15000;
+        // Queued intros (weather/champion) arrive sooner than ambient chatter would.
+        nextRadioAtRef.current = Date.now() + (pendingRadioRef.current.length ? 9000 : 25000 + Math.random() * 15000);
       }, 4000),
     ];
     return () => timeouts.forEach(clearTimeout);
@@ -533,12 +559,20 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
 
     const dx = nodeMap.get(path[1])!.pos.x - spawnPointNode.pos.x;
     const dy = nodeMap.get(path[1])!.pos.y - spawnPointNode.pos.y;
-    
+
+    // Traffic variety: district-flavoured vehicle mix. Trucks haul the motorway,
+    // utes run rural, buses work the centre, campers wander the bays (tourists, eh).
+    const vehicleType = pickVehicleType(districtName);
+    const typeSpeed = VEHICLE_SPEED_MULT[vehicleType];
+    // Weather is fixed for the whole shift, so bake its traffic slowdown in at spawn.
+    const weatherSpeed = currentWeatherRef.current.civilianSpeed;
+
     return {
-      id: Math.random(), pos: { ...spawnPointNode.pos }, angle: Math.atan2(dy, dx) * (180 / Math.PI) + 90, 
+      id: Math.random(), pos: { ...spawnPointNode.pos }, angle: Math.atan2(dy, dx) * (180 / Math.PI) + 90,
       speed: 0, vel: { x: 0, y: 0 }, ridsType: null, zone: district.name.includes('Rural') ? 'Rural' : 'Suburban',
       district: districtName, path, pathIndex: 1, spawnTime: Date.now(), isDeterred: false,
-      baseSpeed: CONSTANTS.CIVILIAN_BASE_SPEED[districtName] + (Math.random() - 0.5) * CONSTANTS.CIVILIAN_SPEED_VARIATION, 
+      baseSpeed: (CONSTANTS.CIVILIAN_BASE_SPEED[districtName] + (Math.random() - 0.5) * CONSTANTS.CIVILIAN_SPEED_VARIATION) * typeSpeed * weatherSpeed,
+      vehicleType,
       lastBlobSpawnTime: 0, deterrenceBlobsRemaining: 0,
       isLifeAtRisk: false, lifeAtRiskTimer: 0,
       swerveAngle: 0, speedFluctuationTimer: 0, speedFluctuationTarget: 1,
@@ -700,8 +734,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         const forwardVelocity = { x: forwardVec.x * dotForward, y: forwardVec.y * dotForward };
         const lateralVelocity = { x: player.vel.x - forwardVelocity.x, y: player.vel.y - forwardVelocity.y };
         // Apply friction using power formula for frame-rate independence
-        const fwdFriction = Math.pow(CONSTANTS.PLAYER_FORWARD_FRICTION, dtScale);
-        const latFriction = Math.pow(CONSTANTS.PLAYER_LATERAL_FRICTION, dtScale);
+        // Weather grip: rain pulls the friction bases toward 1 (holds momentum = slides).
+        const grip = currentWeatherRef.current.grip;
+        const fwdBase = 1 - (1 - CONSTANTS.PLAYER_FORWARD_FRICTION) * Math.sqrt(grip);
+        const latBase = 1 - (1 - CONSTANTS.PLAYER_LATERAL_FRICTION) * grip;
+        const fwdFriction = Math.pow(fwdBase, dtScale);
+        const latFriction = Math.pow(latBase, dtScale);
         forwardVelocity.x *= fwdFriction; forwardVelocity.y *= fwdFriction;
         lateralVelocity.x *= latFriction; lateralVelocity.y *= latFriction;
         player.vel.x = forwardVelocity.x + lateralVelocity.x; player.vel.y = forwardVelocity.y + lateralVelocity.y;
@@ -904,15 +942,11 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
         
-        // Mid-shift dispatch chatter every ~25-40s. The champion intro goes first if present.
+        // Mid-shift dispatch chatter every ~25-40s. Queued intros (weather, champion) go first.
         if (nextRadioAtRef.current > 0 && now >= nextRadioAtRef.current) {
             nextRadioAtRef.current = now + 25000 + Math.random() * 15000;
-            if (championIntroPendingRef.current && championName) {
-                championIntroPendingRef.current = false;
-                playRadio(`Insp. ${championName} is out with you tonight. Yesterday's top patrol.`);
-            } else {
-                playRadio(pickRadioChatter());
-            }
+            const queued = pendingRadioRef.current.shift();
+            playRadio(queued ?? pickRadioChatter());
         }
 
         // Ambient car chatter: every ~8-16s a nearby law-abiding car says something very kiwi.
@@ -985,7 +1019,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
                             carToOffend.deterrenceBlobsRemaining = CONSTANTS.MAX_DETERRENCE_BLOBS_PER_OFFENDER;
                             carToOffend.baseSpeed = assignedRidsType === 'Speed' ? CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] : CONSTANTS.CIVILIAN_BASE_SPEED[carToOffend.district];
                             
-                            let lifeAtRiskChance = CONSTANTS.LIFE_AT_RISK_CHANCE * CONSTANTS.LIFE_AT_RISK_DISTRICT_MODIFIER[carToOffend.district];
+                            // Bikes offend by speeding more often than not (the vehicle IS the offence profile).
+                            if (carToOffend.vehicleType === 'bike' && assignedRidsType !== 'Impairment' && Math.random() < 0.5) {
+                                carToOffend.ridsType = 'Speed';
+                                carToOffend.baseSpeed = CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] * VEHICLE_SPEED_MULT.bike;
+                            }
+                            let lifeAtRiskChance = CONSTANTS.LIFE_AT_RISK_CHANCE * CONSTANTS.LIFE_AT_RISK_DISTRICT_MODIFIER[carToOffend.district] * currentWeatherRef.current.larChance;
                             if(isVigilanceBonusActiveRef.current) lifeAtRiskChance *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
                             if (isNeglectOfDutyActiveRef.current) lifeAtRiskChance *= CONSTANTS.NEGLECT_OF_DUTY_LAR_CHANCE_MULTIPLIER;
                             
@@ -1078,6 +1117,13 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             c.isBraking = c.speed > targetSpeed + 0.1;
             c.pos.x += segmentDir.x * c.speed * dtScale;
             c.pos.y += segmentDir.y * c.speed * dtScale;
+            if (c.vehicleType === 'camper' && !c.ridsType) {
+                // Tourist wander: gentle lane drift, well short of the impaired swerve.
+                c.swerveAngle = ((c.swerveAngle || 0) + 0.025 * dtScale) % (Math.PI * 2);
+                const drift = Math.sin(c.swerveAngle) * 0.7 * dtScale;
+                c.pos.x += -segmentDir.y * drift;
+                c.pos.y += segmentDir.x * drift;
+            }
             if (c.ridsType === 'Impairment') {
                 c.swerveAngle = ((c.swerveAngle || 0) + 0.04 * dtScale) % (Math.PI * 2);
                 // gd-0wi.9: inline the perpendicular (no per-car perpVec allocation).

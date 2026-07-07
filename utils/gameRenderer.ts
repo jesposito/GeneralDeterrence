@@ -1,6 +1,7 @@
 import * as CONSTANTS from '../constants';
 import { ROAD_SEGMENTS, ROAD_NODES, DISTRICT_DEFINITIONS, mapVersionRef } from './mapData';
 import { currentRegionRef } from './mapGen';
+import { currentWeatherRef } from './weather';
 import { Player, Civilian, SparkParticle, SkidMark, TireSmokeParticle, DeterrenceBlob, CollectionEffect, FloatingScoreText, Explosion, PatrolPost, RIDSType } from '../types';
 import { getDistrictForPoint } from './geometry';
 
@@ -747,6 +748,48 @@ export function drawGame(
   ctx.globalAlpha = 1;
 
   ctx.restore();
+
+  // Weather overlay, drawn in screen space over everything (fog must hide the world).
+  drawWeatherOverlay(ctx, width, height, time);
+}
+
+// Rain streaks / fog vignette. Animated streaks are skipped under prefers-reduced-motion
+// (a static tint carries the "it's raining" signal instead).
+function drawWeatherOverlay(ctx: CanvasRenderingContext2D, width: number, height: number, time: number): void {
+  const w = currentWeatherRef.current;
+  if (w.kind === 'clear' || w.kind === 'wind') return; // wind is sim/audio flavour only
+  const dpr = window.devicePixelRatio || 1;
+  ctx.save();
+  ctx.scale(dpr, dpr);
+
+  if (w.kind === 'rain') {
+    ctx.fillStyle = `rgba(56, 130, 190, ${0.05 + 0.04 * w.intensity})`; // wet tint
+    ctx.fillRect(0, 0, width, height);
+    if (!prefersReducedMotion) {
+      const count = Math.round(50 * w.intensity);
+      ctx.strokeStyle = 'rgba(190, 220, 245, 0.28)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < count; i++) {
+        // Stateless streaks: position derives from index + time, cycling down-left.
+        const x = ((i * 97.31 + time * 0.55) % (width + 40)) - 20;
+        const y = ((i * 53.7 + time * 1.15) % (height + 40)) - 20;
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 4, y + 16);
+      }
+      ctx.stroke();
+    }
+  } else if (w.kind === 'fog') {
+    const cx = width / 2, cy = height / 2;
+    const clear = Math.min(width, height) * 0.55 * w.vision;
+    const grad = ctx.createRadialGradient(cx, cy, clear, cx, cy, Math.max(width, height) * 0.85);
+    grad.addColorStop(0, 'rgba(180, 195, 210, 0)');
+    grad.addColorStop(1, `rgba(180, 195, 210, ${0.55 + 0.3 * w.intensity})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  ctx.restore();
 }
 
 const RIDS_ICONS: Record<RIDSType, string> = {
@@ -778,8 +821,11 @@ function drawCivilianCar(
   ctx.translate(car.pos.x, car.pos.y);
   ctx.rotate((car.angle * Math.PI) / 180);
 
-  const carWidth = 25;
-  const carHeight = 45;
+  // Vehicle variety: [width, height] per type (car is the classic 25x45).
+  const dims: Record<string, [number, number]> = {
+    car: [25, 45], ute: [26, 50], truck: [30, 72], bus: [30, 80], bike: [12, 28], camper: [28, 58],
+  };
+  const [carWidth, carHeight] = dims[car.vehicleType || 'car'] || dims.car;
 
   // Life at Risk pulse ring
   if (car.isLifeAtRisk) {
@@ -826,11 +872,11 @@ function drawCivilianCar(
     ctx.restore();
   }
 
-  // Car body color
+  // Car body color (campers read as the classic white rental box)
   const colorIndex = Math.floor(car.id * CAR_COLORS.length) % CAR_COLORS.length;
   const bodyColor = car.isLifeAtRisk
     ? `rgb(${200 + Math.sin(time / 100) * 55 | 0}, 0, 0)`
-    : CAR_COLORS[colorIndex];
+    : car.vehicleType === 'camper' ? '#e7e5e4' : CAR_COLORS[colorIndex];
 
   // Targeted flash
   if (isTargeted) {
@@ -885,6 +931,28 @@ function drawCivilianCar(
   ctx.fillRect(-carWidth * 0.4, carHeight / 2 - 4, carWidth * 0.15, 4);
   ctx.fillRect(carWidth * 0.25, carHeight / 2 - 4, carWidth * 0.15, 4);
   ctx.shadowBlur = 0;
+
+  // Type flourishes so the mix reads at a glance.
+  if (car.vehicleType === 'truck') {
+    // Cab/trailer split + container
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(-carWidth / 2 + 2, -carHeight * 0.1, carWidth - 4, carHeight * 0.55);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-carWidth / 2 + 2, -carHeight * 0.1, carWidth - 4, carHeight * 0.55);
+  } else if (car.vehicleType === 'bus') {
+    // Window strips down the sides
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(-carWidth / 2 + 3, -carHeight * 0.28 + i * carHeight * 0.16, carWidth - 6, carHeight * 0.08);
+    }
+  } else if (car.vehicleType === 'camper') {
+    // Rental stripe + roof vent
+    ctx.fillStyle = '#fb923c';
+    ctx.fillRect(-carWidth / 2, -carHeight * 0.05, carWidth, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(-carWidth * 0.2, carHeight * 0.12, carWidth * 0.4, carHeight * 0.18);
+  }
 
   ctx.restore();
 
