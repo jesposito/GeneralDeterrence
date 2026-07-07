@@ -18,6 +18,18 @@ docker run -d --name general-deterrence --restart unless-stopped \
 ```
 (`docker-compose.yml` is still valid for anyone on Compose v2 / `docker compose`.)
 
+## Batch 6 — architecture
+
+- **Dispatched-Call removal (gd-0wi.3)** stripped the dead subsystem from the game loop
+  (Game.tsx). The always-null `dispatchedCall` props still thread through HUD → Compass /
+  Minimap, and the `DISPATCH_CALL_*` constants remain — harmless vestiges left to avoid
+  editing 2 more gated UI files for zero runtime effect. Strip in a later polish pass if desired.
+- **gd-0wi.2 (god component)** is being done *conservatively* — I can't QA-play a canvas game
+  headlessly, so a blind full teardown (making the 8 sim fns pure + useGameLoop/useInput) is too
+  risky. Approach: safe, behavior-preserving structural wins + extracting pure, unit-tested
+  helpers, verified by tsc + tests + build (+ a headless load smoke). The complete sim-purity
+  refactor is flagged as needing interactive QA before it can land safely.
+
 ## Batch 5 — render performance
 
 - **gd-0wi.8 (shadowBlur)** is *mitigated*, not eliminated. Frustum culling means only

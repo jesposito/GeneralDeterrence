@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, DispatchedCall, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
+import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
 import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
@@ -93,7 +93,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const patrolPostsRef = useRef<PatrolPost[]>([]);
   
   const scoreRef = useRef({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0 });
-  const dispatchedCallRef = useRef<DispatchedCall | null>(null);
   const timeLeftRef = useRef(CONSTANTS.SHIFT_DURATION);
   const avgDeterrenceRef = useRef(50);
   const isVigilanceBonusActiveRef = useRef(false);
@@ -120,7 +119,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const analogInputRef = useRef({ x: 0, y: 0 });
   const gameLoopRef = useRef<number>();
   const lastSpawnCheckTime = useRef(Date.now());
-  const lastDispatchCheckTime = useRef(Date.now());
   const lastPathfindTime = useRef(0);
   const gameMessageTimerRef = useRef<number | null>(null);
   const sirenStartTimeRef = useRef<number | null>(null);
@@ -240,36 +238,24 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (colleagueCallsRef.current <= 0 || gameState !== 'Playing') return;
 
     const lifeAtRiskCars = civiliansRef.current.filter(c => c.isLifeAtRisk);
-    const dispatchedCar = dispatchedCallRef.current ? civiliansRef.current.find(c => c.id === dispatchedCallRef.current!.targetVehicleId) : null;
 
     let targetCar: Civilian | null = null;
-    let assistType: 'Life at Risk' | 'Dispatched Call' | null = null;
-    
     if (lifeAtRiskCars.length > 0) {
         targetCar = lifeAtRiskCars.reduce((closest, car) => {
             const distToClosest = getDistance(playerRef.current.pos, closest.pos);
             const distToCar = getDistance(playerRef.current.pos, car.pos);
             return distToCar < distToClosest ? car : closest;
         });
-        assistType = 'Life at Risk';
-    } else if (dispatchedCar) {
-        targetCar = dispatchedCar;
-        assistType = 'Dispatched Call';
     }
 
     if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
 
-    if (targetCar && assistType) {
+    if (targetCar) {
         colleagueCallsRef.current--;
         setGameMessage('COLLEAGUE DISPATCHED TO HIGH-RISK EVENT');
         gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3000);
 
-        if (assistType === 'Life at Risk') {
-            scoreRef.current.livesSaved++;
-        } else if (assistType === 'Dispatched Call') {
-            scoreRef.current.enforcement += CONSTANTS.DISPATCH_CALL_SCORE_BONUS;
-            dispatchedCallRef.current = null;
-        }
+        scoreRef.current.livesSaved++;
         const targetDistrict = getDistrictForPoint(targetCar.pos);
         if (targetDistrict) {
             const district = districtsRef.current.find(d => d.id === targetDistrict);
@@ -844,10 +830,6 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             
             if (lifeAtRiskCars.length > 0) {
                 target = lifeAtRiskCars.reduce((closest, car) => getDistanceSq(playerRef.current.pos, car.pos) < getDistanceSq(playerRef.current.pos, closest.pos) ? car : closest);
-            } else if (dispatchedCallRef.current) {
-                const dispatchedCar = civiliansRef.current.find(c => c.id === dispatchedCallRef.current!.targetVehicleId);
-                if (dispatchedCar) target = dispatchedCar;
-                else dispatchedCallRef.current = null;
             }
 
             if (target) {
@@ -901,27 +883,31 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     setGameState('MiniGame');
   }, []);
   
+  // Shared resolution for Warn + successful Enforce (gd-0wi.4): awards score (with vigilance
+  // bonus), grows vigilance, floats the score/vigilance text, boosts district deterrence,
+  // records the action, removes the offender, and credits a life saved.
+  const resolveIntervention = useCallback((car: Civilian, baseScore: number, deterrenceBoost: number, actionType: EnforcementAction['actionType'], shake: number) => {
+    let scoreToAdd = baseScore;
+    if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
+    scoreRef.current.enforcement += scoreToAdd;
+    playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
+    floatingScoreTextsRef.current.push({ id: Math.random(), pos: car.pos, text: `+${scoreToAdd}`, spawnTime: Date.now() });
+    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
+    const district = districtsRef.current.find(d => d.id === car.district);
+    if (district) district.deterrence = Math.min(100, district.deterrence + deterrenceBoost);
+    enforcementActionsRef.current.push({ pos: car.pos, ridsType: car.ridsType!, actionType });
+    civiliansRef.current = civiliansRef.current.filter(c => c.id !== car.id);
+    if (shake) cameraRef.current.shake = shake;
+    if (car.isLifeAtRisk) scoreRef.current.livesSaved++;
+  }, []);
+
   const handleWarn = useCallback(() => {
       if (activeRids) {
         audio.zap();
-        let scoreToAdd = CONSTANTS.WARN_SCORE_POINTS;
-        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
-        scoreRef.current.enforcement += scoreToAdd;
-        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd}`, spawnTime: Date.now() });
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
-        const district = districtsRef.current.find(d => d.id === activeRids.car.district);
-        if(district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.WARN_DETERRENCE_BOOST);
-        enforcementActionsRef.current.push({pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Warn'});
-        civiliansRef.current = civiliansRef.current.filter(c => c.id !== activeRids.car.id);
-        if (activeRids.car.isLifeAtRisk) scoreRef.current.livesSaved++;
-        if (dispatchedCallRef.current?.targetVehicleId === activeRids.car.id) {
-            scoreRef.current.enforcement += CONSTANTS.DISPATCH_CALL_SCORE_BONUS;
-            dispatchedCallRef.current = null;
-        }
+        resolveIntervention(activeRids.car, CONSTANTS.WARN_SCORE_POINTS, CONSTANTS.WARN_DETERRENCE_BOOST, 'Warn', 0);
       }
       setActiveRids(null); setTargetedCarId(null); setGameState('Playing');
-  }, [activeRids]);
+  }, [activeRids, resolveIntervention]);
     
   // Keyboard controls for RIDS Choice modal
   useEffect(() => {
@@ -1066,21 +1052,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         audio.zap();
         const district = districtsRef.current.find(d => d.id === activeRids.car.district);
         const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
-        let scoreToAdd = CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus;
-        if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
-        scoreRef.current.enforcement += scoreToAdd;
-        playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: activeRids.car.pos, text: `+${scoreToAdd}`, spawnTime: Date.now() });
-        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
-        if(district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST);
-        enforcementActionsRef.current.push({pos: activeRids.car.pos, ridsType: activeRids.ridsType, actionType: 'Enforce'});
-        civiliansRef.current = civiliansRef.current.filter(c => c.id !== activeRids.car.id);
-        cameraRef.current.shake = 10;
-        if (activeRids.car.isLifeAtRisk) scoreRef.current.livesSaved++;
-        if (dispatchedCallRef.current?.targetVehicleId === activeRids.car.id) {
-            scoreRef.current.enforcement += CONSTANTS.DISPATCH_CALL_SCORE_BONUS;
-            dispatchedCallRef.current = null;
-        }
+        resolveIntervention(activeRids.car, CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus, CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Enforce', 10);
       } else {
         timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_MINIGAME_FAIL);
       }
@@ -1163,7 +1135,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       <HUD 
           score={totalScore} timeLeft={Math.ceil(timeLeftRef.current)} player={player} civilians={civiliansRef.current}
           districts={districtsRef.current} playerDistrict={playerDistrict} livesLost={scoreRef.current.livesLost}
-          dispatchedCall={dispatchedCallRef.current}
+          dispatchedCall={null}
           camera={{x: cameraPos.x - (viewportRef.current.width/camera.zoom)/2, y: cameraPos.y - (viewportRef.current.height/camera.zoom)/2}}
           viewport={{width: viewportRef.current.width / camera.zoom, height: viewportRef.current.height / camera.zoom}}
           minimapMode={minimapMode} colleagueCalls={colleagueCallsRef.current} gameMessage={gameMessage}
