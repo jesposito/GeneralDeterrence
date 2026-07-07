@@ -3,6 +3,21 @@
 Per-batch record of where the fix intentionally differs from `aaa-audit.md`, so the
 audit doc itself stays the original snapshot. Tracked under beads epic gd-0wi.
 
+## Local run / smoke-test (IMPORTANT)
+
+The legacy `docker-compose` v1 binary on this host is incompatible with Docker Engine v29
+on container *recreate* (`KeyError: 'ContainerConfig'`). First-time `up` works; rebuilds
+crash. Use plain docker instead (the Dockerfile + bind mount are unchanged):
+
+```bash
+docker rm -f general-deterrence 2>/dev/null
+docker build -t general-deterrence:local .
+docker run -d --name general-deterrence --restart unless-stopped \
+  -p 3000:3000 -v "$PWD/data:/data" general-deterrence:local
+# → http://localhost:3000 ; leaderboard persists in ./data (host bind mount)
+```
+(`docker-compose.yml` is still valid for anyone on Compose v2 / `docker compose`.)
+
 ## Batch 4 — gameplay/balance + mini-game retool
 
 - **Mini-game retooled (user direction), not just fixed.** The audit framed
