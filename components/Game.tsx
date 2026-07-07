@@ -109,6 +109,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTimeRef = useRef<number>(0);
   const hitStopUntilRef = useRef(0); // brief sim freeze (hit-stop) on the biggest moments
+  const prevPadButtonsRef = useRef<boolean[]>([]); // gamepad button edge detection
   const lastHudUpdateRef = useRef<number>(0);
 
   // Refs for all frequently updated game data to avoid re-renders
@@ -422,6 +423,33 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     const updatePlayerMovement = (now: number, dt: number) => {
         const dtScale = 60 * dt; // Scale from per-frame@60fps to per-dt
         const player = playerRef.current;
+
+        // Gamepad (Standard mapping) — additive + inert without hardware, so it can't affect the
+        // keyboard/touch paths. Left stick -> analog drive; RB/RT -> boost; A/B/X (edge) ->
+        // RIDS check / siren / colleague assist.
+        const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+        let gp: Gamepad | null = null;
+        for (const p of pads) { if (p && p.connected) { gp = p; break; } }
+        if (gp) {
+            const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+            const gmag = Math.hypot(ax, ay);
+            const GP_DZ = 0.18;
+            if (gmag > GP_DZ) {
+                const scaled = (gmag - GP_DZ) / (1 - GP_DZ);
+                analogInputRef.current.x = (ax / gmag) * scaled;
+                analogInputRef.current.y = (ay / gmag) * scaled;
+            } else if (analogInputRef.current.x || analogInputRef.current.y) {
+                analogInputRef.current.x = 0; analogInputRef.current.y = 0;
+            }
+            const pressed = (i: number) => !!gp!.buttons[i]?.pressed;
+            touchStateRef.current['boost'] = pressed(5) || pressed(7);
+            const prev = prevPadButtonsRef.current;
+            if (pressed(0) && !prev[0]) handleRidsCheck();
+            if (pressed(1) && !prev[1]) handleSirenToggle();
+            if (pressed(2) && !prev[2]) handleColleagueCall();
+            prevPadButtonsRef.current = gp.buttons.map(b => b.pressed);
+        }
+
         const keys = { ...keysPressed.current, ...touchStateRef.current };
         const moveForward = keys['ArrowUp'] || keys['w'] || keys['forward'];
         const moveBackward = keys['ArrowDown'] || keys['s'] || keys['backward'];
