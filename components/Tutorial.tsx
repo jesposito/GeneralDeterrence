@@ -83,6 +83,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                         const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
                         const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
                         if (req) { try { req()?.catch(() => { /* ignore */ }); } catch { /* ignore */ } }
+                        // Best-effort lock to landscape (Android); iOS ignores it, harmless if unsupported.
+                        try { (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.('landscape')?.catch?.(() => {}); } catch { /* ignore */ }
                         onComplete();
                     }}
                     className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-4 px-12 rounded-lg text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
