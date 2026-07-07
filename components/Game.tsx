@@ -34,6 +34,9 @@ const RidsChoiceModal: React.FC<{
     const isAutoResolve = ridsType === 'Restraints' || ridsType === 'Distractions';
     const enforceLabel = isAutoResolve ? 'Instant, Variable Reward' : 'Slow, High Reward';
     const dialogRef = useRef<HTMLDivElement>(null);
+    const timerBarRef = useRef<HTMLDivElement>(null);
+    const onWarnRef = useRef(onWarn);
+    onWarnRef.current = onWarn;
     // gd-0wi.23: move focus into the dialog on open, restore it on close. Focus the container
     // (not a button) so the SPACE that opened the modal doesn't immediately activate a choice.
     useEffect(() => {
@@ -41,11 +44,29 @@ const RidsChoiceModal: React.FC<{
         dialogRef.current?.focus();
         return () => prev?.focus?.();
     }, []);
+    // Decision timer: ~5s to choose, else auto-resolve to the safe Warn. Adds urgency (the shift
+    // clock is frozen during this modal). Bar width written directly to avoid a per-frame re-render.
+    useEffect(() => {
+        const start = performance.now();
+        let raf = 0;
+        const tick = () => {
+            const pct = Math.max(0, 100 - ((performance.now() - start) / 5000) * 100);
+            if (timerBarRef.current) timerBarRef.current.style.width = pct + '%';
+            if (pct <= 0) { onWarnRef.current(); return; }
+            raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, []);
     return (
     <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title">
         <div ref={dialogRef} tabIndex={-1} className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50 focus:outline-none">
-            <h2 id="rids-choice-title" className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Interaction</h2>
-            <p className="text-lg text-gray-300 mb-6 font-sans">Choose your action.</p>
+            <h2 id="rids-choice-title" className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Intervention</h2>
+            <p className="text-lg text-gray-300 mb-4 font-sans">Choose your action.</p>
+            {/* Decision timer bar — auto-resolves to Warn at zero. */}
+            <div className="w-full h-1 bg-gray-700 rounded mb-6 overflow-hidden" aria-hidden="true">
+                <div ref={timerBarRef} className="h-full bg-yellow-400" style={{ width: '100%' }} />
+            </div>
             <div className="flex space-x-4">
                 <button
                     onClick={onWarn}
