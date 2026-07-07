@@ -131,6 +131,14 @@ export const REFERRAL_BONUS = 200;
 // mini-game (the fourth pillar — MatchingGame was built but never wired). ponytail:tune
 export const REFERRAL_CHANCE = 0.25;
 export const CLUTCH_SAVE_BONUS = 250; // resolved a Life-at-Risk with <3s left. ponytail:tune
+
+// Arcade juice (gd-zz7.14) — all ponytail:tune
+export const COMBO_WINDOW_MS = 10000;   // chain another intervention inside this window
+export const COMBO_STEP = 0.5;          // x1 -> x1.5 -> x2 -> x2.5 -> x3
+export const COMBO_MAX_MULT = 3;
+export const SLOWMO_MS = 350;           // brief slow-mo exiting a successful enforce
+export const SLOWMO_SCALE = 0.35;
+export const SHIFT_END_SLAM_MS = 900;   // SHIFT OVER freeze-slam before the results screen
 // Once per shift a routine Enforce uncovers a major crime (the interdiction car).
 export const INTERDICTION_BONUS = 1000;
 export const SPEECH_BUBBLE_LIFESPAN = 4200; // ms — long enough to actually read (user feedback)

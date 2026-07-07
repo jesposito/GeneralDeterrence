@@ -268,9 +268,12 @@ interface HUDProps {
   hudTick: number;
   viewport: { width: number; height: number };
   offencesPrevented: number;
+  /** Arcade combo: active multiplier (1 = inactive) + fraction of the window remaining. */
+  comboMult: number;
+  comboFrac: number;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport, offencesPrevented }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport, offencesPrevented, comboMult, comboFrac }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -364,6 +367,16 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     </div>
                 </div>
             </div>
+            {/* Arcade combo badge: chained interventions inside the window. Drain bar is
+                decorative (a11y-lead: transient, no progressbar semantics, never live). */}
+            {comboMult > 1 && (
+                <div aria-label={`Combo times ${comboMult}`} className="bg-black/80 px-2 py-1 rounded-lg shadow-lg w-28 border-2 border-yellow-400 shadow-yellow-400/40">
+                    <div className="text-lg font-bold font-display text-yellow-300 text-glow-yellow animate-pulse text-center">×{comboMult} COMBO</div>
+                    <div aria-hidden="true" className="w-full h-1 bg-gray-800 rounded overflow-hidden">
+                        <div className="h-full bg-yellow-400" style={{ width: `${Math.round(comboFrac * 100)}%` }} />
+                    </div>
+                </div>
+            )}
             <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
                 <DistrictMeters districts={districts} playerDistrict={playerDistrict} isVigilanceBonusActive={isVigilanceBonusActive} presenceBoostRate={presenceBoostRate} />
             </div>

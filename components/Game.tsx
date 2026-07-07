@@ -27,6 +27,13 @@ interface GameProps {
 
 type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame' | 'Referral';
 
+// Cosmetic-juice gate (zoom punch, GO! shake). Cache the MediaQueryList once but read
+// .matches per use so a mid-session OS toggle is honoured (a11y-lead guidance).
+const REDUCED_MOTION_MQ = typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : null;
+const reducedMotion = () => !!REDUCED_MOTION_MQ?.matches;
+
 const PATROL_PATH_SAMPLE_RATE = 30; // Record player position every 30 frames
 const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
 const COLLISION_CHECK_RADIUS_SQ = (CONSTANTS.CAR_RADIUS * 2) ** 2;
@@ -258,6 +265,13 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   // OVERTIME: hold FULL COVERAGE at the whistle → +30s, once. Gates extended scoring
   // behind mastery of the core teaching mechanic (leaderboard chasers must hold coverage).
   const overtimeUsedRef = useRef(false);
+  // Arcade juice (gd-zz7.14): combo chain, brief slow-mo, end-of-shift slam, near-miss whoosh.
+  const comboRef = useRef({ count: 0, mult: 1, expiresAt: 0 });
+  const slowmoUntilRef = useRef(0);
+  const slamStartedRef = useRef(false);
+  const slamAtRef = useRef(0);
+  const [showSlam, setShowSlam] = useState(false);
+  const lastWhooshAtRef = useRef(0);
   // PB ghost: replays ghostPath at the same cadence it was recorded (one sample per
   // PATROL_PATH_SAMPLE_RATE frames ≈ 0.5s), lerped between samples.
   const ghostElapsedRef = useRef(0);
@@ -371,6 +385,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         // First dispatch line = the briefing fact: readable for a full 6s + announced to AT
         // (the countdown overlay only showed it ~4s, and never announced it).
         playRadio(briefingFact);
+        if (!reducedMotion()) cameraRef.current.shake = 8; // GO! punch
         // Queued intros (weather/champion) arrive sooner than ambient chatter would.
         nextRadioAtRef.current = Date.now() + (pendingRadioRef.current.length ? 9000 : 25000 + Math.random() * 15000);
       }, 4000),
@@ -537,6 +552,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             // Feedback for a wasted check (was a silent -3s time penalty).
             timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK);
             audio.thud();
+            // A wasted check breaks the combo chain (arcade risk/reward).
+            if (comboRef.current.count > 1) { comboRef.current.count = 0; comboRef.current.mult = 1; }
             setGameMessage(`NO VIOLATION  -${CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK}s`);
             if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
             gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1500);
@@ -1096,6 +1113,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             const segmentDir = { x: segmentVec.x / segmentLen, y: segmentVec.y / segmentLen };
             let targetSpeed = c.baseSpeed;
 
+            // Boost near-miss: an airy whoosh when threading traffic at speed (rate-limited).
+            if (player.isBoosting && now - lastWhooshAtRef.current > 350 && getDistanceSq(player.pos, c.pos) < 90 ** 2) {
+                lastWhooshAtRef.current = now;
+                audio.whoosh();
+            }
+
             c.isYieldingToSiren = false;
             if (isSirenActive) {
                 const distSq = getDistanceSq(player.pos, c.pos);
@@ -1270,6 +1293,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   const resolveIntervention = useCallback((car: Civilian, baseScore: number, deterrenceBoost: number, actionType: EnforcementAction['actionType'], shake: number) => {
     let scoreToAdd = baseScore;
     if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
+    // Combo chain: another intervention inside the window ladders the multiplier
+    // (x1.5, x2 … x3) and the zap pitch. Wasted RIDS checks break it — risk/reward.
+    const nowMs = Date.now();
+    const combo = comboRef.current;
+    combo.count = nowMs < combo.expiresAt ? combo.count + 1 : 1;
+    combo.expiresAt = nowMs + CONSTANTS.COMBO_WINDOW_MS;
+    combo.mult = Math.min(CONSTANTS.COMBO_MAX_MULT, 1 + CONSTANTS.COMBO_STEP * (combo.count - 1));
+    scoreToAdd = Math.round(scoreToAdd * combo.mult);
+    audio.zap(1 + 0.15 * (combo.count - 1));
+    if (combo.count >= 2) {
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 100 }, text: `COMBO ×${combo.mult}`, spawnTime: nowMs });
+    }
+    if (!reducedMotion()) cameraRef.current.zoom *= 1.05; // zoom punch; the camera lerp eases it back
     scoreRef.current.enforcement += scoreToAdd;
     playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: car.pos, text: `+${scoreToAdd}`, spawnTime: Date.now() });
@@ -1315,7 +1351,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
       if (ridsPhaseRef.current !== 'choice') return; // see handleEnforce guard
       ridsPhaseRef.current = 'idle';
       if (activeRids) {
-        audio.zap();
+        // zap now plays inside resolveIntervention with the combo pitch ladder
         resolveIntervention(activeRids.car, CONSTANTS.WARN_SCORE_POINTS, CONSTANTS.WARN_DETERRENCE_BOOST, 'Warn', 0);
       }
       setActiveRids(null); setTargetedCarId(null); setGameState('Playing');
@@ -1391,7 +1427,18 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
             audio.zap();
             buzz(BUZZ.overtime);
             hitStopUntilRef.current = now + 110;
-        } else {
+        } else if (!slamStartedRef.current) {
+            // SHIFT OVER slam: freeze the world for a beat with the stamp on screen, then
+            // the results mount. The live region announces; GameOver's h1 takes focus after.
+            slamStartedRef.current = true;
+            slamAtRef.current = now;
+            hitStopUntilRef.current = now + CONSTANTS.SHIFT_END_SLAM_MS;
+            setShowSlam(true);
+            audio.thud();
+            buzz(BUZZ.overtime);
+            setGameMessage('SHIFT OVER');
+            if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+        } else if (now - slamAtRef.current >= CONSTANTS.SHIFT_END_SLAM_MS) {
             gameOverFiredRef.current = true;
             const coverageRatio = Math.min(1, fullCoverageSecondsRef.current / CONSTANTS.SHIFT_DURATION);
             const finalBreakdown: FinalScoreBreakdown = {
@@ -1419,10 +1466,15 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
     // shake keep running. lastTimeRef stays current so dt resumes cleanly (no post-freeze jump).
     // Clamp to [0, 100ms]: cap avoids huge jumps; floor guards a backwards wall-clock step
     // (NTP sync) from refunding shift time and amplifying velocity via Math.pow(friction, -n).
-    const dt = now < hitStopUntilRef.current ? 0 : Math.min(Math.max(rawDt, 0), 0.1);
+    let dt = now < hitStopUntilRef.current ? 0 : Math.min(Math.max(rawDt, 0), 0.1);
+    // Brief slow-mo savour exiting a successful enforce (time scaling, not motion — safe:
+    // everything is dt-scaled and the dt>0 guards hold since 0.35*dt > 0).
+    if (now < slowmoUntilRef.current) dt *= CONSTANTS.SLOWMO_SCALE;
     lastTimeRef.current = now;
 
     timeLeftRef.current -= dt;
+
+    const slamming = slamStartedRef.current && !gameOverFiredRef.current;
 
     // Advance the PB ghost along its recorded path (0.5s per sample, lerped).
     if (ghostPath && ghostPath.length > 1) {
@@ -1442,14 +1494,26 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         }
     }
 
-    updatePlayerMovement(now, dt);
-    updateVigilance(dt);
-    updateCiviliansAndSpawners(now, dt);
-    updateDeterrenceAndNeglect(now, dt);
-    handleCollisionsAndInteractions(now, dt);
+    // During the SHIFT OVER slam the world is a freeze-frame: skip sim/state churn
+    // (spawn checks, radio, stingers) but keep particles + camera easing alive.
+    if (!slamming) {
+        updatePlayerMovement(now, dt);
+        updateVigilance(dt);
+        updateCiviliansAndSpawners(now, dt);
+        updateDeterrenceAndNeglect(now, dt);
+        handleCollisionsAndInteractions(now, dt);
+        updatePathfinding(now);
+    }
     updateParticlesAndEffects(now, dt);
-    updatePathfinding(now);
     updateCamera(now, dt);
+
+    // Combo window expiry: soft cue, no live-region spam (a11y-lead guidance).
+    if (comboRef.current.count > 1 && now > comboRef.current.expiresAt) {
+        comboRef.current.count = 0;
+        comboRef.current.mult = 1;
+        audio.tick(320);
+        buzz(20);
+    }
     
     // Draw to canvas
     const canvas = canvasRef.current;
@@ -1539,7 +1603,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
     let goReferral = false;
     if (activeRids) {
       if (success) {
-        audio.zap();
+        // zap plays inside resolveIntervention (combo pitch ladder); savour the win in slow-mo
+        slowmoUntilRef.current = Date.now() + CONSTANTS.SLOWMO_MS;
         const district = districtsRef.current.find(d => d.id === activeRids.car.district);
         const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
         resolveIntervention(activeRids.car, CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus, CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Enforce', 10);
@@ -1617,6 +1682,13 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
 
   return (
     <div ref={containerRef} className="w-full h-full bg-black overflow-hidden relative">
+      {/* SHIFT OVER freeze-slam. aria-hidden: the live region announces it; not a heading
+          (GameOver's h1 takes focus ~900ms later and says the same thing). */}
+      {showSlam && (
+        <div aria-hidden="true" className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+            <p className="text-6xl md:text-8xl font-display font-bold text-yellow-300 text-glow-yellow bg-black/60 border-4 border-yellow-400 rounded-xl px-8 py-4 -rotate-3 animate-scale-up-and-fade">SHIFT OVER</p>
+        </div>
+      )}
        {gameState === 'Starting' && countdownText && (
             <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4">
                 <h1 key={countdownText} className="text-9xl font-display text-cyan-400 animate-scale-up-and-fade">
@@ -1675,6 +1747,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
           stationaryCountdown={stationaryCountdown}
           shouldFlashColleagueAssist={shouldFlashColleagueAssist}
           offencesPrevented={Math.floor(offencesPreventedRef.current)}
+          comboMult={comboRef.current.count > 1 ? comboRef.current.mult : 1}
+          comboFrac={comboRef.current.count > 1 ? Math.max(0, (comboRef.current.expiresAt - Date.now()) / CONSTANTS.COMBO_WINDOW_MS) : 0}
           hudTick={hudTick} />
       {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} />}
       {gameState === 'MiniGame' && activeRids && (

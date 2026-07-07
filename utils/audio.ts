@@ -133,8 +133,9 @@ export function beep(): void {
   osc.stop(now + 0.2);
 }
 
-// Score-up zap — bright sweep upward for points awarded.
-export function zap(): void {
+// Score-up zap — bright sweep upward for points awarded. `pitchMult` ladders the
+// sweep for combo chains (x1, x1.15, x1.3… reads as an arcade escalation).
+export function zap(pitchMult = 1): void {
   if (muted) return;
   const c = getCtx();
   if (!c || !masterGain) return;
@@ -142,14 +143,40 @@ export function zap(): void {
   const osc = c.createOscillator();
   const env = c.createGain();
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(440, now);
-  osc.frequency.exponentialRampToValueAtTime(2400, now + 0.18);
+  osc.frequency.setValueAtTime(440 * pitchMult, now);
+  osc.frequency.exponentialRampToValueAtTime(Math.min(5200, 2400 * pitchMult), now + 0.18);
   env.gain.setValueAtTime(0.0001, now);
   env.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
   env.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
   osc.connect(env).connect(masterGain);
   osc.start(now);
   osc.stop(now + 0.27);
+}
+
+// Air whoosh — bandpassed noise sweep for boosting past traffic (near-miss juice).
+export function whoosh(): void {
+  if (muted) return;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  const now = c.currentTime;
+  const buffer = c.createBuffer(1, c.sampleRate * 0.22, c.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const noise = c.createBufferSource();
+  noise.buffer = buffer;
+  const filter = c.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.Q.value = 1.2;
+  filter.frequency.setValueAtTime(600, now);
+  filter.frequency.exponentialRampToValueAtTime(2600, now + 0.08);
+  filter.frequency.exponentialRampToValueAtTime(500, now + 0.2);
+  const env = c.createGain();
+  env.gain.setValueAtTime(0.0001, now);
+  env.gain.exponentialRampToValueAtTime(0.16, now + 0.04);
+  env.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+  noise.connect(filter).connect(env).connect(masterGain);
+  noise.start(now);
+  noise.stop(now + 0.24);
 }
 
 // Low thud / collision — filtered noise burst.
