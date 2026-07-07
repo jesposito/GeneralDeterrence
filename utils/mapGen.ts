@@ -192,12 +192,30 @@ function applyFlips(built: Built, flipX: boolean, flipY: boolean): void {
         if (flipX) d.bounds.x = WORLD_W - d.bounds.x - d.bounds.width;
         if (flipY) d.bounds.y = WORLD_H - d.bounds.y - d.bounds.height;
     }
-    const rename = (id: DistrictName, name: string) => {
-        const d = built.districts.find(x => x.id === id);
-        if (d) d.name = name;
-    };
-    if (flipY) rename('Karori North', 'Rural South');
-    if (flipX) { rename('Karori West', 'Suburban East'); rename('Karori East', 'Motorway West'); }
+}
+
+// Real Wellington-region place names per district archetype. IDs stay fixed (balance
+// constants key on them); only display names vary. The archetype tag keeps the teaching
+// cue (a first-timer must still see instantly which district is the rural one).
+const DISTRICT_NAME_POOLS: Record<DistrictName, string[]> = {
+    'Karori North': ['Mākara', 'Ōhāriu Valley', 'Horokiwi', 'South Karori', 'Terawhiti', 'Belmont Hills', 'Takarau Gorge', 'Wainuiomata Hills'],
+    'Karori West': ['Karori', 'Ngaio', 'Khandallah', 'Brooklyn', 'Tawa', 'Newlands', 'Island Bay', 'Johnsonville', 'Miramar', 'Vogeltown'],
+    'Karori Central': ['Te Aro', 'Lambton Quarter', 'Cuba Quarter', 'Courtenay', 'Thorndon', 'Civic Square'],
+    'Karori East': ['SH1 Corridor', 'SH2 Corridor', 'Centennial Highway', 'Ngauranga Gorge', 'Transmission Gully', 'The Expressway'],
+    'Karori': ['Ōwhiro Bay', 'Mākara Beach', 'Red Rocks', 'Seatoun', 'Days Bay', 'Breaker Bay'],
+};
+const ARCHETYPE_TAG: Record<DistrictName, string> = {
+    'Karori North': 'Rural',
+    'Karori West': 'Suburbs',
+    'Karori Central': 'Centre',
+    'Karori East': 'Motorway',
+    'Karori': 'Bays',
+};
+
+function assignDistrictNames(built: Built, rng: Rng): void {
+    for (const d of built.districts) {
+        d.name = `${pick(rng, DISTRICT_NAME_POOLS[d.id])} (${ARCHETYPE_TAG[d.id]})`;
+    }
 }
 
 function isConnected(built: Built): boolean {
@@ -246,6 +264,7 @@ export function regenerateMap(seed: number): GeneratedMapMeta {
     const flipX = rng() < 0.5;
     const flipY = rng() < 0.5;
     applyFlips(built, flipX, flipY);
+    assignDistrictNames(built, rng);
 
     const inBounds = built.nodes.every(n => n.pos.x >= 0 && n.pos.x <= WORLD_W && n.pos.y >= 0 && n.pos.y <= WORLD_H);
     if (!isConnected(built) || !inBounds) {
@@ -259,6 +278,8 @@ export function regenerateMap(seed: number): GeneratedMapMeta {
     }
 
     commit(built, theme);
-    const layoutName = `${flipY ? 'Rural South' : 'Rural North'} / ${flipX ? 'Motorway West' : 'Motorway East'}`;
+    // Label the map by its town centre, like a real patrol area ("Te Aro District").
+    const centre = built.districts.find(d => d.id === 'Karori Central');
+    const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District`;
     return { seed, themeName: theme.name, layoutName };
 }

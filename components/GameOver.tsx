@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LeaderboardEntry, FinalScoreBreakdown, EnforcementAction, ColleagueCallAction } from '../types';
 import Leaderboard from './Leaderboard';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS } from '../utils/mapData';
+import { generateSavedLifeStories } from '../utils/stories';
 import * as CONSTANTS from '../constants';
 
 const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = {
@@ -294,6 +295,12 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
 
   const personal = getPersonalStats(scoreBreakdown);
+  // Where are they now? One line per saved life (cap 3 shown), seeded off the score so
+  // re-renders show the same stories.
+  const stories = useMemo(
+      () => generateSavedLifeStories(Math.min(3, scoreBreakdown.livesSaved), scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919),
+      [scoreBreakdown],
+  );
   const gradeStyles: Record<string, string> = {
     S: 'text-yellow-300 border-yellow-300',
     A: 'text-green-400 border-green-400',
@@ -385,6 +392,19 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                 <span className="text-yellow-400 text-glow-yellow">Total:</span>
                 <span className="text-yellow-400 text-glow-yellow">{animatedFinalScore.toLocaleString()}</span>
             </div>
+            {stories.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-700 text-left">
+                    <h3 className="text-sm font-display text-green-400 tracking-wider mb-2">LIVES SAVED — WHERE ARE THEY NOW?</h3>
+                    <ul className="space-y-1.5">
+                        {stories.map((s, i) => (
+                            <li key={i} className="text-xs md:text-sm text-gray-300 font-sans leading-snug">{s.story}</li>
+                        ))}
+                    </ul>
+                    {scoreBreakdown.livesSaved > stories.length && (
+                        <p className="text-xs text-gray-500 font-sans mt-1.5">…and {scoreBreakdown.livesSaved - stories.length} more {scoreBreakdown.livesSaved - stories.length === 1 ? 'driver' : 'drivers'} went home safe.</p>
+                    )}
+                </div>
+            )}
         </div>
         
         {/* Leaderboard & Actions */}

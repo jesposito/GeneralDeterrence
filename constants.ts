@@ -130,6 +130,7 @@ export const REFERRAL_BONUS = 200;
 // Chance a successful Impairment/Restraints enforcement opens a follow-up referral
 // mini-game (the fourth pillar — MatchingGame was built but never wired). ponytail:tune
 export const REFERRAL_CHANCE = 0.25;
+export const CLUTCH_SAVE_BONUS = 250; // resolved a Life-at-Risk with <3s left. ponytail:tune
 export const ENFORCEMENT_BONUS_POINTS = 150;
 // ponytail:tune — fable-audit B6: reward SUSTAINED coverage over an end-of-shift snapshot.
 // The ±12,500-swing final bonus invited a last-20s blitz that ignored 70s of neglect.

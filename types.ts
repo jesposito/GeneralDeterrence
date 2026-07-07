@@ -73,6 +73,9 @@ export interface FinalScoreBreakdown {
   colleagueCallActions: ColleagueCallAction[];
   /** Offenders the spawner never created because deterrence was high — the teaching headline. */
   offencesPrevented: number;
+  /** Raw counts (bonuses alone can't recover them — colleague saves pay a different rate). */
+  livesSaved: number;
+  livesLost: number;
   /** Fraction of the shift with every district ≥50% deterrence. */
   coverageRatio: number;
   /** Grade derived from coverageRatio: S ≥0.9, A ≥0.7, B ≥0.45, else C. */
@@ -148,6 +151,8 @@ export interface FloatingScoreText {
     pos: { x: number; y: number };
     text: string;
     spawnTime: number;
+    /** 'speech' renders as a wee kiwi speech bubble instead of rising score text. */
+    variant?: 'score' | 'speech';
 }
 
 export interface Explosion {

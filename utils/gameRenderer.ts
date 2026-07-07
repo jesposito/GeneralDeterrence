@@ -21,7 +21,11 @@ function ensureRendererCaches(): void {
 
 // Decoration cache — generated once and reused
 interface Decoration {
-  type: 'tree' | 'house' | 'building' | 'warehouse';
+  // NZ scenery set: tī kōuka (cabbage tree), ponga (tree fern), pōhutukawa, harakeke (flax),
+  // plus the locals — sheep, pūkeko, kiwi, kererū, tūī.
+  type: 'tree' | 'house' | 'building' | 'warehouse'
+      | 'cabbageTree' | 'ponga' | 'pohutukawa' | 'flax'
+      | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui';
   x: number;
   y: number;
   width?: number;
@@ -36,12 +40,27 @@ function generateDecorations(): Decoration[] {
   if (decorationCache) return decorationCache;
 
   const decs: Decoration[] = [];
-  const districtDecorations: Record<string, { type: Decoration['type']; count: number }> = {
-    'Karori North': { type: 'tree', count: 250 },
-    'Karori West': { type: 'house', count: 100 },
-    'Karori Central': { type: 'building', count: 50 },
-    'Karori East': { type: 'warehouse', count: 40 },
-    'Karori': { type: 'house', count: 20 },
+  // Per-district scenery mixes — NZ flavour: paddocks of sheep and tī kōuka up in the rural
+  // zone, tūī in the suburbs, pūkeko working the verges, pōhutukawa + kererū around the bays.
+  const districtDecorations: Record<string, { type: Decoration['type']; count: number }[]> = {
+    'Karori North': [
+      { type: 'tree', count: 120 }, { type: 'cabbageTree', count: 60 },
+      { type: 'sheep', count: 70 }, { type: 'flax', count: 30 }, { type: 'kiwi', count: 10 },
+    ],
+    'Karori West': [
+      { type: 'house', count: 80 }, { type: 'cabbageTree', count: 25 },
+      { type: 'tui', count: 14 }, { type: 'flax', count: 12 },
+    ],
+    'Karori Central': [
+      { type: 'building', count: 45 }, { type: 'ponga', count: 10 }, { type: 'pukeko', count: 8 },
+    ],
+    'Karori East': [
+      { type: 'warehouse', count: 30 }, { type: 'flax', count: 25 }, { type: 'pukeko', count: 10 },
+    ],
+    'Karori': [
+      { type: 'house', count: 12 }, { type: 'pohutukawa', count: 18 },
+      { type: 'kereru', count: 8 }, { type: 'ponga', count: 10 },
+    ],
   };
 
   // Simple distance check without importing findClosestPointOnRoad to avoid circular deps
@@ -67,29 +86,37 @@ function generateDecorations(): Decoration[] {
   };
 
   for (const district of DISTRICT_DEFINITIONS) {
-    const decorInfo = districtDecorations[district.id];
-    if (!decorInfo) continue;
+    const mixes = districtDecorations[district.id];
+    if (!mixes) continue;
 
-    for (let i = 0; i < decorInfo.count; i++) {
-      let placed = false;
-      let attempts = 0;
-      while (!placed && attempts < 10) {
-        attempts++;
-        const x = district.bounds.x + 20 + Math.random() * (district.bounds.width - 40);
-        const y = district.bounds.y + 20 + Math.random() * (district.bounds.height - 40);
-        const roadBuffer = (CONSTANTS.ROAD_WIDTH / 2) + 20;
-        const distToRoad = getDistToRoad(x, y);
-        if (distToRoad >= roadBuffer) {
-          const rot = Math.floor(Math.random() * 4) * 90;
-          let width: number | undefined;
-          let height: number | undefined;
-          switch (decorInfo.type) {
-            case 'house': width = 30; height = 40; break;
-            case 'building': width = 80; height = 120; break;
-            case 'warehouse': width = 150; height = 100; break;
+    for (const decorInfo of mixes) {
+      // Birds like the roadside: pūkeko famously work the verges, so they get a NEGATIVE
+      // buffer band (near the road, not on it) instead of the keep-clear rule.
+      const nearRoad = decorInfo.type === 'pukeko';
+      for (let i = 0; i < decorInfo.count; i++) {
+        let placed = false;
+        let attempts = 0;
+        while (!placed && attempts < 10) {
+          attempts++;
+          const x = district.bounds.x + 20 + Math.random() * (district.bounds.width - 40);
+          const y = district.bounds.y + 20 + Math.random() * (district.bounds.height - 40);
+          const roadBuffer = (CONSTANTS.ROAD_WIDTH / 2) + 20;
+          const distToRoad = getDistToRoad(x, y);
+          const ok = nearRoad
+            ? distToRoad >= roadBuffer - 15 && distToRoad <= roadBuffer + 60
+            : distToRoad >= roadBuffer;
+          if (ok) {
+            const rot = Math.floor(Math.random() * 4) * 90;
+            let width: number | undefined;
+            let height: number | undefined;
+            switch (decorInfo.type) {
+              case 'house': width = 30; height = 40; break;
+              case 'building': width = 80; height = 120; break;
+              case 'warehouse': width = 150; height = 100; break;
+            }
+            decs.push({ type: decorInfo.type, x, y, width, height, rot, color: district.theme.decorColor });
+            placed = true;
           }
-          decs.push({ type: decorInfo.type, x, y, width, height, rot, color: district.theme.decorColor });
-          placed = true;
         }
       }
     }
@@ -178,6 +205,116 @@ function buildStaticMap(): HTMLCanvasElement {
         sctx.rotate((d.rot! * Math.PI) / 180);
         sctx.strokeRect(-d.width! / 2, -d.height! / 2, d.width!, d.height!);
         sctx.restore();
+        break;
+      }
+      case 'cabbageTree': { // tī kōuka: bare trunk, spiky radial crown
+        sctx.beginPath();
+        sctx.moveTo(d.x, d.y + 16);
+        sctx.lineTo(d.x, d.y - 10);
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2;
+          sctx.moveTo(d.x, d.y - 10);
+          sctx.lineTo(d.x + Math.cos(ang) * 11, d.y - 10 + Math.sin(ang) * 7 - 4);
+        }
+        sctx.stroke();
+        break;
+      }
+      case 'ponga': { // tree fern from above: radial fronds
+        sctx.beginPath();
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          sctx.moveTo(d.x, d.y);
+          sctx.quadraticCurveTo(
+            d.x + Math.cos(ang + 0.35) * 9, d.y + Math.sin(ang + 0.35) * 9,
+            d.x + Math.cos(ang) * 15, d.y + Math.sin(ang) * 15,
+          );
+        }
+        sctx.stroke();
+        break;
+      }
+      case 'pohutukawa': { // broad crown + red blossom dots
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 15, 0, Math.PI * 2);
+        sctx.stroke();
+        sctx.fillStyle = '#dc2626';
+        for (let a = 0; a < 5; a++) {
+          const ang = (a / 5) * Math.PI * 2 + 0.6;
+          sctx.beginPath();
+          sctx.arc(d.x + Math.cos(ang) * 9, d.y + Math.sin(ang) * 9, 2.2, 0, Math.PI * 2);
+          sctx.fill();
+        }
+        break;
+      }
+      case 'flax': { // harakeke: fan of blades from the base
+        sctx.beginPath();
+        for (let a = -2; a <= 2; a++) {
+          sctx.moveTo(d.x, d.y + 8);
+          sctx.lineTo(d.x + a * 5, d.y - 12 + Math.abs(a) * 3);
+        }
+        sctx.stroke();
+        break;
+      }
+      case 'sheep': { // wool blob + dark head
+        sctx.fillStyle = 'rgba(240, 240, 235, 0.75)';
+        sctx.beginPath();
+        sctx.ellipse(d.x, d.y, 9, 6, (d.rot! * Math.PI) / 180, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = 'rgba(30, 30, 35, 0.9)';
+        sctx.beginPath();
+        sctx.arc(d.x + Math.cos((d.rot! * Math.PI) / 180) * 9, d.y + Math.sin((d.rot! * Math.PI) / 180) * 6, 3, 0, Math.PI * 2);
+        sctx.fill();
+        break;
+      }
+      case 'pukeko': { // blue body, red beak, long legs — working the verge
+        sctx.fillStyle = 'rgba(37, 99, 235, 0.9)';
+        sctx.beginPath();
+        sctx.ellipse(d.x, d.y, 6, 4.5, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = '#ef4444';
+        sctx.beginPath();
+        sctx.arc(d.x + 6, d.y - 2, 2, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.strokeStyle = '#ef4444';
+        sctx.lineWidth = 1.5;
+        sctx.beginPath();
+        sctx.moveTo(d.x - 2, d.y + 4); sctx.lineTo(d.x - 2, d.y + 10);
+        sctx.moveTo(d.x + 2, d.y + 4); sctx.lineTo(d.x + 2, d.y + 10);
+        sctx.stroke();
+        break;
+      }
+      case 'kiwi': { // round brown body, long down-curved beak
+        sctx.fillStyle = 'rgba(120, 85, 55, 0.9)';
+        sctx.beginPath();
+        sctx.ellipse(d.x, d.y, 6, 5, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.strokeStyle = 'rgba(200, 170, 140, 0.9)';
+        sctx.lineWidth = 1.5;
+        sctx.beginPath();
+        sctx.moveTo(d.x + 5, d.y - 1);
+        sctx.quadraticCurveTo(d.x + 13, d.y + 1, d.x + 15, d.y + 5);
+        sctx.stroke();
+        break;
+      }
+      case 'kereru': { // plump wood pigeon: green back, white belly
+        sctx.fillStyle = 'rgba(34, 90, 60, 0.9)';
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 6, Math.PI, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = 'rgba(240, 240, 240, 0.9)';
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 6, 0, Math.PI);
+        sctx.fill();
+        break;
+      }
+      case 'tui': { // dark bird, white throat tuft
+        sctx.fillStyle = 'rgba(20, 25, 40, 0.95)';
+        sctx.beginPath();
+        sctx.ellipse(d.x, d.y, 5, 4, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.fillStyle = 'rgba(250, 250, 250, 0.95)';
+        sctx.beginPath();
+        sctx.arc(d.x + 3, d.y + 1, 1.5, 0, Math.PI * 2);
+        sctx.fill();
         break;
       }
     }
@@ -485,6 +622,27 @@ export function drawGame(
   for (const text of state.floatingScoreTexts) {
     if (!onScreen(text.pos)) continue;
     const age = (time - text.spawnTime) / CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN;
+    if (text.variant === 'speech') {
+      // Kiwi speech bubble: rounded rect + tail, gentle rise, fade at the end.
+      const yOffset = -30 - 15 * age;
+      ctx.globalAlpha = age > 0.75 ? (1 - age) * 4 : 1;
+      ctx.font = 'bold 15px Rajdhani, sans-serif';
+      const w = ctx.measureText(text.text).width + 20;
+      const x = text.pos.x, y = text.pos.y + yOffset;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(x - w / 2, y - 14, w, 28, 9);
+      ctx.moveTo(x - 5, y + 13);
+      ctx.lineTo(x, y + 24);
+      ctx.lineTo(x + 7, y + 13);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#111827';
+      ctx.fillText(text.text, x, y + 1);
+      continue;
+    }
     const yOffset = -80 * age;
     ctx.globalAlpha = 1 - age;
     ctx.font = 'bold 18px Orbitron, sans-serif';

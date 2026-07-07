@@ -13,6 +13,7 @@ import TouchControls from './TouchControls';
 import RotateDevicePrompt from './RotateDevicePrompt';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
 import { drawGame, CameraState, RenderState } from '../utils/gameRenderer';
+import { pickRadioChatter, pickCarChatter, pickWarnReaction, pickEnforceReaction } from '../utils/stories';
 import * as audio from '../utils/audio';
 
 interface GameProps {
@@ -216,6 +217,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const analogInputRef = useRef({ x: 0, y: 0 });
   const gameLoopRef = useRef<number>();
   const lastSpawnCheckTime = useRef(Date.now());
+  const nextCarChatterAtRef = useRef(Date.now() + 8000); // ambient kiwi speech bubbles, rate-limited
   const lastPathfindTime = useRef(0);
   const gameMessageTimerRef = useRef<number | null>(null);
   const sirenStartTimeRef = useRef<number | null>(null);
@@ -302,7 +304,14 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       setTimeout(() => { setCountdownText('2'); audio.tick(700); }, 1000),
       setTimeout(() => { setCountdownText('1'); audio.tick(700); }, 2000),
       setTimeout(() => { setCountdownText('GO!'); audio.tick(1200); }, 3000),
-      setTimeout(() => { setGameState('Playing'); setCountdownText(''); }, 4000),
+      setTimeout(() => {
+        setGameState('Playing');
+        setCountdownText('');
+        // A line of dispatch radio chatter to open the shift (also hits the live region).
+        setGameMessage(pickRadioChatter());
+        if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+        gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3500);
+      }, 4000),
     ];
     return () => timeouts.forEach(clearTimeout);
   }, [gameState]);
@@ -857,6 +866,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
         
+        // Ambient car chatter: every ~8-16s a nearby law-abiding car says something very kiwi.
+        if (now >= nextCarChatterAtRef.current) {
+            nextCarChatterAtRef.current = now + 8000 + Math.random() * 8000;
+            const nearby = civiliansRef.current.find(c => !c.ridsType && getDistanceSq(c.pos, player.pos) < 450 ** 2);
+            if (nearby) {
+                floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: nearby.pos.x, y: nearby.pos.y - 60 }, text: pickCarChatter(), spawnTime: Date.now(), variant: 'speech' });
+            }
+        }
+
         if (now - lastSpawnCheckTime.current > CONSTANTS.RIDS_SPAWN_INTERVAL) {
             lastSpawnCheckTime.current = now;
             if (civiliansRef.current.length < CONSTANTS.MAX_CIVILIAN_CARS) {
@@ -1153,7 +1171,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     enforcementActionsRef.current.push({ pos: car.pos, ridsType: car.ridsType!, actionType });
     civiliansRef.current = civiliansRef.current.filter(c => c.id !== car.id);
     if (shake) cameraRef.current.shake = shake;
-    if (car.isLifeAtRisk) scoreRef.current.livesSaved++;
+    // The driver has opinions (very kiwi ones).
+    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 70 }, text: actionType === 'Warn' ? pickWarnReaction() : pickEnforceReaction(), spawnTime: Date.now(), variant: 'speech' });
+    if (car.isLifeAtRisk) {
+        scoreRef.current.livesSaved++;
+        // Clutch save: resolved with under 3s on the LAR clock — small bonus, big feeling.
+        if (car.lifeAtRiskTimer < 3 * CONSTANTS.FRAMES_PER_SECOND) {
+            scoreRef.current.enforcement += CONSTANTS.CLUTCH_SAVE_BONUS;
+            floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 110 }, text: `CLUTCH SAVE +${CONSTANTS.CLUTCH_SAVE_BONUS}`, spawnTime: Date.now() });
+            audio.zap();
+        }
+    }
   }, []);
 
   const handleWarn = useCallback(() => {
@@ -1235,6 +1263,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             enforcementActions: enforcementActionsRef.current,
             colleagueCallActions: colleagueCallActionsRef.current,
             offencesPrevented: Math.floor(offencesPreventedRef.current),
+            livesSaved: scoreRef.current.livesSaved,
+            livesLost: scoreRef.current.livesLost,
             coverageRatio,
             presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
         };
