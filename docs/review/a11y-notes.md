@@ -1,5 +1,15 @@
 # Accessibility findings (per-file, from accessibility-lead reviews)
 
+## Status (batch 8 done — high/crit a11y closed)
+RESOLVED: modal dialog semantics + focus mgmt + trap (RidsChoiceModal + MiniGameModal, gd-0wi.23)
+incl. the Warn/Enforce double-fire (M3); pinch-zoom re-enabled (gd-0wi.24); canvas shake honours
+reduced-motion (gd-0wi.25); focus-visible on modal buttons (gd-0wi.26).
+REMAINING (medium/low → batch 9): canvas has no aria-label + no aria-live status region
+(Game.tsx C1/C2); HUD off-screen indicators are colour-only ▲ (F1) + meters lack progressbar
+semantics (F2); Tutorial focus-trap/inert (P1), empty emoji parenthetical (P3), AAA contrast (P4);
+PrecisionSlider/SituationalJudgement minors already handled in their batches.
+
+
 Durable worklist for batch 8 (a11y) — captured as UI files are unblocked, so the
 review work survives context compaction. Maps to gd-0wi.23/.24/.25/.26 + doc findings.
 

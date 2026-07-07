@@ -302,6 +302,12 @@ export interface RenderState {
   isBraking: boolean;
 }
 
+// Cache prefers-reduced-motion once at module scope (not per frame) — gd-0wi.25.
+const prefersReducedMotion =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+
 export function drawGame(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -310,8 +316,10 @@ export function drawGame(
   state: RenderState,
   time: number
 ): void {
-  const shakeX = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
-  const shakeY = camera.shake > 0 ? (Math.random() - 0.5) * camera.shake * 2 : 0;
+  // gd-0wi.25: never shake the camera when the user prefers reduced motion.
+  const shakeAmt = prefersReducedMotion ? 0 : camera.shake;
+  const shakeX = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
+  const shakeY = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;
 
   ctx.save();
 

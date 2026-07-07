@@ -33,21 +33,29 @@ const RidsChoiceModal: React.FC<{
 }> = ({ onEnforce, onWarn, selection, ridsType }) => {
     const isAutoResolve = ridsType === 'Restraints' || ridsType === 'Distractions';
     const enforceLabel = isAutoResolve ? 'Instant, Variable Reward' : 'Slow, High Reward';
+    const dialogRef = useRef<HTMLDivElement>(null);
+    // gd-0wi.23: move focus into the dialog on open, restore it on close. Focus the container
+    // (not a button) so the SPACE that opened the modal doesn't immediately activate a choice.
+    useEffect(() => {
+        const prev = document.activeElement as HTMLElement | null;
+        dialogRef.current?.focus();
+        return () => prev?.focus?.();
+    }, []);
     return (
-    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn">
-        <div className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50">
-            <h2 className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Interaction</h2>
+    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title">
+        <div ref={dialogRef} tabIndex={-1} className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50 focus:outline-none">
+            <h2 id="rids-choice-title" className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Interaction</h2>
             <p className="text-lg text-gray-300 mb-6 font-sans">Choose your action.</p>
             <div className="flex space-x-4">
                 <button
                     onClick={onWarn}
-                    className={`flex-1 bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus:outline-none ${selection === 'warn' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
+                    className={`flex-1 bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white ${selection === 'warn' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
                 >
                     Warn Driver <br/><span className="text-sm font-sans font-normal">(Fast, Low Reward)</span>
                 </button>
                 <button
                     onClick={onEnforce}
-                    className={`flex-1 bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus:outline-none ${selection === 'enforce' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
+                    className={`flex-1 bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white ${selection === 'enforce' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
                 >
                     Enforce <br/><span className="text-sm font-sans font-normal">({enforceLabel})</span>
                 </button>
@@ -921,6 +929,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
                 setRidsChoiceSelection('enforce');
             } else if (e.key === 'Enter' || e.key === ' ') {
+                // If a dialog button has keyboard focus, let its native activation fire — don't also
+                // fire here (that was the Warn+Enforce double-fire, M3).
+                const active = document.activeElement as HTMLElement | null;
+                if (active?.tagName === 'BUTTON' && active.closest('[role="dialog"]')) return;
                 e.preventDefault();
                 if (ridsChoiceSelection === 'warn') {
                     handleWarn();
