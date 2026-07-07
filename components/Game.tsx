@@ -3,7 +3,7 @@ import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, Colle
 import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
-import useKeyPress from '../hooks/useKeyPress';
+import useKeyPress, { normalizeKey } from '../hooks/useKeyPress';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
 import RotateDevicePrompt from './RotateDevicePrompt';
@@ -295,13 +295,19 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     }
   }, []);
   
-  useKeyPress(e => keysPressed.current[e.key] = true, e => keysPressed.current[e.key] = false);
+  // Normalize casing so Shift/CapsLock don't break movement/boost or strand a held key.
+  useKeyPress(
+    e => { keysPressed.current[normalizeKey(e.key)] = true; },
+    e => { keysPressed.current[normalizeKey(e.key)] = false; }
+  );
   
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'm' || e.key === 'M') setMinimapMode(prev => prev === 'Tactical' ? 'Strategic' : 'Tactical');
-        if (e.key === 'c' || e.key === 'C') handleColleagueCall();
-        if (e.key === 'e' || e.key === 'E') handleSirenToggle();
+        if (e.repeat) return; // toggles: ignore auto-repeat so a held key doesn't strobe
+        const k = e.key.toLowerCase();
+        if (k === 'm') setMinimapMode(prev => prev === 'Tactical' ? 'Strategic' : 'Tactical');
+        if (k === 'c') handleColleagueCall();
+        if (k === 'e') handleSirenToggle();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -936,6 +942,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   useEffect(() => {
     if (gameState === 'RidsChoice') {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.repeat) return; // a held SPACE (from the RIDS check) must not auto-confirm the choice
             if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
                 setRidsChoiceSelection('warn');
             } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
