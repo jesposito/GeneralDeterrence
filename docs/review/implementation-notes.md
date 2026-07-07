@@ -30,11 +30,16 @@ committed portable E2E — candidate for batch 9.) Run: `node <scratchpad>/smoke
   (Game.tsx). The always-null `dispatchedCall` props still thread through HUD → Compass /
   Minimap, and the `DISPATCH_CALL_*` constants remain — harmless vestiges left to avoid
   editing 2 more gated UI files for zero runtime effect. Strip in a later polish pass if desired.
-- **gd-0wi.2 (god component)** is being done *conservatively* — I can't QA-play a canvas game
-  headlessly, so a blind full teardown (making the 8 sim fns pure + useGameLoop/useInput) is too
-  risky. Approach: safe, behavior-preserving structural wins + extracting pure, unit-tested
-  helpers, verified by tsc + tests + build (+ a headless load smoke). The complete sim-purity
-  refactor is flagged as needing interactive QA before it can land safely.
+- **gd-0wi.2 (god component) — structural wins landed; full teardown deferred.**
+  DONE: removed the dead Dispatched-Call subsystem (gd-0wi.3), de-duped the intervention
+  handlers into `resolveIntervention()` (gd-0wi.4), and extracted the end-of-shift score math
+  into a pure, unit-tested `utils/scoring.ts`. All verified by tsc + tests + build + a headless
+  gameplay smoke.
+  NOT DONE (deliberately): the full sim-purity teardown — making the 8 update fns pure + a
+  `useGameLoop`/`useInput` split. That is a multi-day, correctness-risky rewrite of the core
+  loop whose *gameplay feel* (physics + scoring balance) **cannot be validated by headless
+  smoke testing** — it needs interactive human QA. Flagged for a human-in-the-loop session
+  rather than risking a confident-wrong rewrite of the whole game. Recommend pairing on it.
 
 ## Batch 5 — render performance
 

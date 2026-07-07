@@ -1,0 +1,31 @@
+import { describe, it, expect } from 'vitest';
+import { computeScoreBreakdown } from './scoring';
+import * as CONSTANTS from '../constants';
+
+describe('computeScoreBreakdown', () => {
+  it('sums enforcement + deterrence + district bonus, plus the LAR net', () => {
+    const districts = [{ deterrence: 60 }, { deterrence: 40 }]; // (+10 + -10) * mult = 0 net bonus
+    const r = computeScoreBreakdown({ enforcement: 1000, deterrence: 200.4, livesSaved: 2, livesLost: 1 }, districts);
+    expect(r.enforcementScore).toBe(1000);
+    expect(r.deterrenceScore).toBe(200); // rounded from 200.4
+    expect(r.finalDeterrenceBonus).toBe(0);
+    expect(r.livesSavedBonus).toBe(2 * CONSTANTS.LIVES_SAVED_SCORE_BONUS);
+    expect(r.livesLostPenalty).toBe(1 * CONSTANTS.LIVES_LOST_PENALTY);
+    expect(r.finalScore).toBe(
+      Math.round(1000 + 200.4 + 0) + 2 * CONSTANTS.LIVES_SAVED_SCORE_BONUS - 1 * CONSTANTS.LIVES_LOST_PENALTY,
+    );
+  });
+
+  it('rewards high deterrence and penalizes low (relative to the 50 baseline)', () => {
+    const high = computeScoreBreakdown({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0 }, [{ deterrence: 100 }]);
+    expect(high.finalDeterrenceBonus).toBe(Math.round(50 * CONSTANTS.FINAL_DETERRENCE_SCORE_MULTIPLIER));
+    const low = computeScoreBreakdown({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0 }, [{ deterrence: 0 }]);
+    expect(low.finalDeterrenceBonus).toBe(Math.round(-50 * CONSTANTS.FINAL_DETERRENCE_SCORE_MULTIPLIER));
+  });
+
+  it('handles empty districts and a zero-event shift', () => {
+    const r = computeScoreBreakdown({ enforcement: 500, deterrence: 0, livesSaved: 0, livesLost: 0 }, []);
+    expect(r.finalDeterrenceBonus).toBe(0);
+    expect(r.finalScore).toBe(500);
+  });
+});

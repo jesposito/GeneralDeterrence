@@ -4,6 +4,7 @@ import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
 import useKeyPress, { normalizeKey } from '../hooks/useKeyPress';
+import { computeScoreBreakdown } from '../utils/scoring';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
 import RotateDevicePrompt from './RotateDevicePrompt';
@@ -937,18 +938,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     const now = Date.now();
     
     if (timeLeftRef.current <= 0) {
-        const finalDeterrenceBonus = districtsRef.current.reduce((total, district) => {
-            const districtScore = (district.deterrence - 50) * CONSTANTS.FINAL_DETERRENCE_SCORE_MULTIPLIER;
-            return total + districtScore;
-        }, 0);
-
         const finalBreakdown: FinalScoreBreakdown = {
-            enforcementScore: scoreRef.current.enforcement,
-            deterrenceScore: Math.round(scoreRef.current.deterrence),
-            finalDeterrenceBonus: Math.round(finalDeterrenceBonus),
-            livesSavedBonus: scoreRef.current.livesSaved * CONSTANTS.LIVES_SAVED_SCORE_BONUS,
-            livesLostPenalty: scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY,
-            finalScore: Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence + finalDeterrenceBonus) + (scoreRef.current.livesSaved * CONSTANTS.LIVES_SAVED_SCORE_BONUS) - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY),
+            ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
             patrolPath: patrolPathRef.current,
             enforcementActions: enforcementActionsRef.current,
             colleagueCallActions: colleagueCallActionsRef.current,
