@@ -256,9 +256,10 @@ interface HUDProps {
   shouldFlashColleagueAssist: boolean;
   hudTick: number;
   viewport: { width: number; height: number };
+  offencesPrevented: number;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport, offencesPrevented }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -337,6 +338,11 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                 <div className="text-xs md:text-sm font-semibold text-cyan-400 tracking-wider text-glow-cyan">SCORE</div>
                 <div className={`text-2xl md:text-3xl font-bold text-glow-yellow ${scorePop ? 'animate-score-pop' : ''}`}>{scoreDisplay.toLocaleString()}</div>
                 <div className="flex justify-between items-center text-center mt-1">
+                    {/* The teaching stat: offences that never happened because deterrence held. */}
+                    <div>
+                        <div className="text-[10px] md:text-xs font-semibold text-cyan-300 text-glow-cyan">PREVENTED</div>
+                        <div className={`text-xl md:text-2xl font-bold ${offencesPrevented > 0 ? 'text-cyan-300' : 'text-white'}`}>{offencesPrevented}</div>
+                    </div>
                     <div>
                         <div className="text-[10px] md:text-xs font-semibold text-yellow-300 text-glow-yellow">RISK</div>
                         <div className={`text-xl md:text-2xl font-bold ${livesAtRiskCount > 0 ? 'text-yellow-400 animate-pulse' : 'text-white'}`}>{livesAtRiskCount}</div>
@@ -356,6 +362,23 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
             {/* Compact meters for touch players (gd-0wi.17/.21): the bottom cluster is hidden on
                 coarse pointers to leave room for the on-screen controls, so surface key state here. */}
             <div className="hidden [@media(pointer:coarse)]:flex items-center gap-2 bg-black/90 px-3 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10">
+                {/* District deterrence dots: landscape phones hide the full meter panel
+                    (max-height:500px), losing the core teaching UI — keep a glanceable version here. */}
+                <div
+                    className="flex items-center gap-1"
+                    role="img"
+                    aria-label={`District deterrence: ${districts.map(d => `${d.name} ${Math.round(d.deterrence)}%`).join(', ')}`}
+                >
+                    {districts.map(d => (
+                        <span
+                            key={d.id}
+                            className={`w-2.5 h-2.5 rounded-full ${
+                                d.deterrence >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD ? 'bg-green-400' :
+                                d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 'bg-red-500 animate-pulse' : 'bg-yellow-400'
+                            } ${d.id === playerDistrict ? 'ring-1 ring-white' : ''}`}
+                        />
+                    ))}
+                </div>
                 <div className="flex items-center gap-1">
                     <span className={`font-bold ${player.isSirenActive ? 'text-red-400' : 'text-cyan-400'}`}>{player.isSirenActive ? 'SIREN' : 'BOOST'}</span>
                     <div className="w-14 h-2.5 bg-gray-900 rounded-full border border-gray-600 overflow-hidden" role="progressbar" aria-label={player.isSirenActive ? 'Siren energy' : 'Boost charge'} aria-valuenow={Math.round(player.boostCharge)} aria-valuemin={0} aria-valuemax={100}>

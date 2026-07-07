@@ -27,6 +27,11 @@ const HUD_UPDATE_INTERVAL_MS = 100;
 
 const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node]));
 
+// Haptic tap on the big moments (enforce/save/loss). No-op where unsupported (iOS Safari).
+const buzz = (pattern: number | number[]) => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern);
+};
+
 const RidsChoiceModal: React.FC<{
     onEnforce: () => void;
     onWarn: () => void;
@@ -137,6 +142,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   
   const scoreRef = useRef({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0, colleagueSaves: 0 });
   const timeLeftRef = useRef(CONSTANTS.SHIFT_DURATION);
+  // The invisible win, made countable: offenders the spawner never created because
+  // deterrence was high. THE teaching number for a game about general deterrence.
+  const offencesPreventedRef = useRef(0);
+  // Seconds with every district ≥50% — the Presence Grade input (S/A/B/C on GameOver).
+  const fullCoverageSecondsRef = useRef(0);
+  const districtZoneRef = useRef<Record<string, 'hotspot' | 'mid' | 'secured'>>({});
   const avgDeterrenceRef = useRef(50);
   const isVigilanceBonusActiveRef = useRef(false);
   
@@ -684,6 +695,32 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         avgDeterrenceRef.current = totalDeterrence / districtsRef.current.length;
         isVigilanceBonusActiveRef.current = districtsRef.current.every(d => d.deterrence >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD);
 
+        // Presence Grade input: time with EVERY district ≥50%.
+        if (districtsRef.current.every(d => d.deterrence >= 50)) fullCoverageSecondsRef.current += dt;
+
+        // District stingers: crossing 85 (secured) / 33 (hotspot) had zero fanfare, hiding the
+        // teaching thresholds. Hysteresis (leave secured <80, leave hotspot ≥38) stops flapping.
+        // Messages ride gameMessage, so they also reach the aria-live region.
+        for (const district of districtsRef.current) {
+            const zones = districtZoneRef.current;
+            const prevZone = zones[district.id];
+            const d = district.deterrence;
+            let zone = prevZone ?? (d >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD ? 'secured' : d < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 'hotspot' : 'mid');
+            if (prevZone) {
+                if (prevZone !== 'secured' && d >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD) zone = 'secured';
+                else if (prevZone !== 'hotspot' && d < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD) zone = 'hotspot';
+                else if (prevZone === 'secured' && d < CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD - 5) zone = 'mid';
+                else if (prevZone === 'hotspot' && d >= CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD + 5) zone = 'mid';
+                if (zone !== prevZone && zone !== 'mid') {
+                    setGameMessage(zone === 'secured' ? `${district.name.toUpperCase()} SECURED` : `HOTSPOT: ${district.name.toUpperCase()}`);
+                    if (zone === 'secured') audio.tick(1000); else audio.thud();
+                    if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+                    gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2500);
+                }
+            }
+            zones[district.id] = zone;
+        }
+
         const deterrenceMultiplier = CONSTANTS.DETERRENCE_MULTIPLIER_MIN + (avgDeterrenceRef.current / 100) * (CONSTANTS.DETERRENCE_MULTIPLIER_MAX - CONSTANTS.DETERRENCE_MULTIPLIER_MIN);
         scoreRef.current.deterrence += (avgDeterrenceRef.current / 100) * CONSTANTS.DETERRENCE_SCORE_RATE * dt * (isVigilanceBonusActiveRef.current ? CONSTANTS.VIGILANCE_BONUS_MULTIPLIER : 1) * deterrenceMultiplier;
 
@@ -793,6 +830,18 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             const shiftProgress = Math.min(1, Math.max(0, 1 - timeLeftRef.current / CONSTANTS.SHIFT_DURATION));
             const dynamicTarget = Math.ceil(CONSTANTS.TARGET_OFFENDER_COUNT * Math.max(avgDeterrenceModifier, shiftProgress * 0.75));
             const targetOffenders = Math.max(CONSTANTS.MIN_TARGET_OFFENDER_COUNT, dynamicTarget);
+            // Offences Prevented: the gap between the zero-deterrence offender population and
+            // the deterrence-suppressed one, integrated over time (each suppressed "slot" turns
+            // over roughly every OFFENCE_PREVENTED_TURNOVER_SECONDS). Float one flag per whole
+            // offence so the counter visibly ties to sustained presence.
+            const suppressed = Math.max(0, CONSTANTS.TARGET_OFFENDER_COUNT - targetOffenders);
+            if (suppressed > 0) {
+                const before = Math.floor(offencesPreventedRef.current);
+                offencesPreventedRef.current += suppressed * (CONSTANTS.RIDS_SPAWN_INTERVAL / 1000) / CONSTANTS.OFFENCE_PREVENTED_TURNOVER_SECONDS;
+                if (Math.floor(offencesPreventedRef.current) > before) {
+                    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: player.pos.x, y: player.pos.y - 90 }, text: 'OFFENCE PREVENTED', spawnTime: Date.now() });
+                }
+            }
             if (currentOffenders < targetOffenders) {
                 const weightedDistricts = districtsRef.current.map(d => ({ districtId: d.id, weight: (101 - d.deterrence) * (d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 4 : 1) }));
                 const totalWeight = weightedDistricts.reduce((sum, wd) => sum + wd.weight, 0);
@@ -840,6 +889,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
                     audio.thud();
+                    buzz([60, 40, 60]); // heavier pattern than an intervention — this is the failure state
                     cameraRef.current.shake = 10;
                     hitStopUntilRef.current = now + 110; // hit-stop: freeze the sim for a beat on the biggest failure
                     setGameMessage('LIFE LOST');
@@ -1044,8 +1094,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: car.pos, text: `+${scoreToAdd}`, spawnTime: Date.now() });
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: Date.now() });
+    // Float the TEACHING number too — the deterrence boost was invisible while points weren't.
+    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 40 }, text: `+${deterrenceBoost} DETERRENCE`, spawnTime: Date.now() });
     const district = districtsRef.current.find(d => d.id === car.district);
     if (district) district.deterrence = Math.min(100, district.deterrence + deterrenceBoost);
+    buzz(30);
     enforcementActionsRef.current.push({ pos: car.pos, ridsType: car.ridsType!, actionType });
     civiliansRef.current = civiliansRef.current.filter(c => c.id !== car.id);
     if (shake) cameraRef.current.shake = shake;
@@ -1124,11 +1177,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (timeLeftRef.current <= 0) {
         if (gameOverFiredRef.current) return;
         gameOverFiredRef.current = true;
+        const coverageRatio = Math.min(1, fullCoverageSecondsRef.current / CONSTANTS.SHIFT_DURATION);
         const finalBreakdown: FinalScoreBreakdown = {
             ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
             patrolPath: patrolPathRef.current,
             enforcementActions: enforcementActionsRef.current,
             colleagueCallActions: colleagueCallActionsRef.current,
+            offencesPrevented: Math.floor(offencesPreventedRef.current),
+            coverageRatio,
+            presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
         };
         onGameOver(finalBreakdown);
         return;
@@ -1334,6 +1391,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
           stationaryCountdown={stationaryCountdown}
           shouldFlashColleagueAssist={shouldFlashColleagueAssist}
+          offencesPrevented={Math.floor(offencesPreventedRef.current)}
           hudTick={hudTick} />
       {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} />}
       {gameState === 'MiniGame' && activeRids && (

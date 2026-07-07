@@ -155,6 +155,10 @@ export const NEGLECT_OF_DUTY_LAR_CHANCE_MULTIPLIER = 2.5; // 150% increase
 export const NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER = 0.75; // 25% reduction
 export const COLLEAGUE_ASSIST_FLASH_THRESHOLD_SECONDS = 5; // When to start flashing UI
 
+// Offences Prevented: each deterrence-suppressed offender "slot" counts as one prevented
+// offence per this many seconds (a suppressed slot ~= one offence that never happened).
+export const OFFENCE_PREVENTED_TURNOVER_SECONDS = 20; // ponytail:tune
+
 // Civilian Cars & Traffic Density
 export const MAX_CIVILIAN_CARS = 80; // More cars overall
 export const TARGET_OFFENDER_COUNT = 7; // Target number of RIDS offenders on the map, scaled by deterrence

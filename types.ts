@@ -71,6 +71,12 @@ export interface FinalScoreBreakdown {
   patrolPath: { x: number; y: number }[];
   enforcementActions: EnforcementAction[];
   colleagueCallActions: ColleagueCallAction[];
+  /** Offenders the spawner never created because deterrence was high — the teaching headline. */
+  offencesPrevented: number;
+  /** Fraction of the shift with every district ≥50% deterrence. */
+  coverageRatio: number;
+  /** Grade derived from coverageRatio: S ≥0.9, A ≥0.7, B ≥0.45, else C. */
+  presenceGrade: 'S' | 'A' | 'B' | 'C';
 }
 
 export interface LeaderboardEntry {

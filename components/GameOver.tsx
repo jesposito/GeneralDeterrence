@@ -270,9 +270,29 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   // After submit the form (holding focus) unmounts; move focus to Play Again.
   useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
 
+  const gradeStyles: Record<string, string> = {
+    S: 'text-yellow-300 border-yellow-300',
+    A: 'text-green-400 border-green-400',
+    B: 'text-yellow-400 border-yellow-400',
+    C: 'text-red-400 border-red-400',
+  };
+
   return (
     <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
       <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
+      {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}
+      <div className="flex items-center justify-center gap-3 mb-2">
+        <span className="text-sm md:text-lg text-gray-300 font-display tracking-wider">PRESENCE GRADE</span>
+        <span className={`text-3xl md:text-5xl font-display font-bold border-4 rounded-lg px-3 py-1 ${gradeStyles[scoreBreakdown.presenceGrade]}`}>{scoreBreakdown.presenceGrade}</span>
+      </div>
+      <p className="text-sm md:text-base text-gray-400 mb-1 font-sans">
+        All districts held ≥50% deterrence for {Math.round(scoreBreakdown.coverageRatio * 100)}% of your shift.
+      </p>
+      {scoreBreakdown.offencesPrevented > 0 && (
+        <p className="text-base md:text-xl text-cyan-300 mb-4 font-display tracking-wide">
+          {scoreBreakdown.offencesPrevented} {scoreBreakdown.offencesPrevented === 1 ? 'OFFENCE' : 'OFFENCES'} NEVER HAPPENED — your visible presence prevented them.
+        </p>
+      )}
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
       <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-6 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
       
