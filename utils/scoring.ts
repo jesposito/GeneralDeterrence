@@ -6,6 +6,8 @@ export interface ScoreState {
   deterrence: number;
   livesSaved: number;
   livesLost: number;
+  /** Subset of livesSaved resolved by colleague assist — pays half a personal save. */
+  colleagueSaves?: number;
 }
 
 export interface ScoreBreakdownNumbers {
@@ -31,7 +33,10 @@ export function computeScoreBreakdown(
     (total, d) => total + (d.deterrence - 50) * CONSTANTS.FINAL_DETERRENCE_SCORE_MULTIPLIER,
     0,
   );
-  const livesSavedBonus = score.livesSaved * CONSTANTS.LIVES_SAVED_SCORE_BONUS;
+  const colleagueSaves = Math.min(score.colleagueSaves ?? 0, score.livesSaved);
+  const livesSavedBonus =
+    (score.livesSaved - colleagueSaves) * CONSTANTS.LIVES_SAVED_SCORE_BONUS +
+    colleagueSaves * CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS;
   const livesLostPenalty = score.livesLost * CONSTANTS.LIVES_LOST_PENALTY;
 
   return {

@@ -28,4 +28,15 @@ describe('computeScoreBreakdown', () => {
     expect(r.finalDeterrenceBonus).toBe(0);
     expect(r.finalScore).toBe(500);
   });
+
+  it('pays colleague saves at the reduced rate, personal saves at full', () => {
+    const r = computeScoreBreakdown(
+      { enforcement: 0, deterrence: 0, livesSaved: 3, livesLost: 0, colleagueSaves: 2 },
+      [],
+    );
+    expect(r.livesSavedBonus).toBe(
+      1 * CONSTANTS.LIVES_SAVED_SCORE_BONUS + 2 * CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS,
+    );
+    expect(r.finalScore).toBe(r.livesSavedBonus);
+  });
 });

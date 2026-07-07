@@ -31,10 +31,10 @@ const RidsChoiceModal: React.FC<{
     onEnforce: () => void;
     onWarn: () => void;
     selection: 'warn' | 'enforce';
-    ridsType: RIDSType;
-}> = ({ onEnforce, onWarn, selection, ridsType }) => {
-    const isAutoResolve = ridsType === 'Restraints' || ridsType === 'Distractions';
-    const enforceLabel = isAutoResolve ? 'Instant, Variable Reward' : 'Slow, High Reward';
+}> = ({ onEnforce, onWarn, selection }) => {
+    // Every Enforce runs a mini-game and costs shift time — say so honestly (the old
+    // "Instant, Variable Reward" copy predated the gd-0wi.10 retool).
+    const enforceLabel = `Mini-Game, −${CONSTANTS.ENFORCE_TIME_COST_SECONDS}s Shift, High Reward`;
     const dialogRef = useRef<HTMLDivElement>(null);
     const timerBarRef = useRef<HTMLDivElement>(null);
     const onWarnRef = useRef(onWarn);
@@ -135,7 +135,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const explosionsRef = useRef<ExplosionType[]>([]);
   const patrolPostsRef = useRef<PatrolPost[]>([]);
   
-  const scoreRef = useRef({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0 });
+  const scoreRef = useRef({ enforcement: 0, deterrence: 0, livesSaved: 0, livesLost: 0, colleagueSaves: 0 });
   const timeLeftRef = useRef(CONSTANTS.SHIFT_DURATION);
   const avgDeterrenceRef = useRef(50);
   const isVigilanceBonusActiveRef = useRef(false);
@@ -329,6 +329,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3000);
 
         scoreRef.current.livesSaved++;
+        scoreRef.current.colleagueSaves++; // colleague saves pay half — attending yourself stays the best play
         const targetDistrict = getDistrictForPoint(targetCar.pos);
         if (targetDistrict) {
             const district = districtsRef.current.find(d => d.id === targetDistrict);
@@ -654,7 +655,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             const postDistrictId = getDistrictForPoint(post.pos);
             const district = districtsRef.current.find(d => d.id === postDistrictId);
             if (district) {
-                const sizeModifier = Math.min(2.5, 1000000 / (district.bounds.width * district.bounds.height));
+                // Floor at 1.0: in big districts the area divisor pushed net presence gain to
+                // ~+0.01%/s (decay 0.42 vs boost 0.43) — physically patrolling barely moved the
+                // meter. Presence must be the #1 meter-mover for the teaching goal to hold.
+                const sizeModifier = Math.min(2.5, Math.max(1.0, 1000000 / (district.bounds.width * district.bounds.height)));
                 const postBoost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * CONSTANTS.PATROL_POST_PRESENCE_MULTIPLIER * dt;
                 district.deterrence = Math.min(100, district.deterrence + postBoost);
             }
@@ -668,7 +672,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             district.deterrence = Math.max(0, district.deterrence - CONSTANTS.DT_DISTRICT_DECAY_PER_SEC * decayMultiplier * dt);
             
             if (district.id === playerDistrictId) {
-                const sizeModifier = Math.min(2.5, 1000000 / (district.bounds.width * district.bounds.height)); 
+                const sizeModifier = Math.min(2.5, Math.max(1.0, 1000000 / (district.bounds.width * district.bounds.height))); // floor: see patrol-post note above
                 let boost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * dt;
                 if (player.isSirenActive) boost += CONSTANTS.DT_SIREN_BOOST_PER_SEC * dt;
                 district.deterrence = Math.min(100, district.deterrence + boost);
@@ -1020,6 +1024,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     // with activeRids=null → nothing renders, loop stopped, soft-lock).
     if (ridsPhaseRef.current !== 'choice') return;
     ridsPhaseRef.current = 'minigame';
+    // Enforce costs real shift time. The clock freezes during modals, so the advertised
+    // "slow, high reward" tradeoff didn't exist — Enforce was strictly dominant.
+    timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.ENFORCE_TIME_COST_SECONDS);
     // gd-0wi.10: every enforcement runs a mini-game (Impairment=breath test, Speed=slider,
     // Restraints/Distractions=deterrence-concept check) — this is what makes the retooled
     // concept mini-game reachable. Scoring, LAR and dispatch handling all live in
@@ -1273,7 +1280,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const camera = cameraRef.current;
   const cameraPos = cameraPosRef.current;
   const playerDistrict = getDistrictForPoint(player.pos);
-  const totalScore = Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence) + (scoreRef.current.livesSaved * CONSTANTS.LIVES_SAVED_SCORE_BONUS) - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY);
+  const totalScore = Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence)
+      + ((scoreRef.current.livesSaved - scoreRef.current.colleagueSaves) * CONSTANTS.LIVES_SAVED_SCORE_BONUS)
+      + (scoreRef.current.colleagueSaves * CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS)
+      - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY);
   const activeLarCar = civiliansRef.current.find(c => c.isLifeAtRisk);
   const shouldFlashColleagueAssist = activeLarCar 
       ? (activeLarCar.lifeAtRiskTimer / CONSTANTS.FRAMES_PER_SECOND) < CONSTANTS.COLLEAGUE_ASSIST_FLASH_THRESHOLD_SECONDS
@@ -1325,7 +1335,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
           stationaryCountdown={stationaryCountdown}
           shouldFlashColleagueAssist={shouldFlashColleagueAssist}
           hudTick={hudTick} />
-      {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} ridsType={activeRids.ridsType} />}
+      {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} />}
       {gameState === 'MiniGame' && activeRids && (
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} difficulty={Math.min(1, Math.max(0, 1 - timeLeftRef.current / CONSTANTS.SHIFT_DURATION))} />
       )}

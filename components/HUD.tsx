@@ -375,7 +375,8 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
             </div>
             {isVigilanceBonusActive && (
                 <div className="bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
-                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">VIGILANCE BONUS 2.0x</p>
+                    {/* "Vigilance Bonus" collided with the purple personal Vigilance meter — it's a district-coverage bonus. */}
+                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">FULL COVERAGE ×2</p>
                 </div>
             )}
             {dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}

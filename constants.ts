@@ -43,10 +43,12 @@ export const VIGILANCE_DECAY_PER_SECOND_BOOSTING = 4.0;
 export const VIGILANCE_AURA_BONUS_MAX = 125; // Max additional pixels to aura radius
 
 // Patrol Post System (New)
-export const PATROL_POST_SETUP_TIME = 10; // seconds player must be stationary
+// ponytail:tune — fable-audit B10: 10s stationary (−30 vigilance) for a ~1.3x boost was a trap
+// (one Warn beat it). Halved setup, posts now meaningfully outperform driving presence.
+export const PATROL_POST_SETUP_TIME = 5; // seconds player must be stationary (was 10)
 export const PATROL_POST_DURATION = 30 * FRAMES_PER_SECOND; // 30 seconds in frames
 
-export const PATROL_POST_PRESENCE_MULTIPLIER = 1.30; // 30% more effective than standard player presence
+export const PATROL_POST_PRESENCE_MULTIPLIER = 3.0; // was 1.30 — posts must beat a drive-by to be worth the vigilance cost
 export const PATROL_POST_RADIUS = 150; // Visual radius of the post's aura
 export const PATROL_POST_LAR_TIME_BONUS_SECONDS = 5; // Time bonus in seconds
 
@@ -88,7 +90,9 @@ export const DISPATCH_CALL_SCORE_BONUS = 5000;
 export const DISTRICT_DECAY_RATE = 0.007; // Slower decay per frame
 export const DISTRICT_PLAYER_PRESENCE_BASE_BOOST = 0.022; // Base boost per frame, REBALANCED from 0.09
 export const DISTRICT_SIREN_BOOST = 0.025; // Slow, constant boost from siren presence
-export const ENFORCEMENT_DETERRENCE_BOOST = 32; // flat boost for successful minigame, increased from 20
+// ponytail:tune — fable-audit B2: at 32, one Enforce equalled ~53 minutes of rural presence,
+// making punishment (not presence) the #1 deterrence-meter mover — the opposite of the lesson.
+export const ENFORCEMENT_DETERRENCE_BOOST = 20; // was 32
 export const WARN_DETERRENCE_BOOST = 12; // Smaller boost for a warning, increased from 5
 export const COLLEAGUE_DETERRENCE_BOOST = 18; // Boost for using colleague assist
 export const DETERRENCE_HOTSPOT_THRESHOLD = 33; // Below this, a district is a hotspot
@@ -114,7 +118,7 @@ export const RIDS_SPAWN_CHANCE_BY_ROAD_TYPE: Record<RoadType, Record<RIDSType, n
 };
 
 // Scoring
-export const WARN_SCORE_POINTS = 100;
+export const WARN_SCORE_POINTS = 150; // was 100 — ponytail:tune, narrows the Warn/Enforce gap (fable-audit C)
 export const BASE_ENFORCEMENT_POINTS: { [key in RIDSType]: number } = {
   Impairment: 500,
   Speed: 400,
@@ -124,8 +128,16 @@ export const BASE_ENFORCEMENT_POINTS: { [key in RIDSType]: number } = {
 export const RURAL_BONUS = 100;
 export const REFERRAL_BONUS = 200;
 export const ENFORCEMENT_BONUS_POINTS = 150;
-export const DETERRENCE_SCORE_RATE = 25; // was 10 — per audit, passive presence (the core teaching activity) had the weakest reward signal; pairs with the LAR nerf. ponytail: tune to taste after playtest
-export const FINAL_DETERRENCE_SCORE_MULTIPLIER = 50; // Points per percentage point over/under 50
+// ponytail:tune — fable-audit B6: reward SUSTAINED coverage over an end-of-shift snapshot.
+// The ±12,500-swing final bonus invited a last-20s blitz that ignored 70s of neglect.
+export const DETERRENCE_SCORE_RATE = 40; // was 25 (and 10 before that) — continuous accrual is the main deterrence income
+export const FINAL_DETERRENCE_SCORE_MULTIPLIER = 25; // was 50 — points per percentage point over/under 50 at shift end
+// The advertised Warn/Enforce tradeoff: Enforce pays more but costs real shift time
+// (the shift clock freezes during modals, so without this the "slow" option was free).
+export const ENFORCE_TIME_COST_SECONDS = 6;
+// Colleague saves pay half a personal save — attending yourself must stay the best play
+// (fable-audit B9: 3 free auto-targeted +2500 saves strictly dominated driving there).
+export const COLLEAGUE_SAVE_SCORE_BONUS = 1250;
 export const DETERRENCE_MULTIPLIER_MIN = 1.0;
 export const DETERRENCE_MULTIPLIER_MAX = 1.5;
 export const FLOATING_SCORE_TEXT_LIFESPAN = 2000; // ms

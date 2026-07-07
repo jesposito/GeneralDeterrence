@@ -42,7 +42,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                 <TutorialInfoCard title="OBJECTIVE">
                     <p>Your goal is to maintain high <span className="text-white font-bold">DETERRENCE</span> across all districts.</p>
                     <p>Your patrol car has a deterrence aura. Grow this aura by increasing your <span className="text-purple-400 font-bold">VIGILANCE</span> through successful warnings and enforcements.</p>
-                    <p>A larger aura helps deter crime over a wider area. Keep all districts above 85% to activate a <span className="text-yellow-300 font-bold">VIGILANCE BONUS</span> for 2x points.</p>
+                    <p>A larger aura helps deter crime over a wider area. Keep all districts above 85% to activate <span className="text-yellow-300 font-bold">FULL COVERAGE</span> for 2x points.</p>
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="CORE PATROL">
