@@ -1,0 +1,40 @@
+# Accessibility findings (per-file, from accessibility-lead reviews)
+
+Durable worklist for batch 8 (a11y) — captured as UI files are unblocked, so the
+review work survives context compaction. Maps to gd-0wi.23/.24/.25/.26 + doc findings.
+
+## components/Game.tsx (reviewed 2026-07-07)
+
+### Critical (blocks non-visual access)
+- **C1 — Canvas has no accessible name.** `Game.tsx:1149-1153`. WCAG 1.1.1 / 4.1.2.
+  Add `role="img"` + `aria-label` ("General Deterrence — top-down patrol driving game");
+  optional text-summary fallback children.
+- **C2 — No live region for critical state.** State: `gameMessage` (`:68`→HUD `:1177`),
+  `activeLarCar` (`:1135`), neglect flag (`:1178`), final-10s ticks (`:1057-1066`).
+  WCAG 4.1.3. Add a visually-hidden region: `aria-live="assertive"` for life-at-risk +
+  final-10s; `aria-live="polite"` for gameMessage + neglect onset. Throttle.
+
+### Major
+- **M1 — RIDS-choice modal is not a dialog.** `RidsChoiceModal` `Game.tsx:36-56`, rendered `:1182`.
+  No `role="dialog"`/`aria-modal`/`aria-labelledby`; focus not moved in/trapped/restored.
+  (Tutorial.tsx:31-33 does this right — copy that pattern.)
+- **M2 — Focus indicator removed on modal buttons.** `Game.tsx:43,49` `focus:outline-none`;
+  ring is bound to selection state, not `:focus`. Use `focus-visible:ring-4 ...`.
+- **M3 — Arrow-selection disconnected from DOM focus + CONFIRM CAN DOUBLE-FIRE (correctness).**
+  window Enter/Space handler `:938-951` acts on `ridsChoiceSelection`; buttons keep their own
+  `onClick` (`:42,:48`). A Tab-focused button + Enter fires BOTH → Warn *and* Enforce.
+  Fix: pick ONE model — either roving DOM focus + native button activation (delete the window
+  Enter/Space branch), or managed selection + remove buttons' onClick/focusability.
+
+### Minor (AAA / reduced-motion)
+- **m1 — Camera shake ignores prefers-reduced-motion.** set `:625,:860,:888,:1086`, decay `:861`.
+  Gate magnitude to 0 under reduce; cache matchMedia at module scope (not per-hit).
+- **m2 — DOM overlays/particles ignore reduced-motion.** boost `:1159`, speed-lines `:1160-1170`,
+  countdown `:1144`, modal `:36`; plus canvas sparks/smoke/explosions. Guard via CSS @media.
+- **m4 — Escape doesn't dismiss modal** (`:938-951`). Likely intentional (forced decision) — confirm.
+- **m5 — modal `<h2>` may render with no page `<h1>`.** Low priority for a canvas game.
+
+### Confirmed already-fixed in batch 2 (input correctness)
+- **M4** key casing/stranding (`:298`,`:391-395`) → fixed via normalizeKey (gd-0wi.18). WCAG 2.1.1.
+- **m3** E/C/M lacked e.repeat → guarded (gd-0wi.19). NOTE M3's focus/double-fire cleanup is beyond
+  the e.repeat guard and remains for batch 8.
