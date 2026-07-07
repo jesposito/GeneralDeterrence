@@ -32,7 +32,7 @@
       "Bash(wget:*)",
       "Bash(curl:*)",
       "Bash(bd:*)",
-      "mcp__github:*",
+      "mcp__github__*",
       "mcp__MCP_DOCKER__read_file",
       "mcp__MCP_DOCKER__read_multiple_files",
       "mcp__MCP_DOCKER__list_directory",
