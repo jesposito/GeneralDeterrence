@@ -194,15 +194,32 @@ function applyFlips(built: Built, flipX: boolean, flipY: boolean): void {
     }
 }
 
-// Real Wellington-region place names per district archetype. IDs stay fixed (balance
-// constants key on them); only display names vary. The archetype tag keeps the teaching
-// cue (a first-timer must still see instantly which district is the rural one).
+// Real NZ place names per district archetype, drawn from all over the motu. IDs stay
+// fixed (balance constants key on them); only display names vary. The archetype tag keeps
+// the teaching cue (a first-timer must still see instantly which district is the rural one).
 const DISTRICT_NAME_POOLS: Record<DistrictName, string[]> = {
-    'Karori North': ['Mākara', 'Ōhāriu Valley', 'Horokiwi', 'South Karori', 'Terawhiti', 'Belmont Hills', 'Takarau Gorge', 'Wainuiomata Hills'],
-    'Karori West': ['Karori', 'Ngaio', 'Khandallah', 'Brooklyn', 'Tawa', 'Newlands', 'Island Bay', 'Johnsonville', 'Miramar', 'Vogeltown'],
-    'Karori Central': ['Te Aro', 'Lambton Quarter', 'Cuba Quarter', 'Courtenay', 'Thorndon', 'Civic Square'],
-    'Karori East': ['SH1 Corridor', 'SH2 Corridor', 'Centennial Highway', 'Ngauranga Gorge', 'Transmission Gully', 'The Expressway'],
-    'Karori': ['Ōwhiro Bay', 'Mākara Beach', 'Red Rocks', 'Seatoun', 'Days Bay', 'Breaker Bay'],
+    'Karori North': [
+        'Mākara', 'Ōhāriu Valley', 'Maniototo', 'Rangitīkei', 'Waipara', 'Kaipara Flats',
+        'Wairarapa Plains', 'Waitaki Valley', 'Te Kūiti Backroads', 'Cheviot Hills',
+        'Ōpōtiki Coast Road', 'Central Hawke’s Bay',
+    ],
+    'Karori West': [
+        'Karori', 'Ngaio', 'Ponsonby', 'Riccarton', 'Mosgiel', 'Papatoetoe', 'Māngere',
+        'Ilam', 'Havelock North', 'Tawa', 'Rototuna', 'Andersons Bay', 'Whakatū', 'Highfield',
+    ],
+    'Karori Central': [
+        'Te Aro', 'Queen Street', 'Cathedral Square', 'The Octagon', 'Victoria Street',
+        'Trafalgar Quarter', 'Riverside Centre', 'The Strand',
+    ],
+    'Karori East': [
+        'SH1 Corridor', 'Desert Road', 'Waikato Expressway', 'Southern Motorway',
+        'Northwestern Motorway', 'Kāpiti Expressway', 'Ngauranga Gorge', 'Transmission Gully',
+        'Centennial Highway', 'SH2 Corridor',
+    ],
+    'Karori': [
+        'Ōwhiro Bay', 'Piha', 'Raglan', 'Moeraki', 'Kaiteriteri', 'Sumner', 'Ōakura',
+        'Curio Bay', 'Mount Maunganui', 'Days Bay', 'Ōhope', 'Tata Beach',
+    ],
 };
 const ARCHETYPE_TAG: Record<DistrictName, string> = {
     'Karori North': 'Rural',
