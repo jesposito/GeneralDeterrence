@@ -20,10 +20,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
   // so AT never announced the screen.
   useEffect(() => { headingRef.current?.focus(); }, []);
   return (
-    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn relative overflow-hidden">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-20 animate-slow-pan"></div>
+    // overflow-y-auto + m-auto child (not justify-center): flex-centering an overflowing
+    // column makes the top unreachable; margin-auto centres when short, scrolls when tall.
+    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center overflow-y-auto p-4 md:p-8 text-center animate-fadeIn relative">
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-20 animate-slow-pan pointer-events-none"></div>
 
-      <main className="relative z-10">
+      <main className="relative z-10 m-auto">
         <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl sm:text-5xl lg:text-7xl font-bold text-cyan-400 mb-2 tracking-widest text-glow-cyan uppercase focus:outline-none">
           General Deterrence
         </h1>
@@ -69,7 +71,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
         </div>
       </main>
 
-       <footer className="absolute bottom-4 text-gray-400 text-sm z-10">
+       <footer className="relative z-10 mt-4 pb-2 text-gray-400 text-sm">
          An arcade game about road policing. Educational, but a game. Not affiliated with NZ Police.
        </footer>
       {showControls && <ControlsSettings onClose={() => setShowControls(false)} />}

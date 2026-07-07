@@ -42,9 +42,11 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="tutorial-title"
-      className="absolute inset-0 bg-black/80 flex flex-col items-center justify-start sm:justify-center z-30 p-4 sm:p-8 overflow-y-auto animate-fadeIn"
+      className="absolute inset-0 bg-black/80 flex flex-col items-center z-30 p-4 sm:p-8 overflow-y-auto animate-fadeIn"
     >
-        <div className="w-full max-w-6xl">
+        {/* my-auto centres when content fits, scrolls from the top when it doesn't
+            (sm:justify-center clipped the top on landscape phones). */}
+        <div className="w-full max-w-6xl my-auto">
             <h1 id="tutorial-title" className="text-3xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
             {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL: {mapLabel}</p>}
 

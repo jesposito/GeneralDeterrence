@@ -333,7 +333,9 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   };
 
   return (
-    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
+    // No justify-center: the report is taller than any viewport now, and flex-centering an
+    // overflowing column makes the top unreachable and scrolling erratic.
+    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
       <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
       {mapLabel && <p className="text-xs md:text-sm text-gray-400 mb-2 font-display tracking-wider">{mapLabel}</p>}
       {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}

@@ -901,7 +901,9 @@ function drawCivilianCar(
   ctx.strokeStyle = 'black';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(0, -carHeight / 2);
+  // Chamfered flat nose (a single centre point read as a spike, especially on long vehicles).
+  ctx.moveTo(-carWidth * 0.28, -carHeight / 2);
+  ctx.lineTo(carWidth * 0.28, -carHeight / 2);
   ctx.lineTo(carWidth / 2, -carHeight / 4);
   ctx.lineTo(carWidth / 2, carHeight / 2);
   ctx.lineTo(-carWidth / 2, carHeight / 2);
@@ -1061,7 +1063,9 @@ function drawPlayerCar(ctx: CanvasRenderingContext2D, player: Player, isBraking:
   ctx.strokeStyle = 'black';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(0, -carHeight / 2);
+  // Chamfered flat nose (a single centre point read as a spike, especially on long vehicles).
+  ctx.moveTo(-carWidth * 0.28, -carHeight / 2);
+  ctx.lineTo(carWidth * 0.28, -carHeight / 2);
   ctx.lineTo(carWidth / 2, -carHeight / 4);
   ctx.lineTo(carWidth / 2, carHeight / 2);
   ctx.lineTo(-carWidth / 2, carHeight / 2);

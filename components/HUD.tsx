@@ -477,15 +477,18 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
        {gameMessage && (
         // key is the message text (not Date.now()) so the fade animation plays once per
         // distinct message instead of restarting every render (which read as a flicker).
-        <div key={gameMessage} aria-hidden="true" className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
+        // Top-centre, out of the driving lane: dead-centre placement sat right on the patrol car.
+        <div key={gameMessage} aria-hidden="true" className="absolute top-24 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-lg md:text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-4 md:px-6 py-2 md:py-3 rounded-lg text-yellow-300 animate-fade-in-out z-40">
             {gameMessage}
         </div>
        )}
 
       {isNeglectOfDutyActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[80px] text-center z-50">
-            <h2 className="text-5xl font-bold animate-neglect-pulse font-display tracking-widest">NEGLECT OF DUTY</h2>
-            <p className="text-xl text-red-400">Deterrence Falling Rapidly</p>
+        // Below the toast band, clear of the patrol car (was floating just above centre).
+        // aria-hidden: the live region announces neglect; this h2 would orphan into the AT outline.
+        <div aria-hidden="true" className="absolute top-36 md:top-44 left-1/2 -translate-x-1/2 text-center z-40">
+            <h2 className="text-3xl md:text-5xl font-bold animate-neglect-pulse font-display tracking-widest">NEGLECT OF DUTY</h2>
+            <p className="text-base md:text-xl text-red-400">Deterrence Falling Rapidly</p>
         </div>
       )}
 

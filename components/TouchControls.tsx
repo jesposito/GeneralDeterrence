@@ -214,15 +214,15 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onAnalog
       </div>
 
       {/* RIGHT: 2x2 round Xbox-style action grid */}
-      <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 grid grid-cols-2 gap-3 pointer-events-auto">
+      <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 grid grid-cols-2 gap-3 items-end justify-items-end pointer-events-auto">
         {/* Top-left: BOOST (cyan, hold) */}
-        <ActionButton ariaLabel="Boost"
+        <ActionButton ariaLabel="Boost" size={ACTION_BUTTON - 6}
           className="text-white border-cyan-300/60 bg-cyan-600/80 active:bg-cyan-400/90"
           onPointerDown={() => handleBoost(true)} onPointerUp={() => handleBoost(false)}>
           BOOST
         </ActionButton>
         {/* Top-right: SIREN (red, toggle) */}
-        <ActionButton ariaLabel="Siren" ariaPressed={isSirenActive}
+        <ActionButton ariaLabel="Siren" ariaPressed={isSirenActive} size={ACTION_BUTTON - 6}
           className={`text-white border-red-400/60 ${isSirenActive ? 'bg-red-500/80 active:bg-red-500/90' : 'bg-black/50 active:bg-red-500/50'}`}
           onTap={onSirenToggle}>
           SIREN
@@ -233,8 +233,8 @@ const TouchControls: React.FC<TouchControlsProps> = ({ onControlChange, onAnalog
           onTap={onRidsCheck}>
           RIDS
         </ActionButton>
-        {/* Bottom-right: COLLEAGUE ASSIST (green) */}
-        <ActionButton ariaLabel="Request colleague assist"
+        {/* Bottom-right: COLLEAGUE ASSIST (green) — the panic button, so it's the big one. */}
+        <ActionButton ariaLabel="Request colleague assist" size={ACTION_BUTTON + 16}
           className="text-white border-green-300/60 bg-green-600/80 active:bg-green-500/90"
           onTap={onColleagueCall}>
           ASSIST
