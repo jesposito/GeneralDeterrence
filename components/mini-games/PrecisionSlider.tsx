@@ -7,11 +7,13 @@ const prefersReducedMotion =
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
     : false;
 
-const TARGET_MIN = 0.375;
-const TARGET_MAX = 0.625;
-const SWEEP_PERIOD_MS = 2500;
-
-const PrecisionSlider: React.FC<MiniGameProps> = ({ onComplete }) => {
+const PrecisionSlider: React.FC<MiniGameProps> = ({ onComplete, difficulty = 0 }) => {
+  // Difficulty (0..1 by shift progress) shrinks the target zone and speeds the sweep.
+  const d = Math.min(1, Math.max(0, difficulty));
+  const targetHalf = 0.125 - d * 0.065;   // ~25% wide at shift start -> ~12% at end
+  const TARGET_MIN = 0.5 - targetHalf;
+  const TARGET_MAX = 0.5 + targetHalf;
+  const SWEEP_PERIOD_MS = 2500 - d * 900; // faster sweep later in the shift
   const [stopped, setStopped] = useState(false);
   const [result, setResult] = useState<'success' | 'miss' | null>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -98,7 +100,7 @@ const PrecisionSlider: React.FC<MiniGameProps> = ({ onComplete }) => {
           </p>
           <div className="relative w-full h-10 bg-gray-800 rounded-lg overflow-hidden my-4 flex items-center border-2 border-gray-600">
             {/* Target zone — labelled, so it isn't conveyed by colour alone */}
-            <div className="absolute left-1/2 -translate-x-1/2 w-[25%] h-full bg-green-500/70 shadow-[0_0_15px_theme('colors.green.400')] flex items-center justify-center">
+            <div className="absolute left-1/2 -translate-x-1/2 h-full bg-green-500/70 shadow-[0_0_15px_theme('colors.green.400')] flex items-center justify-center" style={{ width: `${(targetHalf * 200).toFixed(1)}%` }}>
               <span className="text-[10px] font-bold text-black/80 font-sans tracking-wider">TARGET</span>
             </div>
             {/* Slider — positioned from JS (rAF), not a CSS keyframe */}

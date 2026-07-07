@@ -83,6 +83,7 @@ export interface LeaderboardEntry {
 export interface MiniGameProps {
   onComplete: (success: boolean) => void;
   ridsType: RIDSType;
+  difficulty?: number; // 0 (shift start) .. 1 (shift end) — scales enforcement mini-game challenge
 }
 
 export type DriverProfile = 'Repeat Offender' | 'Young Driver' | 'Tired Driver';

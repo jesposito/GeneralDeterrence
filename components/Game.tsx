@@ -1167,7 +1167,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
           hudTick={hudTick} />
       {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onEnforce={handleEnforce} onWarn={handleWarn} selection={ridsChoiceSelection} ridsType={activeRids.ridsType} />}
       {gameState === 'MiniGame' && activeRids && (
-        <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} />
+        <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} difficulty={Math.min(1, Math.max(0, 1 - timeLeftRef.current / CONSTANTS.SHIFT_DURATION))} />
       )}
        {isTouchDevice && gameState === 'Playing' && (
         <TouchControls

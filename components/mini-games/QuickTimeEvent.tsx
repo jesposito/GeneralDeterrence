@@ -4,8 +4,8 @@ import { MiniGameProps } from '../../types';
 const prefersReducedMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete }) => {
-  const [taps, setTaps] = useState(5);
+const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete, difficulty = 0 }) => {
+  const [taps, setTaps] = useState(5 + Math.round(Math.min(1, Math.max(0, difficulty)) * 3));
   const [timeLeft, setTimeLeft] = useState(2500);
   const startTimeRef = useRef(Date.now());
   const rafRef = useRef<number>();

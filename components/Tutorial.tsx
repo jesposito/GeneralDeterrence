@@ -49,6 +49,8 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                      <p>Identify drivers with icons (e.g., <span className="text-xl" aria-hidden="true">📱, 🔥</span>). These are RIDS offenders.</p>
                      <p>Get close and press <KeyDisplay>SPACE</KeyDisplay> or tap the <span className="text-yellow-300 font-bold">RIDS CHECK</span> button to intervene.</p>
                      <p className="text-red-400 font-bold">Red pulsing vehicles are high-priority <span className="text-white">LIFE AT RISK</span> events. Intervene before the timer runs out!</p>
+                     <p>Park and hold still to set up a <span className="text-cyan-300 font-bold">PATROL POST</span> — a stronger, wider deterrence zone. Idling too long where deterrence is already high triggers <span className="text-red-400 font-bold">NEGLECT OF DUTY</span>, so keep moving.</p>
+                     <p>The compass ring points to off-screen action: a <span className="text-cyan-300 font-bold">dot</span> marks an offender, <span className="text-red-400 font-bold">red</span> a life at risk.</p>
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="CONTROLS">

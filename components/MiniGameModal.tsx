@@ -5,7 +5,7 @@ import QuickTimeEvent from './mini-games/QuickTimeEvent';
 import PrecisionSlider from './mini-games/PrecisionSlider';
 import SituationalJudgement from './mini-games/SituationalJudgement';
 
-const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType }) => {
+const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType, difficulty }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
   // gd-0wi.23: dialog semantics + focus management. This modal is complete-to-close (no
@@ -32,9 +32,9 @@ const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType }) => {
   const renderMiniGame = () => {
     switch (ridsType) {
       case 'Impairment':
-        return <QuickTimeEvent onComplete={onComplete} ridsType={ridsType} />;
+        return <QuickTimeEvent onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} />;
       case 'Speed':
-        return <PrecisionSlider onComplete={onComplete} ridsType={ridsType} />;
+        return <PrecisionSlider onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} />;
       case 'Restraints':
       case 'Distractions':
         return <SituationalJudgement onComplete={onComplete} ridsType={ridsType} />;
