@@ -112,6 +112,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const lastTimeRef = useRef<number>(0);
   const hitStopUntilRef = useRef(0); // brief sim freeze (hit-stop) on the biggest moments
   const prevPadButtonsRef = useRef<boolean[]>([]); // gamepad button edge detection
+  const prevPadBoostRef = useRef(false); // edge-write so an idle pad can't clobber the touch BOOST button
+  const hasGamepadRef = useRef(false); // skip the per-frame getGamepads() alloc until a pad connects
+  // Single ownership of the intervention lifecycle. Guards every resolution path
+  // (timer auto-warn, keyboard confirm, button click, mini-game completion) so a race
+  // can never fire two outcomes for one stop (auto-Warn vs Enforce soft-lock, QTE double-resolve).
+  const ridsPhaseRef = useRef<'idle' | 'choice' | 'minigame'>('idle');
+  const gameStateRef = useRef<LocalGameState>('Starting');
   const bindingsRef = useRef<Bindings>(loadBindings()); // configurable key bindings (defaults = classic controls)
   const lastHudUpdateRef = useRef<number>(0);
 
@@ -202,6 +209,24 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     };
   }
 
+  gameStateRef.current = gameState; // render-time sync (same idiom as onWarnRef above)
+
+  // Track pad presence so the frame loop doesn't call getGamepads() (which allocates)
+  // when no pad has ever connected.
+  useEffect(() => {
+    const on = () => { hasGamepadRef.current = true; };
+    const off = () => {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      hasGamepadRef.current = Array.prototype.some.call(pads, (p: Gamepad | null) => p && p.connected);
+    };
+    window.addEventListener('gamepadconnected', on);
+    window.addEventListener('gamepaddisconnected', off);
+    return () => {
+      window.removeEventListener('gamepadconnected', on);
+      window.removeEventListener('gamepaddisconnected', off);
+    };
+  }, []);
+
   // Touch-primary detection (matches phones/tablets, excludes hybrid laptops with touch)
   useEffect(() => {
     const mq = window.matchMedia('(hover: none) and (pointer: coarse)');
@@ -256,15 +281,26 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       }
       audio.sirenStop();
       audio.engineStop();
+      audio.musicStop(); // music otherwise loops forever over a hidden/paused game
       playerRef.current.isBoosting = false;
     };
-    const onVisibility = () => { if (document.hidden) clearHeldInputs(); };
+    // Engine + music only restart on gameState transitions, so a blur/refocus mid-shift
+    // left the game silent. Both start fns are idempotent.
+    const resumeShiftAudio = () => {
+      if (gameStateRef.current === 'Playing' && !document.hidden) {
+        audio.engineStart();
+        audio.musicStart();
+      }
+    };
+    const onVisibility = () => { if (document.hidden) clearHeldInputs(); else resumeShiftAudio(); };
     window.addEventListener('blur', clearHeldInputs);
+    window.addEventListener('focus', resumeShiftAudio);
     window.addEventListener('pagehide', clearHeldInputs);
     window.addEventListener('orientationchange', clearHeldInputs);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('blur', clearHeldInputs);
+      window.removeEventListener('focus', resumeShiftAudio);
       window.removeEventListener('pagehide', clearHeldInputs);
       window.removeEventListener('orientationchange', clearHeldInputs);
       document.removeEventListener('visibilitychange', onVisibility);
@@ -309,6 +345,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   }, [gameState]);
 
   const handleSirenToggle = useCallback(() => {
+    if (gameStateRef.current !== 'Playing') return; // 'e' during countdown/modals toggled siren + audio
     const player = playerRef.current;
     if (!player.isSirenActive && player.boostCharge > 0) {
         sirenStartTimeRef.current = Date.now();
@@ -355,6 +392,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
     const nearbyCar = civiliansRef.current.find(c => c.ridsType && getDistanceSq(player.pos, c.pos) < checkRadiusSq);
     if (nearbyCar) {
+        ridsPhaseRef.current = 'choice'; // arm the one-shot resolution guard
         setActiveRids({ car: nearbyCar, ridsType: nearbyCar.ridsType! });
         setTargetedCarId(nearbyCar.id);
         setGameMessage('TARGET LOCKED');
@@ -379,6 +417,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Only swallow the key mid-patrol. preventDefault() in every gameState cancelled native
+      // Space activation of focused buttons (modal choices, mini-game buttons, assist paths).
+      if (gameStateRef.current !== 'Playing') return;
       if (bindingsRef.current.rids.includes(normalizeKey(e.key)) && !e.repeat) { e.preventDefault(); handleRidsCheck(); }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -431,7 +472,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         // Gamepad (Standard mapping) — additive + inert without hardware, so it can't affect the
         // keyboard/touch paths. Left stick -> analog drive; RB/RT -> boost; A/B/X (edge) ->
         // RIDS check / siren / colleague assist.
-        const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+        const pads = hasGamepadRef.current && typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
         let gp: Gamepad | null = null;
         for (const p of pads) { if (p && p.connected) { gp = p; break; } }
         if (gp) {
@@ -446,22 +487,33 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 analogInputRef.current.x = 0; analogInputRef.current.y = 0;
             }
             const pressed = (i: number) => !!gp!.buttons[i]?.pressed;
-            touchStateRef.current['boost'] = pressed(5) || pressed(7);
+            // Edge-write only: an idle pad writing `false` every frame clobbered the touch BOOST button.
+            const padBoost = pressed(5) || pressed(7);
+            if (padBoost !== prevPadBoostRef.current) {
+                prevPadBoostRef.current = padBoost;
+                touchStateRef.current['boost'] = padBoost;
+            }
             const prev = prevPadButtonsRef.current;
-            if (pressed(0) && !prev[0]) handleRidsCheck();
-            if (pressed(1) && !prev[1]) handleSirenToggle();
-            if (pressed(2) && !prev[2]) handleColleagueCall();
-            prevPadButtonsRef.current = gp.buttons.map(b => b.pressed);
+            const ridsEdge = pressed(0) && !prev[0];
+            const sirenEdge = pressed(1) && !prev[1];
+            const colleagueEdge = pressed(2) && !prev[2];
+            // Update edge state in place (buttons.map allocated a fresh array per frame).
+            for (let i = 0; i < gp.buttons.length; i++) prev[i] = !!gp.buttons[i]?.pressed;
+            if (ridsEdge) handleRidsCheck();
+            if (sirenEdge) handleSirenToggle();
+            if (colleagueEdge) handleColleagueCall();
         }
 
-        const keys = { ...keysPressed.current, ...touchStateRef.current };
+        const kp = keysPressed.current;
+        const ts = touchStateRef.current;
         const b = bindingsRef.current;
-        const bound = (action: keyof Bindings) => b[action].some(key => keys[key]);
-        const moveForward = bound('forward') || keys['forward'];
-        const moveBackward = bound('backward') || keys['backward'];
-        const turnLeft = bound('left') || keys['left'];
-        const turnRight = bound('right') || keys['right'];
-        const isTryingToBoost = bound('boost') || keys['boost'];
+        // Read both refs directly ({...kp, ...ts} allocated a merged object per frame).
+        const bound = (action: keyof Bindings) => b[action].some(key => kp[key] || ts[key]);
+        const moveForward = bound('forward') || ts['forward'];
+        const moveBackward = bound('backward') || ts['backward'];
+        const turnLeft = bound('left') || ts['left'];
+        const turnRight = bound('right') || ts['right'];
+        const isTryingToBoost = bound('boost') || ts['boost'];
         
         // Boost works with any movement intent — keyboard forward OR joystick deflection (touch driving
         // is omnidirectional, so gating on 'forward' silently broke boost in most headings).
@@ -596,7 +648,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         let totalDeterrence = 0;
         presenceBoostRateRef.current = 0;
 
-        patrolPostsRef.current.forEach(post => {
+        // Boost + age + compact in one in-place pass (the trailing .filter() was the last
+        // per-frame array realloc in the loop).
+        retainInPlace(patrolPostsRef.current, (post: PatrolPost) => {
             const postDistrictId = getDistrictForPoint(post.pos);
             const district = districtsRef.current.find(d => d.id === postDistrictId);
             if (district) {
@@ -605,8 +659,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 district.deterrence = Math.min(100, district.deterrence + postBoost);
             }
             post.remainingTime -= 60 * dt; // Decrement frame counter by scaled amount
+            return post.remainingTime > 0;
         });
-        patrolPostsRef.current = patrolPostsRef.current.filter(p => p.remainingTime > 0);
         
         districtsRef.current.forEach(district => {
             let decayMultiplier = 1.0;
@@ -618,7 +672,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 let boost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * dt;
                 if (player.isSirenActive) boost += CONSTANTS.DT_SIREN_BOOST_PER_SEC * dt;
                 district.deterrence = Math.min(100, district.deterrence + boost);
-                presenceBoostRateRef.current = boost / dt;
+                presenceBoostRateRef.current = dt > 0 ? boost / dt : 0; // dt=0 during hit-stop → 0/0 NaN
             }
             totalDeterrence += district.deterrence;
         });
@@ -961,6 +1015,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     };
 
   const handleEnforce = useCallback(() => {
+    // Guard: the 5s auto-Warn timer and a user confirm can race inside one frame; without
+    // single ownership the loser fired anyway (Enforce after auto-Warn → gameState='MiniGame'
+    // with activeRids=null → nothing renders, loop stopped, soft-lock).
+    if (ridsPhaseRef.current !== 'choice') return;
+    ridsPhaseRef.current = 'minigame';
     // gd-0wi.10: every enforcement runs a mini-game (Impairment=breath test, Speed=slider,
     // Restraints/Distractions=deterrence-concept check) — this is what makes the retooled
     // concept mini-game reachable. Scoring, LAR and dispatch handling all live in
@@ -987,6 +1046,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   }, []);
 
   const handleWarn = useCallback(() => {
+      if (ridsPhaseRef.current !== 'choice') return; // see handleEnforce guard
+      ridsPhaseRef.current = 'idle';
       if (activeRids) {
         audio.zap();
         resolveIntervention(activeRids.car, CONSTANTS.WARN_SCORE_POINTS, CONSTANTS.WARN_DETERRENCE_BOOST, 'Warn', 0);
@@ -1020,7 +1081,36 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }
   }, [gameState, ridsChoiceSelection, handleWarn, handleEnforce]);
-    
+
+  // Gamepad controls for the RIDS Choice modal. Pad polling normally lives in the game loop,
+  // which halts outside Playing/Starting — so a pad-only player could OPEN the modal (button A)
+  // but never answer it, always eating the 5s auto-Warn. Poll here while the choice is up:
+  // stick/d-pad selects, A confirms. Edge state starts pressed so the A that opened the modal
+  // doesn't instantly confirm.
+  useEffect(() => {
+    if (gameState !== 'RidsChoice' || !hasGamepadRef.current) return;
+    let raf = 0;
+    let prevA = true, prevLeft = true, prevRight = true;
+    const poll = () => {
+        const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let gp: Gamepad | null = null;
+        for (const p of pads) { if (p && p.connected) { gp = p; break; } }
+        if (gp) {
+            const axis = gp.axes[0] || 0;
+            const a = !!gp.buttons[0]?.pressed;
+            const left = !!gp.buttons[14]?.pressed || axis < -0.5;
+            const right = !!gp.buttons[15]?.pressed || axis > 0.5;
+            if (left && !prevLeft) setRidsChoiceSelection('warn');
+            if (right && !prevRight) setRidsChoiceSelection('enforce');
+            if (a && !prevA) { if (ridsChoiceSelection === 'warn') handleWarn(); else handleEnforce(); }
+            prevA = a; prevLeft = left; prevRight = right;
+        }
+        raf = requestAnimationFrame(poll);
+    };
+    raf = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(raf);
+  }, [gameState, ridsChoiceSelection, handleWarn, handleEnforce]);
+
   const gameLoop = useCallback(() => {
     const now = Date.now();
     
@@ -1042,7 +1132,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     const rawDt = (now - lastTimeRef.current) / 1000;
     // Hit-stop: freeze sim motion for a beat on high-impact moments (dt=0) while render + camera
     // shake keep running. lastTimeRef stays current so dt resumes cleanly (no post-freeze jump).
-    const dt = now < hitStopUntilRef.current ? 0 : Math.min(rawDt, 0.1); // Cap at 100ms to avoid huge jumps
+    // Clamp to [0, 100ms]: cap avoids huge jumps; floor guards a backwards wall-clock step
+    // (NTP sync) from refunding shift time and amplifying velocity via Math.pow(friction, -n).
+    const dt = now < hitStopUntilRef.current ? 0 : Math.min(Math.max(rawDt, 0), 0.1);
     lastTimeRef.current = now;
 
     timeLeftRef.current -= dt;
@@ -1130,6 +1222,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   }, [onGameOver, spawnCivilian, segmentLookup, handleColleagueCall, gameState, targetedCarId]);
 
   const onMiniGameComplete = useCallback((success: boolean) => {
+    // One completion per mini-game (QTE's StrictMode double-invoke called this twice).
+    if (ridsPhaseRef.current !== 'minigame') return;
+    ridsPhaseRef.current = 'idle';
     if (activeRids) {
       if (success) {
         audio.zap();

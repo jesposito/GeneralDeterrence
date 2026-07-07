@@ -30,15 +30,17 @@ const QuickTimeEvent: React.FC<MiniGameProps> = ({ onComplete, difficulty = 0 })
   }, [onComplete]);
 
   const handleTap = useCallback(() => {
-    setTaps(prevTaps => {
-      const newTaps = prevTaps - 1;
-      if (newTaps === 0) {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-        onComplete(true);
-      }
-      return newTaps;
-    });
-  }, [onComplete]);
+    // Pure updater — calling onComplete inside it double-fired under StrictMode's
+    // double-invoke. Completion is an effect of taps reaching 0, below.
+    setTaps(prevTaps => Math.max(0, prevTaps - 1));
+  }, []);
+
+  useEffect(() => {
+    if (taps === 0) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      onComplete(true);
+    }
+  }, [taps, onComplete]);
 
   useEffect(() => {
     if (prefersReducedMotion) return;

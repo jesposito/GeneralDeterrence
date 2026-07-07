@@ -44,8 +44,23 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,ht
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '8kb' }));
 
+// Production sits behind a reverse proxy (Cloudflare/Caddy or Fly), so without this every
+// req.ip is the proxy's address and the rate limit below becomes ONE shared bucket — a
+// classroom of players 429s each other. Trust exactly one hop; prefer the CDN's client-IP
+// header when present. ponytail: header-based keying is spoofable when hitting the origin
+// directly — acceptable for a leaderboard; move to signed sessions if abuse ever shows up.
+app.set('trust proxy', 1);
+const clientIp = (req) =>
+  req.headers['cf-connecting-ip'] || req.headers['fly-client-ip'] || req.ip;
+
 // Rate-limit the unauthenticated write endpoint to blunt score-spamming and table growth.
-const submitLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
+const submitLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => clientIp(req),
+});
 
 // Serve static files from the built frontend
 app.use(express.static(path.join(__dirname, 'dist')));

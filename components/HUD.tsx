@@ -285,20 +285,25 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   }, [player.vigilance]);
 
   useEffect(() => {
-    // One interval per score change — scoreDisplay is NOT a dep (that churned the interval and
-    // latched the pop). Ramp toward the latest target via a ref.
     if (score > scoreDisplay) setScorePop(true);
     const popTimer = setTimeout(() => setScorePop(false), 300);
+    return () => clearTimeout(popTimer);
+  }, [score]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    // ONE persistent count-up interval for the component's lifetime. Score changes every
+    // hudTick (continuous deterrence accrual), so keying the interval on `score` recreated
+    // it ~10×/sec. At target the updater returns `cur` and React bails — effectively idle.
     const timer = setInterval(() => {
       setScoreDisplay(cur => {
         const target = scoreTargetRef.current;
-        if (cur === target) { clearInterval(timer); return cur; }
+        if (cur === target) return cur;
         const step = Math.max(1, Math.ceil(Math.abs(target - cur) / 8));
         return cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step);
       });
     }, 30);
-    return () => { clearTimeout(popTimer); clearInterval(timer); };
-  }, [score]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => clearInterval(timer);
+  }, []);
 
   const isBoostReady = player.boostCharge === CONSTANTS.PLAYER_BOOST_MAX_CHARGE && !player.isSirenActive && !player.isBoosting;
 

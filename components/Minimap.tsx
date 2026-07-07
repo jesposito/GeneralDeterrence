@@ -198,4 +198,7 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
   );
 };
 
-export default React.memo(Minimap);
+// No memo: after in-place pool compaction every prop keeps a stable identity (refs mutated,
+// arrays compacted in place), so shallow-compare froze the radar mid-shift. HUD already
+// throttles renders to ~10Hz — that's the intended refresh rate here too.
+export default Minimap;
