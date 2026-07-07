@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LeaderboardEntry } from '../types';
 import Leaderboard from './Leaderboard';
+import ControlsSettings from './ControlsSettings';
 import * as audio from '../utils/audio';
 
 interface MainMenuProps {
@@ -9,12 +10,17 @@ interface MainMenuProps {
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
+  const [showControls, setShowControls] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Route-change focus: the h1 had tabIndex={-1} but nothing ever moved focus to it,
+  // so AT never announced the screen.
+  useEffect(() => { headingRef.current?.focus(); }, []);
   return (
     <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn relative overflow-hidden">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-20 animate-slow-pan"></div>
 
       <main className="relative z-10">
-        <h1 tabIndex={-1} className="font-display text-4xl sm:text-5xl lg:text-7xl font-bold text-cyan-400 mb-2 tracking-widest text-glow-cyan uppercase focus:outline-none">
+        <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl sm:text-5xl lg:text-7xl font-bold text-cyan-400 mb-2 tracking-widest text-glow-cyan uppercase focus:outline-none">
           General Deterrence
         </h1>
         <p className="text-lg sm:text-xl lg:text-2xl text-pink-400 font-display mb-8">A Road Policing Tool</p>
@@ -31,6 +37,12 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
             >
               Start Shift
             </button>
+            <button
+              onClick={() => setShowControls(true)}
+              className="mt-3 w-full bg-transparent hover:bg-cyan-900/50 border-2 border-cyan-500/50 text-cyan-300 font-bold py-2 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              Controls
+            </button>
           </div>
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50 min-w-[280px]">
             <Leaderboard scores={leaderboard} />
@@ -41,6 +53,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
        <footer className="absolute bottom-4 text-gray-400 text-sm z-10">
          A New Zealand Police Road Policing Training Tool
        </footer>
+      {showControls && <ControlsSettings onClose={() => setShowControls(false)} />}
     </div>
   );
 };

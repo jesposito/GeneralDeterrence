@@ -46,13 +46,26 @@ const RidsChoiceModal: React.FC<{
     onWarnRef.current = onWarn;
     // gd-0wi.23: move focus into the dialog on open, restore it on close. Focus the container
     // (not a button) so the SPACE that opened the modal doesn't immediately activate a choice.
+    // Tab is trapped inside (aria-modal without a trap let focus reach the obscured game).
     useEffect(() => {
         const prev = document.activeElement as HTMLElement | null;
         dialogRef.current?.focus();
-        return () => prev?.focus?.();
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return;
+            const focusables = dialogRef.current?.querySelectorAll<HTMLElement>('button');
+            if (!focusables || focusables.length === 0) { e.preventDefault(); return; }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => { document.removeEventListener('keydown', onKey); prev?.focus?.(); };
     }, []);
     // Decision timer: ~5s to choose, else auto-resolve to the safe Warn. Adds urgency (the shift
     // clock is frozen during this modal). Bar width written directly to avoid a per-frame re-render.
+    // Keyed on `selection`: changing your selection restarts the 5s — the WCAG 2.2.1 "extend by
+    // user action" mechanism, stated in the visible dialog text below.
     useEffect(() => {
         const start = performance.now();
         let raf = 0;
@@ -64,12 +77,14 @@ const RidsChoiceModal: React.FC<{
         };
         raf = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(raf);
-    }, []);
+    }, [selection]);
     return (
-    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title">
+    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title" aria-describedby="rids-choice-desc">
         <div ref={dialogRef} tabIndex={-1} className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50 focus:outline-none">
             <h2 id="rids-choice-title" className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Intervention</h2>
-            <p className="text-lg text-gray-300 mb-4 font-sans">Choose your action.</p>
+            <p className="text-lg text-gray-300 mb-1 font-sans">Choose your action.</p>
+            {/* WCAG 2.2.1: the time limit is stated, and changing selection extends it. */}
+            <p id="rids-choice-desc" className="text-xs text-gray-400 mb-3 font-sans">No decision in 5 seconds auto-resolves to Warn. Changing your selection restarts the timer.</p>
             {/* Decision timer bar — auto-resolves to Warn at zero. */}
             <div className="w-full h-1 bg-gray-700 rounded mb-6 overflow-hidden" aria-hidden="true">
                 <div ref={timerBarRef} className="h-full bg-yellow-400" style={{ width: '100%' }} />
@@ -875,6 +890,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                                 let timer = CONSTANTS.LIFE_AT_RISK_TIMER_SECONDS * CONSTANTS.FRAMES_PER_SECOND;
                                 if (isNeglectOfDutyActiveRef.current) timer *= CONSTANTS.NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER;
                                 carToOffend.lifeAtRiskTimer = timer;
+                                // Announce onset (a11y C2): the pulsing red car was visual-only.
+                                setGameMessage('LIFE AT RISK — RESPOND NOW');
+                                if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+                                gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2500);
                             }
                         }
                     }
@@ -1276,6 +1295,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         if (seconds <= 10 && seconds > 0 && seconds !== lastBeepedSecondRef.current) {
             lastBeepedSecondRef.current = seconds;
             audio.tick(800 + (10 - seconds) * 60);
+            if (seconds === 10) {
+                // One discrete announcement for AT (a11y C2) — the per-second ticks stay audio-only.
+                setGameMessage('10 SECONDS REMAINING');
+                if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+                gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2000);
+            }
         } else if (seconds === 0 && lastBeepedSecondRef.current !== 0) {
             lastBeepedSecondRef.current = 0;
             audio.zap();

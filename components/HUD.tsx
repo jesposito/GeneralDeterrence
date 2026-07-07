@@ -33,7 +33,14 @@ const DistrictMeters: React.FC<DistrictMetersProps> = ({ districts, playerDistri
                                 </span>
                             )}
                         </div>
-                        <div className="w-full bg-gray-900 rounded-full h-2.5 mt-1 border border-gray-600">
+                        <div
+                            className="w-full bg-gray-900 rounded-full h-2.5 mt-1 border border-gray-600"
+                            role="progressbar"
+                            aria-label={`${district.name} deterrence`}
+                            aria-valuenow={Math.round(deterrence)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                        >
                              <div
                                 className={`h-full rounded-full transition-all duration-300 ${deterrenceColor}`}
                                 style={{ width: `${deterrence}%`, boxShadow: `0 0 6px ${deterrence < 33 ? 'theme("colors.pink.500")' : deterrence < 66 ? 'theme("colors.yellow.500")' : 'theme("colors.green.500")'}` }}
@@ -91,7 +98,10 @@ const OffscreenIndicator: React.FC<{
     y = Math.max(padding, Math.min(y, boundY));
 
     return (
+        // Decorative for AT: the aria-live region announces life-at-risk onset; a rotating
+        // colour-only glyph has no non-visual meaning (a11y F1).
         <div
+            aria-hidden="true"
             className={`absolute text-4xl animate-pulse pointer-events-none ${color}`}
             style={{
                 left: `${x}px`,
@@ -124,7 +134,8 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
 
     return (
         <div className="relative w-32 h-20 flex flex-col items-center justify-end text-white">
-            <svg className="absolute bottom-0 w-full h-auto" viewBox="0 0 120 65">
+            {/* The visible "N km/h" text carries the value for AT; the arc is decorative. */}
+            <svg aria-hidden="true" className="absolute bottom-0 w-full h-auto" viewBox="0 0 120 65">
                 <path
                     d="M 10 60 A 50 50 0 0 1 110 60"
                     fill="none"
@@ -167,7 +178,7 @@ const VigilanceMeter: React.FC<{ vigilance: number, isGaining: boolean }> = ({ v
     return (
         <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-48 flex items-center space-x-2 border-2 border-purple-500/50 mb-1 transition-transform ${isGaining ? 'animate-vigilance-gain-flash' : ''}`}>
             <span className={`text-xs font-bold transition-colors text-purple-400 text-glow-pink`}>VIGILANCE</span>
-            <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden">
+            <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden" role="progressbar" aria-label="Vigilance" aria-valuenow={Math.round(vigilance)} aria-valuemin={0} aria-valuemax={100}>
                 <div
                     className={`h-full rounded-full bg-purple-500 transition-all duration-300 ${isMax ? 'animate-pulse' : ''}`}
                     style={{ 
@@ -445,7 +456,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                 
                 <div className="bg-black/70 p-2 rounded-lg shadow-lg w-48 flex items-center space-x-2 border-2 border-pink-500/50 mb-1">
                     <span className={`text-xs font-bold transition-colors ${player.isSirenActive ? 'text-red-400' : 'text-cyan-400 text-glow-cyan'}`}>{player.isSirenActive ? 'SIREN' : 'BOOST'}</span>
-                    <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden">
+                    <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden" role="progressbar" aria-label={player.isSirenActive ? 'Siren energy' : 'Boost charge'} aria-valuenow={Math.round(player.boostCharge)} aria-valuemin={0} aria-valuemax={100}>
                         <div
                             className={`h-full rounded-full ${player.isSirenActive ? 'animate-siren-boost-flash' : (player.isBoosting ? 'bg-yellow-400' : `bg-cyan-400 ${isBoostReady ? 'animate-boost-ready-glow' : ''}`)} transition-all duration-100`}
                             style={{ width: `${player.boostCharge}%`, boxShadow: player.isSirenActive ? 'none' : `inset 0 0 4px ${player.isBoosting ? 'theme("colors.yellow.300")' : 'theme("colors.cyan.300")'}` }}

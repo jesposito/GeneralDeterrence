@@ -22,7 +22,11 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     buttonRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onComplete(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onComplete();
+      // P1: aria-modal without a trap let Tab reach the obscured game. One focusable → pin it.
+      else if (e.key === 'Tab') { e.preventDefault(); buttonRef.current?.focus(); }
+    };
     window.addEventListener('keydown', onKey);
     return () => { window.removeEventListener('keydown', onKey); prev?.focus(); };
   }, [onComplete]);
@@ -46,7 +50,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="CORE PATROL">
-                     <p>Identify drivers with icons (e.g., <span className="text-xl" aria-hidden="true">📱, 🔥</span>). These are RIDS offenders.</p>
+                     <p>Identify drivers with icons (e.g., <span className="text-xl" aria-hidden="true">📱, 🔥</span><span className="sr-only">a phone or a fire icon</span>). These are RIDS offenders.</p>
                      <p>Get close and press <KeyDisplay>SPACE</KeyDisplay> or tap the <span className="text-yellow-300 font-bold">RIDS CHECK</span> button to intervene.</p>
                      <p className="text-red-400 font-bold">Red pulsing vehicles are high-priority <span className="text-white">LIFE AT RISK</span> events. Intervene before the timer runs out!</p>
                      <p>Park and hold still to set up a <span className="text-cyan-300 font-bold">PATROL POST</span> — a stronger, wider deterrence zone. Idling too long where deterrence is already high triggers <span className="text-red-400 font-bold">NEGLECT OF DUTY</span>, so keep moving.</p>
