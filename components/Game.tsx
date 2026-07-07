@@ -13,7 +13,7 @@ import TouchControls from './TouchControls';
 import RotateDevicePrompt from './RotateDevicePrompt';
 import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
 import { drawGame, CameraState, RenderState } from '../utils/gameRenderer';
-import { pickRadioChatter, pickCarChatter, pickWarnReaction, pickEnforceReaction } from '../utils/stories';
+import { pickRadioChatter, pickCarChatter, pickWarnReaction, pickEnforceReaction, pickInterdiction, pickBriefingFact } from '../utils/stories';
 import * as audio from '../utils/audio';
 
 interface GameProps {
@@ -154,6 +154,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [hudTick, setHudTick] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string>('initializing...');
   const isDebugMode = useMemo(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug'), []);
+  const briefingFact = useMemo(() => pickBriefingFact(), []);
 
   // Canvas and timing refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -218,6 +219,21 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const gameLoopRef = useRef<number>();
   const lastSpawnCheckTime = useRef(Date.now());
   const nextCarChatterAtRef = useRef(Date.now() + 8000); // ambient kiwi speech bubbles, rate-limited
+  // The once-per-shift interdiction car + its outcome for the end screen.
+  const interdictionAssignedRef = useRef(false);
+  const interdictionResultRef = useRef<FinalScoreBreakdown['interdiction']>(null);
+  const [radioLine, setRadioLine] = useState<string | null>(null); // 📻 dispatch banner
+  const radioTimerRef = useRef<number | null>(null);
+  const nextRadioAtRef = useRef(0);
+
+  // Radio chatter: distinct banner + squelch double-tick so it can't be missed.
+  const playRadio = useCallback((line: string) => {
+    audio.tick(300);
+    window.setTimeout(() => audio.tick(280), 90);
+    setRadioLine(line);
+    if (radioTimerRef.current) clearTimeout(radioTimerRef.current);
+    radioTimerRef.current = window.setTimeout(() => setRadioLine(null), 6000);
+  }, []);
   const lastPathfindTime = useRef(0);
   const gameMessageTimerRef = useRef<number | null>(null);
   const sirenStartTimeRef = useRef<number | null>(null);
@@ -307,10 +323,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       setTimeout(() => {
         setGameState('Playing');
         setCountdownText('');
-        // A line of dispatch radio chatter to open the shift (also hits the live region).
-        setGameMessage(pickRadioChatter());
-        if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
-        gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3500);
+        // First dispatch line = the briefing fact: readable for a full 6s + announced to AT
+        // (the countdown overlay only showed it ~4s, and never announced it).
+        playRadio(briefingFact);
+        nextRadioAtRef.current = Date.now() + 25000 + Math.random() * 15000;
       }, 4000),
     ];
     return () => timeouts.forEach(clearTimeout);
@@ -866,6 +882,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
         
+        // Mid-shift dispatch chatter every ~25-40s.
+        if (nextRadioAtRef.current > 0 && now >= nextRadioAtRef.current) {
+            nextRadioAtRef.current = now + 25000 + Math.random() * 15000;
+            playRadio(pickRadioChatter());
+        }
+
         // Ambient car chatter: every ~8-16s a nearby law-abiding car says something very kiwi.
         if (now >= nextCarChatterAtRef.current) {
             nextCarChatterAtRef.current = now + 8000 + Math.random() * 8000;
@@ -927,6 +949,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                         }
                         if (assignedRidsType) {
                             carToOffend.ridsType = assignedRidsType;
+                            // The interdiction car: exactly one offender per shift is secretly carrying
+                            // something much bigger. Looks like any other RIDS stop — that's the lesson.
+                            if (!interdictionAssignedRef.current && timeLeftRef.current < CONSTANTS.SHIFT_DURATION - 15) {
+                                interdictionAssignedRef.current = true;
+                                carToOffend.specialCrime = pickInterdiction();
+                            }
                             carToOffend.deterrenceBlobsRemaining = CONSTANTS.MAX_DETERRENCE_BLOBS_PER_OFFENDER;
                             carToOffend.baseSpeed = assignedRidsType === 'Speed' ? CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] : CONSTANTS.CIVILIAN_BASE_SPEED[carToOffend.district];
                             
@@ -1074,7 +1102,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         });
         
         retainInPlace(collectionEffectsRef.current, (e: CollectionEffectType) => now - e.spawnTime < 400);
-        retainInPlace(floatingScoreTextsRef.current, (f: FloatingScoreTextType) => now - f.spawnTime < CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
+        // Speech bubbles linger longer than score floats so they can actually be read.
+        retainInPlace(floatingScoreTextsRef.current, (f: FloatingScoreTextType) =>
+            now - f.spawnTime < (f.variant === 'speech' ? CONSTANTS.SPEECH_BUBBLE_LIFESPAN : CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN));
         // Sparks: advance position in place (was `.map(s => ({...s, pos:{...}}))` — a fresh object per
         // spark per frame) then compact by age. No per-frame allocation.
         for (const s of sparksRef.current) { s.pos.x += s.vel.x * dtScale; s.pos.y += s.vel.y * dtScale; }
@@ -1173,6 +1203,22 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     if (shake) cameraRef.current.shake = shake;
     // The driver has opinions (very kiwi ones).
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 70 }, text: actionType === 'Warn' ? pickWarnReaction() : pickEnforceReaction(), spawnTime: Date.now(), variant: 'speech' });
+    // The interdiction car: an Enforce uncovers it, a Warn lets it drive on (end screen tells you).
+    if (car.specialCrime) {
+        if (actionType === 'Enforce') {
+            interdictionResultRef.current = { crime: car.specialCrime.crime, detail: car.specialCrime.detail, outcome: 'busted' };
+            scoreRef.current.enforcement += CONSTANTS.INTERDICTION_BONUS;
+            hitStopUntilRef.current = Date.now() + 110; // the other big moment
+            buzz([40, 30, 40, 30, 80]);
+            audio.zap();
+            setGameMessage(`${car.specialCrime.reveal}  +${CONSTANTS.INTERDICTION_BONUS}`);
+            if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+            gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3500);
+            floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 140 }, text: `${car.specialCrime.reveal} +${CONSTANTS.INTERDICTION_BONUS}`, spawnTime: Date.now() });
+        } else {
+            interdictionResultRef.current = { crime: car.specialCrime.crime, detail: car.specialCrime.missed, outcome: 'missed' };
+        }
+    }
     if (car.isLifeAtRisk) {
         scoreRef.current.livesSaved++;
         // Clutch save: resolved with under 3s on the LAR clock — small bonus, big feeling.
@@ -1265,6 +1311,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             offencesPrevented: Math.floor(offencesPreventedRef.current),
             livesSaved: scoreRef.current.livesSaved,
             livesLost: scoreRef.current.livesLost,
+            interdiction: interdictionResultRef.current,
             coverageRatio,
             presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
         };
@@ -1458,12 +1505,26 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   return (
     <div ref={containerRef} className="w-full h-full bg-black overflow-hidden relative">
        {gameState === 'Starting' && countdownText && (
-            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
+            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 p-4">
                 <h1 key={countdownText} className="text-9xl font-display text-cyan-400 animate-scale-up-and-fade">
                     {countdownText}
                 </h1>
+                {/* Passive education: one principle per shift while the countdown runs. */}
+                <p className="max-w-xl text-center text-sm md:text-base text-gray-300 font-sans mt-6 border-t border-cyan-500/30 pt-4">
+                    <span className="text-cyan-400 font-display tracking-wider">BRIEFING · </span>{briefingFact}
+                </p>
             </div>
         )}
+      {/* Dispatch radio banner — distinct from game messages, with squelch audio.
+          The live-region wrapper is ALWAYS mounted (a region inserted with content
+          already in it is often skipped by screen readers); only the box is conditional. */}
+      <div role="status" aria-live="polite" className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        {radioLine && (
+          <div className="max-w-[80vw] bg-black/85 border-2 border-yellow-500/60 rounded-lg px-4 py-2 text-yellow-200 font-sans text-sm md:text-base shadow-lg shadow-yellow-500/20 animate-fadeIn">
+              <span aria-hidden="true">📻 </span><span className="font-display tracking-wide text-yellow-400">DISPATCH:</span> {radioLine}
+          </div>
+        )}
+      </div>
       <canvas
         ref={canvasRef}
         role="img"

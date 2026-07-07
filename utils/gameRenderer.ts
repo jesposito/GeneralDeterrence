@@ -1,5 +1,6 @@
 import * as CONSTANTS from '../constants';
 import { ROAD_SEGMENTS, ROAD_NODES, DISTRICT_DEFINITIONS, mapVersionRef } from './mapData';
+import { currentRegionRef } from './mapGen';
 import { Player, Civilian, SparkParticle, SkidMark, TireSmokeParticle, DeterrenceBlob, CollectionEffect, FloatingScoreText, Explosion, PatrolPost, RIDSType } from '../types';
 import { getDistrictForPoint } from './geometry';
 
@@ -22,10 +23,12 @@ function ensureRendererCaches(): void {
 // Decoration cache — generated once and reused
 interface Decoration {
   // NZ scenery set: tī kōuka (cabbage tree), ponga (tree fern), pōhutukawa, harakeke (flax),
-  // plus the locals — sheep, pūkeko, kiwi, kererū, tūī.
+  // regional features (steam vents, tor boulders, vineyard rows) plus the locals —
+  // sheep, pūkeko, kiwi, kererū, tūī.
   type: 'tree' | 'house' | 'building' | 'warehouse'
       | 'cabbageTree' | 'ponga' | 'pohutukawa' | 'flax'
-      | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui';
+      | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui'
+      | 'steamVent' | 'boulder' | 'vineyard';
   x: number;
   y: number;
   width?: number;
@@ -42,7 +45,9 @@ function generateDecorations(): Decoration[] {
   const decs: Decoration[] = [];
   // Per-district scenery mixes — NZ flavour: paddocks of sheep and tī kōuka up in the rural
   // zone, tūī in the suburbs, pūkeko working the verges, pōhutukawa + kererū around the bays.
-  const districtDecorations: Record<string, { type: Decoration['type']; count: number }[]> = {
+  // A generated map's REGION overrides this base profile (Coastal Run, High Country,
+  // Heartland, Geothermal, Big Smoke — see utils/mapGen.ts).
+  const baseProfile: Record<string, { type: Decoration['type']; count: number }[]> = {
     'Karori North': [
       { type: 'tree', count: 120 }, { type: 'cabbageTree', count: 60 },
       { type: 'sheep', count: 70 }, { type: 'flax', count: 30 }, { type: 'kiwi', count: 10 },
@@ -84,6 +89,8 @@ function generateDecorations(): Decoration[] {
     }
     return minDist;
   };
+
+  const districtDecorations = currentRegionRef.current?.decorProfile ?? baseProfile;
 
   for (const district of DISTRICT_DEFINITIONS) {
     const mixes = districtDecorations[district.id];
@@ -315,6 +322,45 @@ function buildStaticMap(): HTMLCanvasElement {
         sctx.beginPath();
         sctx.arc(d.x + 3, d.y + 1, 1.5, 0, Math.PI * 2);
         sctx.fill();
+        break;
+      }
+      case 'steamVent': { // geothermal: pool ring + drifting steam curls
+        sctx.strokeStyle = 'rgba(190, 225, 235, 0.75)';
+        sctx.beginPath();
+        sctx.arc(d.x, d.y, 8, 0, Math.PI * 2);
+        sctx.stroke();
+        sctx.beginPath();
+        sctx.moveTo(d.x - 4, d.y - 10);
+        sctx.quadraticCurveTo(d.x - 8, d.y - 18, d.x - 3, d.y - 24);
+        sctx.moveTo(d.x + 4, d.y - 8);
+        sctx.quadraticCurveTo(d.x + 9, d.y - 16, d.x + 4, d.y - 22);
+        sctx.stroke();
+        break;
+      }
+      case 'boulder': { // tor country: irregular grey lump
+        sctx.fillStyle = 'rgba(120, 128, 140, 0.55)';
+        sctx.beginPath();
+        sctx.moveTo(d.x - 10, d.y + 5);
+        sctx.lineTo(d.x - 6, d.y - 7);
+        sctx.lineTo(d.x + 3, d.y - 9);
+        sctx.lineTo(d.x + 10, d.y - 2);
+        sctx.lineTo(d.x + 7, d.y + 6);
+        sctx.closePath();
+        sctx.fill();
+        sctx.stroke();
+        break;
+      }
+      case 'vineyard': { // row crops: short parallel lines
+        sctx.save();
+        sctx.translate(d.x, d.y);
+        sctx.rotate((d.rot! * Math.PI) / 180);
+        sctx.beginPath();
+        for (let r = -1; r <= 1; r++) {
+          sctx.moveTo(-16, r * 8);
+          sctx.lineTo(16, r * 8);
+        }
+        sctx.stroke();
+        sctx.restore();
         break;
       }
     }
@@ -621,7 +667,8 @@ export function drawGame(
   ctx.textBaseline = 'middle';
   for (const text of state.floatingScoreTexts) {
     if (!onScreen(text.pos)) continue;
-    const age = (time - text.spawnTime) / CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN;
+    const age = (time - text.spawnTime) /
+      (text.variant === 'speech' ? CONSTANTS.SPEECH_BUBBLE_LIFESPAN : CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN);
     if (text.variant === 'speech') {
       // Kiwi speech bubble: rounded rect + tail, gentle rise, fade at the end.
       const yOffset = -30 - 15 * age;

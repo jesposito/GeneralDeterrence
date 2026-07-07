@@ -121,7 +121,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (gameState) {
       case 'Tutorial':
-        return <Tutorial onComplete={handleTutorialComplete} />;
+        return <Tutorial onComplete={handleTutorialComplete} mapLabel={mapLabel} />;
       case 'Playing':
         return <Game onGameOver={handleGameOver} />;
       case 'GameOver':

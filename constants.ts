@@ -131,6 +131,9 @@ export const REFERRAL_BONUS = 200;
 // mini-game (the fourth pillar — MatchingGame was built but never wired). ponytail:tune
 export const REFERRAL_CHANCE = 0.25;
 export const CLUTCH_SAVE_BONUS = 250; // resolved a Life-at-Risk with <3s left. ponytail:tune
+// Once per shift a routine Enforce uncovers a major crime (the interdiction car).
+export const INTERDICTION_BONUS = 1000;
+export const SPEECH_BUBBLE_LIFESPAN = 4200; // ms — long enough to actually read (user feedback)
 export const ENFORCEMENT_BONUS_POINTS = 150;
 // ponytail:tune — fable-audit B6: reward SUSTAINED coverage over an end-of-shift snapshot.
 // The ±12,500-swing final bonus invited a last-20s blitz that ignored 70s of neglect.

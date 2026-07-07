@@ -1,6 +1,6 @@
 # 🚔 General Deterrence
 
-An arcade-style patrol simulation game designed as an informal training tool for New Zealand Police frontline officers. The game teaches the principles of **general deterrence** in road policing through engaging gameplay.
+An arcade-style patrol game about road policing in Aotearoa. It teaches the principles of **general deterrence** through engaging gameplay — educational, but first and foremost a game. Not affiliated with NZ Police.
 
 ---
 

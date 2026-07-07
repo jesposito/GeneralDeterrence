@@ -23,7 +23,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
         <h1 ref={headingRef} tabIndex={-1} className="font-display text-4xl sm:text-5xl lg:text-7xl font-bold text-cyan-400 mb-2 tracking-widest text-glow-cyan uppercase focus:outline-none">
           General Deterrence
         </h1>
-        <p className="text-lg sm:text-xl lg:text-2xl text-pink-400 font-display mb-8">A Road Policing Tool</p>
+        <p className="text-lg sm:text-xl lg:text-2xl text-pink-400 font-display mb-8">The Road Policing Arcade Game</p>
         
         <div className="w-full max-w-3xl grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 items-start">
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-pink-500/50">
@@ -58,7 +58,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
       </main>
 
        <footer className="absolute bottom-4 text-gray-400 text-sm z-10">
-         A New Zealand Police Road Policing Training Tool
+         An arcade game about road policing. Educational, but a game — not affiliated with NZ Police.
        </footer>
       {showControls && <ControlsSettings onClose={() => setShowControls(false)} />}
     </div>

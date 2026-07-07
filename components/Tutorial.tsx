@@ -1,8 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as audio from '../utils/audio';
+import { loadBindings, displayKey, type GameAction } from '../utils/keybindings';
 
 interface TutorialProps {
   onComplete: () => void;
+  /** e.g. "Daily Shift · Te Aro District · Geothermal" */
+  mapLabel?: string;
 }
 
 const TutorialInfoCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -16,8 +19,11 @@ const KeyDisplay: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <kbd className="bg-gray-200 text-black font-bold px-2 py-1 rounded-md mx-1">{children}</kbd>
 );
 
-const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
+const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  // Show the player's ACTUAL bindings (they're rebindable in Controls on the menu).
+  const bindings = useMemo(() => loadBindings(), []);
+  const keysFor = (a: GameAction) => bindings[a].map(displayKey).join(' / ');
 
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -39,40 +45,53 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
       className="absolute inset-0 bg-black/80 flex flex-col items-center justify-start sm:justify-center z-30 p-4 sm:p-8 overflow-y-auto animate-fadeIn"
     >
         <div className="w-full max-w-6xl">
-            <h1 id="tutorial-title" className="text-3xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-2 text-center">PRE-SHIFT BRIEFING</h1>
-            <p className="text-base sm:text-xl text-pink-400 mb-4 sm:mb-8 text-center font-display">Your patrol objectives and vehicle controls.</p>
+            <h1 id="tutorial-title" className="text-3xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
+            {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL — {mapLabel}</p>}
+
+            {/* The one sentence that matters, before any mechanics. */}
+            <p className="max-w-3xl mx-auto text-center text-base sm:text-xl text-white font-sans mb-4 sm:mb-6 bg-cyan-950/50 border-2 border-cyan-500/40 rounded-lg px-4 py-3">
+                <span className="text-cyan-300 font-bold font-display">THE JOB:</span> keep every district's <span className="text-white font-bold">deterrence</span> high by <em>being seen</em>.
+                Stops score points — <span className="text-cyan-300 font-bold">presence saves lives</span>.
+            </p>
 
             <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
-                <TutorialInfoCard title="OBJECTIVE">
-                    <p>Your goal is to maintain high <span className="text-white font-bold">DETERRENCE</span> across all districts.</p>
-                    <p>Your patrol car has a deterrence aura. Grow this aura by increasing your <span className="text-purple-400 font-bold">VIGILANCE</span> through successful warnings and enforcements.</p>
-                    <p>A larger aura helps deter crime over a wider area. Keep all districts above 85% to activate <span className="text-yellow-300 font-bold">FULL COVERAGE</span> for 2x points.</p>
+                <TutorialInfoCard title="1 · PATROL">
+                    <p>Each district has a <span className="text-white font-bold">DETERRENCE</span> meter. Your presence raises it; your absence lets it decay. Watch for <span className="text-green-400 font-bold">SECURED</span> and <span className="text-red-400 font-bold">HOTSPOT</span> calls.</p>
+                    <p>Hold all districts above 85% for <span className="text-yellow-300 font-bold">FULL COVERAGE ×2</span> points. Your <span className="text-purple-400 font-bold">VIGILANCE</span> grows as you patrol — a bigger aura spots offenders further away.</p>
+                    <p>Park still for a few seconds to drop a <span className="text-cyan-300 font-bold">PATROL POST</span> that keeps deterring after you leave. But don't idle where it's already safe — that's <span className="text-red-400 font-bold">NEGLECT OF DUTY</span>.</p>
+                    <p className="text-cyan-200">Your <span className="font-bold">PREVENTED</span> counter ticks up for every offence that never happened because you were visible. That's the real score.</p>
                 </TutorialInfoCard>
 
-                <TutorialInfoCard title="CORE PATROL">
-                     <p>Identify drivers with icons (e.g., <span className="text-xl" aria-hidden="true">📱, 🔥</span><span className="sr-only">a phone or a fire icon</span>). These are RIDS offenders.</p>
-                     <p>Get close and press <KeyDisplay>SPACE</KeyDisplay> or tap the <span className="text-yellow-300 font-bold">RIDS CHECK</span> button to intervene.</p>
-                     <p className="text-red-400 font-bold">Red pulsing vehicles are high-priority <span className="text-white">LIFE AT RISK</span> events. Intervene before the timer runs out!</p>
-                     <p>Park and hold still to set up a <span className="text-cyan-300 font-bold">PATROL POST</span> — a stronger, wider deterrence zone. Idling too long where deterrence is already high triggers <span className="text-red-400 font-bold">NEGLECT OF DUTY</span>, so keep moving.</p>
-                     <p>The compass ring points to off-screen action: a <span className="text-cyan-300 font-bold">dot</span> marks an offender, <span className="text-red-400 font-bold">red</span> a life at risk.</p>
+                <TutorialInfoCard title="2 · SPOT & STOP">
+                    <p>Offenders show a <span className="text-white font-bold">RIDS</span> icon:</p>
+                    <p className="text-base sm:text-lg leading-relaxed">
+                        <span aria-hidden="true">⚠️</span> Restraints · <span aria-hidden="true">🥴</span> Impairment<br/>
+                        <span aria-hidden="true">📱</span> Distractions · <span aria-hidden="true">🔥</span> Speed
+                    </p>
+                    <p>Get close and use <span className="text-yellow-300 font-bold">RIDS CHECK</span>, then choose: <span className="text-cyan-300 font-bold">Warn</span> (fast, small reward) or <span className="text-pink-400 font-bold">Enforce</span> (mini-game, big reward, costs shift time).</p>
+                    <p className="text-red-400 font-bold">Pulsing red = LIFE AT RISK. Get there before the timer — or send a colleague.</p>
+                    <p>You never know what a stop will find. Once a shift, one of them is carrying something <em>much</em> bigger…</p>
                 </TutorialInfoCard>
 
-                <TutorialInfoCard title="CONTROLS">
-                    {/* Keyboard controls (fine pointer / desktop) — hidden on touch (display:none => out of a11y tree) */}
+                <TutorialInfoCard title="3 · CONTROLS">
+                    {/* Keyboard (desktop) — shows the player's live bindings; rebind from the menu. */}
                     <ul className="list-inside space-y-1 [@media(pointer:coarse)]:hidden">
-                        <li><span aria-label="W A S D keys"><KeyDisplay>W</KeyDisplay><KeyDisplay>A</KeyDisplay><KeyDisplay>S</KeyDisplay><KeyDisplay>D</KeyDisplay></span> / <KeyDisplay>Arrows</KeyDisplay> - Drive</li>
-                        <li><KeyDisplay>SHIFT</KeyDisplay> - Boost <span className="text-cyan-400">(uses energy)</span></li>
-                        <li><KeyDisplay>E</KeyDisplay> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
-                        <li><KeyDisplay>C</KeyDisplay> - Colleague Assist <span className="text-yellow-400">(handles a high-priority event)</span></li>
-                        <li><KeyDisplay>M</KeyDisplay> - Toggle Minimap</li>
+                        <li><KeyDisplay>{keysFor('forward')}</KeyDisplay> + <KeyDisplay>{keysFor('left')}</KeyDisplay><KeyDisplay>{keysFor('backward')}</KeyDisplay><KeyDisplay>{keysFor('right')}</KeyDisplay> - Drive</li>
+                        <li><KeyDisplay>{keysFor('rids')}</KeyDisplay> - RIDS Check</li>
+                        <li><KeyDisplay>{keysFor('boost')}</KeyDisplay> - Boost <span className="text-cyan-400">(uses energy)</span></li>
+                        <li><KeyDisplay>{keysFor('siren')}</KeyDisplay> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
+                        <li><KeyDisplay>{keysFor('colleague')}</KeyDisplay> - Colleague Assist <span className="text-yellow-400">(high-priority events)</span></li>
+                        <li><KeyDisplay>{keysFor('minimap')}</KeyDisplay> - Toggle Minimap</li>
+                        <li className="text-gray-400">Gamepad works too: left stick drives, <KeyDisplay>A</KeyDisplay> checks, <KeyDisplay>B</KeyDisplay> siren, <KeyDisplay>X</KeyDisplay> assist. Rebind keys from the menu.</li>
                     </ul>
-                    {/* Touch controls (coarse pointer) — gd-0wi.14. Plain text; names match the on-screen buttons. */}
+                    {/* Touch controls (coarse pointer) — names match the on-screen buttons. */}
                     <ul className="list-inside space-y-1 hidden [@media(pointer:coarse)]:block">
-                        <li><span className="font-bold text-white">Joystick</span> (bottom-left) - Drive: push up to accelerate, down to reverse, steer left / right</li>
+                        <li><span className="font-bold text-white">Joystick</span> (bottom-left) - Drive: push where you want to go, harder = faster</li>
+                        <li>Tap <span className="font-bold text-yellow-300">RIDS</span> - Intervene with a nearby offender</li>
                         <li>Tap <span className="font-bold text-cyan-400">BOOST</span> - Boost <span className="text-cyan-400">(uses energy)</span></li>
                         <li>Tap <span className="font-bold text-red-400">SIREN</span> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
-                        <li>Tap <span className="font-bold text-yellow-300">RIDS CHECK</span> - Intervene with a nearby offender</li>
                         <li>Tap <span className="font-bold text-yellow-400">ASSIST</span> - Colleague Assist <span className="text-yellow-400">(high-priority event)</span></li>
+                        <li className="text-gray-400">Watch the dots up top — that's each district's deterrence at a glance.</li>
                     </ul>
                 </TutorialInfoCard>
             </div>

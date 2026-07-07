@@ -20,6 +20,82 @@ export interface GeneratedMapMeta {
 }
 
 // ---------------------------------------------------------------------------
+// Regions: each map rolls a regional character that drives its scenery profile and
+// biases its theme — a High Country run FEELS different from a Geothermal one.
+export type DecorType =
+    | 'tree' | 'house' | 'building' | 'warehouse'
+    | 'cabbageTree' | 'ponga' | 'pohutukawa' | 'flax'
+    | 'sheep' | 'pukeko' | 'kiwi' | 'kereru' | 'tui'
+    | 'steamVent' | 'boulder' | 'vineyard';
+
+export interface MapRegion {
+    name: string;
+    themeNames: string[]; // theme picked from these
+    decorProfile: Record<DistrictName, { type: DecorType; count: number }[]>;
+}
+
+const REGIONS: MapRegion[] = [
+    {
+        name: 'Coastal Run',
+        themeNames: ['Neon Night', 'Rainshift'],
+        decorProfile: {
+            'Karori North': [{ type: 'pohutukawa', count: 50 }, { type: 'flax', count: 50 }, { type: 'sheep', count: 40 }, { type: 'tree', count: 60 }, { type: 'kiwi', count: 8 }],
+            'Karori West': [{ type: 'house', count: 80 }, { type: 'pohutukawa', count: 20 }, { type: 'tui', count: 14 }],
+            'Karori Central': [{ type: 'building', count: 45 }, { type: 'pukeko', count: 8 }, { type: 'flax', count: 10 }],
+            'Karori East': [{ type: 'warehouse', count: 28 }, { type: 'flax', count: 28 }, { type: 'pukeko', count: 10 }],
+            'Karori': [{ type: 'pohutukawa', count: 26 }, { type: 'kereru', count: 10 }, { type: 'house', count: 10 }],
+        },
+    },
+    {
+        name: 'High Country',
+        themeNames: ['Frostbeat', 'Aurora Watch'],
+        decorProfile: {
+            'Karori North': [{ type: 'boulder', count: 60 }, { type: 'sheep', count: 110 }, { type: 'tree', count: 40 }, { type: 'flax', count: 25 }],
+            'Karori West': [{ type: 'house', count: 70 }, { type: 'cabbageTree', count: 20 }, { type: 'boulder', count: 15 }],
+            'Karori Central': [{ type: 'building', count: 40 }, { type: 'ponga', count: 8 }],
+            'Karori East': [{ type: 'warehouse', count: 26 }, { type: 'boulder', count: 20 }, { type: 'flax', count: 15 }],
+            'Karori': [{ type: 'boulder', count: 16 }, { type: 'flax', count: 14 }, { type: 'house', count: 8 }],
+        },
+    },
+    {
+        name: 'Heartland',
+        themeNames: ['Dusk Patrol', 'Ember Line'],
+        decorProfile: {
+            'Karori North': [{ type: 'vineyard', count: 70 }, { type: 'sheep', count: 80 }, { type: 'cabbageTree', count: 40 }, { type: 'kiwi', count: 6 }],
+            'Karori West': [{ type: 'house', count: 75 }, { type: 'cabbageTree', count: 25 }, { type: 'tui', count: 10 }],
+            'Karori Central': [{ type: 'building', count: 42 }, { type: 'pukeko', count: 8 }],
+            'Karori East': [{ type: 'warehouse', count: 34 }, { type: 'vineyard', count: 18 }, { type: 'flax', count: 15 }],
+            'Karori': [{ type: 'vineyard', count: 14 }, { type: 'house', count: 12 }, { type: 'kereru', count: 6 }],
+        },
+    },
+    {
+        name: 'Geothermal',
+        themeNames: ['Ember Line', 'Aurora Watch'],
+        decorProfile: {
+            'Karori North': [{ type: 'steamVent', count: 45 }, { type: 'ponga', count: 55 }, { type: 'flax', count: 35 }, { type: 'kiwi', count: 10 }],
+            'Karori West': [{ type: 'house', count: 70 }, { type: 'ponga', count: 22 }, { type: 'tui', count: 10 }],
+            'Karori Central': [{ type: 'building', count: 42 }, { type: 'steamVent', count: 8 }, { type: 'ponga', count: 8 }],
+            'Karori East': [{ type: 'warehouse', count: 28 }, { type: 'steamVent', count: 14 }, { type: 'flax', count: 12 }],
+            'Karori': [{ type: 'steamVent', count: 14 }, { type: 'ponga', count: 12 }, { type: 'kereru', count: 8 }],
+        },
+    },
+    {
+        name: 'Big Smoke',
+        themeNames: ['Neon Night', 'Rainshift'],
+        decorProfile: {
+            'Karori North': [{ type: 'tree', count: 90 }, { type: 'sheep', count: 40 }, { type: 'cabbageTree', count: 30 }, { type: 'flax', count: 20 }],
+            'Karori West': [{ type: 'house', count: 110 }, { type: 'tui', count: 18 }, { type: 'cabbageTree', count: 15 }],
+            'Karori Central': [{ type: 'building', count: 65 }, { type: 'pukeko', count: 10 }, { type: 'ponga', count: 8 }],
+            'Karori East': [{ type: 'warehouse', count: 40 }, { type: 'flax', count: 18 }, { type: 'pukeko', count: 10 }],
+            'Karori': [{ type: 'house', count: 16 }, { type: 'pohutukawa', count: 12 }, { type: 'kereru', count: 8 }],
+        },
+    },
+];
+
+/** The active map's region (null → renderer falls back to its base scenery profile). */
+export const currentRegionRef: { current: MapRegion | null } = { current: null };
+
+// ---------------------------------------------------------------------------
 // Themes: per-district ground tints + decor colors. "Neon Night" = the original look.
 interface Theme {
     name: string;
@@ -276,7 +352,8 @@ function commit(built: Built, theme: Theme): void {
  */
 export function regenerateMap(seed: number): GeneratedMapMeta {
     const rng = mulberry32(seed);
-    const theme = pick(rng, THEMES);
+    const region = pick(rng, REGIONS);
+    const theme = THEMES.find(t => t.name === pick(rng, region.themeNames)) ?? THEMES[0];
     const built = buildCanonical(rng);
     const flipX = rng() < 0.5;
     const flipY = rng() < 0.5;
@@ -286,6 +363,7 @@ export function regenerateMap(seed: number): GeneratedMapMeta {
     const inBounds = built.nodes.every(n => n.pos.x >= 0 && n.pos.x <= WORLD_W && n.pos.y >= 0 && n.pos.y <= WORLD_H);
     if (!isConnected(built) || !inBounds) {
         // Never strand the player on a broken map — restore the hand-authored one.
+        currentRegionRef.current = null; // renderer falls back to its base scenery profile
         commit({
             nodes: DEFAULT_NODES.map(n => ({ ...n, pos: { ...n.pos } })),
             segments: DEFAULT_SEGMENTS.map(s => ({ ...s })),
@@ -294,9 +372,10 @@ export function regenerateMap(seed: number): GeneratedMapMeta {
         return { seed, themeName: THEMES[0].name, layoutName: 'Karori Classic' };
     }
 
+    currentRegionRef.current = region;
     commit(built, theme);
-    // Label the map by its town centre, like a real patrol area ("Te Aro District").
+    // Label the map by its town centre + regional character ("Te Aro District · Geothermal").
     const centre = built.districts.find(d => d.id === 'Karori Central');
-    const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District`;
+    const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District · ${region.name}`;
     return { seed, themeName: theme.name, layoutName };
 }

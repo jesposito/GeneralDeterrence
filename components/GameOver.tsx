@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LeaderboardEntry, FinalScoreBreakdown, EnforcementAction, ColleagueCallAction } from '../types';
 import Leaderboard from './Leaderboard';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS } from '../utils/mapData';
-import { generateSavedLifeStories } from '../utils/stories';
+import { generateSavedLifeStories, pickDebrief } from '../utils/stories';
 import * as CONSTANTS from '../constants';
 
 const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = {
@@ -295,12 +295,13 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
 
   const personal = getPersonalStats(scoreBreakdown);
-  // Where are they now? One line per saved life (cap 3 shown), seeded off the score so
+  // Where are they now? One line per saved life (cap 4 shown), seeded off the score so
   // re-renders show the same stories.
   const stories = useMemo(
-      () => generateSavedLifeStories(Math.min(3, scoreBreakdown.livesSaved), scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919),
+      () => generateSavedLifeStories(Math.min(4, scoreBreakdown.livesSaved), scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919),
       [scoreBreakdown],
   );
+  const debrief = useMemo(() => pickDebrief(scoreBreakdown), [scoreBreakdown]);
   const gradeStyles: Record<string, string> = {
     S: 'text-yellow-300 border-yellow-300',
     A: 'text-green-400 border-green-400',
@@ -311,7 +312,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   return (
     <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
       <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
-      {mapLabel && <p className="text-xs md:text-sm text-gray-500 mb-2 font-display tracking-wider">{mapLabel}</p>}
+      {mapLabel && <p className="text-xs md:text-sm text-gray-400 mb-2 font-display tracking-wider">{mapLabel}</p>}
       {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}
       <div className="flex items-center justify-center gap-3 mb-2">
         <span className="text-sm md:text-lg text-gray-300 font-display tracking-wider">PRESENCE GRADE</span>
@@ -332,8 +333,37 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
         {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
       </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
-      <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-6 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
-      
+      <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-4 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
+
+      {/* The once-per-shift interdiction: the routine stop that turned out to be anything but. */}
+      {scoreBreakdown.interdiction && (
+        <div className={`w-full max-w-6xl mb-4 rounded-lg border-2 p-3 md:p-4 text-left ${
+            scoreBreakdown.interdiction.outcome === 'busted'
+              ? 'border-green-500 bg-green-950/60 shadow-lg shadow-green-500/20'
+              : 'border-gray-600 bg-gray-900/70'
+        }`}>
+          <h2 className={`text-sm md:text-base font-display tracking-widest mb-1 ${scoreBreakdown.interdiction.outcome === 'busted' ? 'text-green-400' : 'text-gray-400'}`}>
+            {scoreBreakdown.interdiction.outcome === 'busted' ? `THE BIG ONE — ${scoreBreakdown.interdiction.crime.toUpperCase()}` : 'THE ONE THAT DROVE ON'}
+          </h2>
+          <p className="text-sm md:text-lg text-gray-200 font-sans leading-snug">{scoreBreakdown.interdiction.detail}</p>
+        </div>
+      )}
+
+      {/* Where are they now? The point of the job, front and centre. */}
+      {stories.length > 0 && (
+        <div className="w-full max-w-6xl mb-4 rounded-lg border-2 border-green-500/50 bg-black/50 p-3 md:p-5 text-left">
+          <h2 className="text-base md:text-xl font-display text-green-400 tracking-widest mb-3">LIVES SAVED — WHERE ARE THEY NOW?</h2>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+            {stories.map((s, i) => (
+              <li key={i} className="text-sm md:text-base text-gray-200 font-sans leading-snug border-l-2 border-green-500/40 pl-3">{s.story}</li>
+            ))}
+          </ul>
+          {scoreBreakdown.livesSaved > stories.length && (
+            <p className="text-xs md:text-sm text-gray-400 font-sans mt-2">…and {scoreBreakdown.livesSaved - stories.length} more {scoreBreakdown.livesSaved - stories.length === 1 ? 'driver' : 'drivers'} went home safe.</p>
+          )}
+        </div>
+      )}
+
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Patrol Report Map with Heatmap */}
         <div className="lg:col-span-1 h-64 lg:h-auto">
@@ -392,19 +422,6 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                 <span className="text-yellow-400 text-glow-yellow">Total:</span>
                 <span className="text-yellow-400 text-glow-yellow">{animatedFinalScore.toLocaleString()}</span>
             </div>
-            {stories.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-700 text-left">
-                    <h3 className="text-sm font-display text-green-400 tracking-wider mb-2">LIVES SAVED — WHERE ARE THEY NOW?</h3>
-                    <ul className="space-y-1.5">
-                        {stories.map((s, i) => (
-                            <li key={i} className="text-xs md:text-sm text-gray-300 font-sans leading-snug">{s.story}</li>
-                        ))}
-                    </ul>
-                    {scoreBreakdown.livesSaved > stories.length && (
-                        <p className="text-xs text-gray-500 font-sans mt-1.5">…and {scoreBreakdown.livesSaved - stories.length} more {scoreBreakdown.livesSaved - stories.length === 1 ? 'driver' : 'drivers'} went home safe.</p>
-                    )}
-                </div>
-            )}
         </div>
         
         {/* Leaderboard & Actions */}
@@ -456,6 +473,11 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
             <Leaderboard scores={leaderboard} />
         </div>
       </div>
+
+      {/* Debrief: one contextual line of the actual lesson, picked from how this shift went. */}
+      <p className="w-full max-w-6xl mt-4 text-sm md:text-base text-cyan-200/90 font-sans italic border-t border-cyan-500/30 pt-3">
+        <span className="not-italic font-display text-cyan-400 tracking-widest">DEBRIEF · </span>{debrief}
+      </p>
     </div>
   );
 };
