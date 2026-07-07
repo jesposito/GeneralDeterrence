@@ -7,6 +7,8 @@ import { mulberry32, pick, type Rng } from './rng';
 const NAMES = [
     'Bob', 'Aroha', 'Tama', 'Sione', 'Mere', 'Gary', 'Priya', 'Wiremu', 'Jess', 'Hemi',
     'Sam', 'Ana', 'Rawiri', 'Katie', 'Manu', 'Dave', 'Moana', 'Nikau', 'Sophie', 'Tane',
+    'Lena', 'Kauri', 'Bex', 'Fetu', 'Marama', 'Trev', 'Anika', 'Mikaere', 'Shaz', 'Pita',
+    'Holly', 'Rangi', 'Deb', 'Losa', 'Hana', 'Bruce', 'Kiri', 'Eru', 'Milly', 'Taika',
 ];
 
 const MUNDANE = [
@@ -18,6 +20,18 @@ const MUNDANE = [
     '{name} remembered to buy milk on the way home. Trim, as requested.',
     '{name} went on to mow the lawns every second Sunday for 40 more years.',
     '{name} finally fixed the squeaky gate. The neighbours sent a card.',
+    '{name} made it to their kid\'s netball game. They lost 24–3. Great day anyway.',
+    '{name} got the washing in before the southerly hit. Legend behaviour.',
+    '{name} kept their dentist appointment. No fillings. Told everyone.',
+    '{name} finally descaled the jug. The tea tastes better. Life is good.',
+    '{name} arrived at the potluck with the good potato salad. It was gone in minutes.',
+    '{name} renewed their WOF on time for the first time ever.',
+    '{name} took the scenic route home on Sunday, just because.',
+    '{name} spent Tuesday assembling a flat-pack drawer. Only two screws left over.',
+    '{name} got the last carpark at the beach. Small wins.',
+    '{name} watered the tomatoes all summer. Got four tomatoes. Worth it.',
+    "{name} finally watched that show everyone's been on about. It was fine.",
+    '{name} went home, hugged the dog, and fell asleep on the couch by nine.',
 ];
 
 const FUNNY = [
@@ -29,6 +43,18 @@ const FUNNY = [
     '{name} taught their pūkeko to fetch. Sort of. The pūkeko disagrees.',
     '{name} entered MasterChef with a cheese roll recipe. Eliminated week one. No regrets.',
     "{name} finally beat their nan at Scrabble after 14 years. She demanded a rematch. She won.",
+    '{name} started a sourdough. Named it Gerald. Gerald has outlived three flatmates.',
+    '{name} won the office sweepstake and spent all of it on a novelty-sized Jandal.',
+    '{name} got quietly famous for a fence-painting technique on the community Facebook page.',
+    '{name} tried to break the regional record for most pies eaten at a school gala. Second place. Bitter about it.',
+    '{name} bought a metal detector. Has found 47 bottle caps and one very confused crab.',
+    "{name} became their street's unofficial mayor after the Great Wheelie Bin Storm of next July.",
+    '{name} taught aqua aerobics to a class of retirees who now call them "Coach".',
+    '{name} entered the gumboot throw at the A&P show. The gumboot is still airborne, some say.',
+    '{name} finally learned to whistle at 43. Will not stop.',
+    "{name} knitted a jersey for the neighbour's alpaca. The alpaca wears it with dignity.",
+    '{name} got a personalised plate that just says CHUR. Waiting list was two years.',
+    '{name} claims to have invented the mince and cheese toastie. Cannot be disproven locally.',
 ];
 
 const AMAZING = [
@@ -40,6 +66,16 @@ const AMAZING = [
     '{name} became a youth mentor — three of their kids are now doctors.',
     '{name} led the kiwi-recovery programme that brought the local population back from 12 birds.',
     "{name} wrote the children's book every Kiwi kid now learns to read with.",
+    '{name} started a free driving school for teens who couldn\'t afford lessons. Zero crashes in ten years.',
+    '{name} became a volunteer firefighter and carried two kids out of a house fire in 2031.',
+    '{name} founded the food bank network that now feeds three towns every winter.',
+    '{name} talked a stranger off a bridge one night. They have coffee every Thursday now.',
+    '{name} became the surgeon who pioneered the technique that saved a prime minister.',
+    '{name} coached the under-14s to nationals. Four of them made the Black Ferns.',
+    '{name} built the wheelchair-accessible walkway to the summit lookout. Every sunrise belongs to everyone now.',
+    '{name} fostered 31 kids over twenty years. All 31 came back for their 60th.',
+    '{name} discovered a new species of wētā in their compost bin and gave it their nana\'s name.',
+    '{name} set up the community patrol that halved burglaries in their suburb.',
 ];
 
 export interface SavedLifeStory {

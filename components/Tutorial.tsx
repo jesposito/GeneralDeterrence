@@ -56,43 +56,51 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
 
             <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
                 <TutorialInfoCard title="1 · PATROL">
-                    <p>Each district has a <span className="text-white font-bold">DETERRENCE</span> meter. Your presence raises it; your absence lets it decay. Watch for <span className="text-green-400 font-bold">SECURED</span> and <span className="text-red-400 font-bold">HOTSPOT</span> calls.</p>
-                    <p>Hold all districts above 85% for <span className="text-yellow-300 font-bold">FULL COVERAGE ×2</span> points. Your <span className="text-purple-400 font-bold">VIGILANCE</span> grows as you patrol — a bigger aura spots offenders further away.</p>
-                    <p>Park still for a few seconds to drop a <span className="text-cyan-300 font-bold">PATROL POST</span> that keeps deterring after you leave. But don't idle where it's already safe — that's <span className="text-red-400 font-bold">NEGLECT OF DUTY</span>.</p>
-                    <p className="text-cyan-200">Your <span className="font-bold">PREVENTED</span> counter ticks up for every offence that never happened because you were visible. That's the real score.</p>
+                    <ul className="space-y-1.5">
+                        <li>Be seen → <span className="text-white font-bold">DETERRENCE</span> rises. Leave → it decays.</li>
+                        <li>All districts ≥85% = <span className="text-yellow-300 font-bold">FULL COVERAGE ×2</span>.</li>
+                        <li>Park briefly = <span className="text-cyan-300 font-bold">PATROL POST</span>. Idle where it's safe = <span className="text-red-400 font-bold">NEGLECT</span>.</li>
+                        <li><span className="text-cyan-300 font-bold">PREVENTED</span> counts offences that never happened. <span className="text-cyan-200">That's the real score.</span></li>
+                    </ul>
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="2 · SPOT & STOP">
-                    <p>Offenders show a <span className="text-white font-bold">RIDS</span> icon:</p>
-                    <p className="text-base sm:text-lg leading-relaxed">
-                        <span aria-hidden="true">⚠️</span> Restraints · <span aria-hidden="true">🥴</span> Impairment<br/>
-                        <span aria-hidden="true">📱</span> Distractions · <span aria-hidden="true">🔥</span> Speed
+                    <p className="text-base sm:text-lg whitespace-nowrap">
+                        <span aria-hidden="true">⚠️</span> Restraints · <span aria-hidden="true">🥴</span> Impaired<br/>
+                        <span aria-hidden="true">📱</span> Distracted · <span aria-hidden="true">🔥</span> Speed
                     </p>
-                    <p>Get close and use <span className="text-yellow-300 font-bold">RIDS CHECK</span>, then choose: <span className="text-cyan-300 font-bold">Warn</span> (fast, small reward) or <span className="text-pink-400 font-bold">Enforce</span> (mini-game, big reward, costs shift time).</p>
-                    <p className="text-red-400 font-bold">Pulsing red = LIFE AT RISK. Get there before the timer — or send a colleague.</p>
-                    <p>You never know what a stop will find. Once a shift, one of them is carrying something <em>much</em> bigger…</p>
+                    <ul className="space-y-1.5">
+                        <li>Near one? <span className="text-yellow-300 font-bold">RIDS CHECK</span>.</li>
+                        <li><span className="text-cyan-300 font-bold">Warn</span>: fast, small. <span className="text-pink-400 font-bold">Enforce</span>: mini-game, big, −6s.</li>
+                        <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go — or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
+                        <li>One car each shift hides something <em>much</em> bigger…</li>
+                    </ul>
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="3 · CONTROLS">
-                    {/* Keyboard (desktop) — shows the player's live bindings; rebind from the menu. */}
-                    <ul className="list-inside space-y-1 [@media(pointer:coarse)]:hidden">
-                        <li><KeyDisplay>{keysFor('forward')}</KeyDisplay> + <KeyDisplay>{keysFor('left')}</KeyDisplay><KeyDisplay>{keysFor('backward')}</KeyDisplay><KeyDisplay>{keysFor('right')}</KeyDisplay> - Drive</li>
-                        <li><KeyDisplay>{keysFor('rids')}</KeyDisplay> - RIDS Check</li>
-                        <li><KeyDisplay>{keysFor('boost')}</KeyDisplay> - Boost <span className="text-cyan-400">(uses energy)</span></li>
-                        <li><KeyDisplay>{keysFor('siren')}</KeyDisplay> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
-                        <li><KeyDisplay>{keysFor('colleague')}</KeyDisplay> - Colleague Assist <span className="text-yellow-400">(high-priority events)</span></li>
-                        <li><KeyDisplay>{keysFor('minimap')}</KeyDisplay> - Toggle Minimap</li>
-                        <li className="text-gray-400">Gamepad works too: left stick drives, <KeyDisplay>A</KeyDisplay> checks, <KeyDisplay>B</KeyDisplay> siren, <KeyDisplay>X</KeyDisplay> assist. Rebind keys from the menu.</li>
-                    </ul>
-                    {/* Touch controls (coarse pointer) — names match the on-screen buttons. */}
-                    <ul className="list-inside space-y-1 hidden [@media(pointer:coarse)]:block">
-                        <li><span className="font-bold text-white">Joystick</span> (bottom-left) - Drive: push where you want to go, harder = faster</li>
-                        <li>Tap <span className="font-bold text-yellow-300">RIDS</span> - Intervene with a nearby offender</li>
-                        <li>Tap <span className="font-bold text-cyan-400">BOOST</span> - Boost <span className="text-cyan-400">(uses energy)</span></li>
-                        <li>Tap <span className="font-bold text-red-400">SIREN</span> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
-                        <li>Tap <span className="font-bold text-yellow-400">ASSIST</span> - Colleague Assist <span className="text-yellow-400">(high-priority event)</span></li>
-                        <li className="text-gray-400">Watch the dots up top — that's each district's deterrence at a glance.</li>
-                    </ul>
+                    {/* Keyboard (desktop): live bindings in a no-wrap grid — chips never split lines. */}
+                    <div className="[@media(pointer:coarse)]:hidden">
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
+                            <span className="whitespace-nowrap"><KeyDisplay>{[bindings.forward[0], bindings.left[0], bindings.backward[0], bindings.right[0]].map(displayKey).join(' ')}</KeyDisplay></span><span className="whitespace-nowrap">Drive <span className="text-gray-400">(or arrows)</span></span>
+                            <span><KeyDisplay>{keysFor('rids')}</KeyDisplay></span><span className="whitespace-nowrap">RIDS Check</span>
+                            <span><KeyDisplay>{keysFor('boost')}</KeyDisplay></span><span className="whitespace-nowrap">Boost</span>
+                            <span><KeyDisplay>{keysFor('siren')}</KeyDisplay></span><span className="whitespace-nowrap">Siren</span>
+                            <span><KeyDisplay>{keysFor('colleague')}</KeyDisplay></span><span className="whitespace-nowrap">Assist</span>
+                            <span><KeyDisplay>{keysFor('minimap')}</KeyDisplay></span><span className="whitespace-nowrap">Minimap</span>
+                        </div>
+                        <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · gamepad works · rebind from the menu.</p>
+                    </div>
+                    {/* Touch: same grid, on-screen button names. */}
+                    <div className="hidden [@media(pointer:coarse)]:block">
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
+                            <span className="font-bold text-white whitespace-nowrap">Joystick</span><span className="whitespace-nowrap">Drive — harder push = faster</span>
+                            <span className="font-bold text-yellow-300">RIDS</span><span className="whitespace-nowrap">Check nearby offender</span>
+                            <span className="font-bold text-cyan-400">BOOST</span><span className="whitespace-nowrap">Speed burst</span>
+                            <span className="font-bold text-red-400">SIREN</span><span className="whitespace-nowrap">Clear traffic, deter</span>
+                            <span className="font-bold text-yellow-400">ASSIST</span><span className="whitespace-nowrap">Send a colleague</span>
+                        </div>
+                        <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · top dots = district deterrence.</p>
+                    </div>
                 </TutorialInfoCard>
             </div>
 
