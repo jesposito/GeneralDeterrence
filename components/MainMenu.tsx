@@ -5,7 +5,7 @@ import ControlsSettings from './ControlsSettings';
 import * as audio from '../utils/audio';
 
 interface MainMenuProps {
-  onStartGame: () => void;
+  onStartGame: (mode: 'daily' | 'free') => void;
   leaderboard: LeaderboardEntry[];
 }
 
@@ -32,10 +32,17 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
               Begin your 90-second patrol shift. Maximize your <span className="text-white font-bold">Deterrence</span> by staying visible and unpredictable. Identify high-risk driving behaviors (RIDS) and intervene to earn <span className="text-white font-bold">Lives Saved</span> points.
             </p>
             <button
-              onClick={() => { audio.unlockAudio(); onStartGame(); }}
+              onClick={() => { audio.unlockAudio(); onStartGame('daily'); }}
               className="mt-6 w-full bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded-lg text-lg md:text-xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow"
             >
-              Start Shift
+              Daily Shift
+            </button>
+            <p className="text-xs text-gray-400 mt-1 font-sans">Today's map — same for everyone. New one at midnight.</p>
+            <button
+              onClick={() => { audio.unlockAudio(); onStartGame('free'); }}
+              className="mt-3 w-full bg-transparent hover:bg-pink-900/40 border-2 border-pink-500/50 text-pink-300 font-bold py-2 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              Free Patrol <span className="font-sans font-normal">(random map)</span>
             </button>
             <button
               onClick={() => setShowControls(true)}

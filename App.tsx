@@ -5,6 +5,8 @@ import Game from './components/Game';
 import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
 import MuteToggle from './components/MuteToggle';
+import { regenerateMap } from './utils/mapGen';
+import { seedFromToday, randomSeed } from './utils/rng';
 
 declare global {
   interface Window { LEADERBOARD_API?: string }
@@ -59,7 +61,12 @@ const App: React.FC = () => {
     }
   }, [gameState]);
 
-  const handleStartGame = useCallback(() => {
+  // Daily = date-seeded map (same for everyone → fair leaderboard); Free = fresh random map.
+  const [mapLabel, setMapLabel] = useState<string>('');
+  const handleStartGame = useCallback((mode: 'daily' | 'free') => {
+    const seed = mode === 'daily' ? seedFromToday() : randomSeed();
+    const meta = regenerateMap(seed);
+    setMapLabel(`${mode === 'daily' ? 'Daily Shift' : 'Free Patrol'} · ${meta.layoutName} · ${meta.themeName}`);
     setGameState('Tutorial');
   }, []);
   
@@ -124,6 +131,7 @@ const App: React.FC = () => {
             leaderboard={leaderboard}
             onPlayAgain={handlePlayAgain}
             onAddToLeaderboard={handleAddToLeaderboard}
+            mapLabel={mapLabel}
           />
         );
       case 'MainMenu':

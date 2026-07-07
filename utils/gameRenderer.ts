@@ -1,10 +1,23 @@
 import * as CONSTANTS from '../constants';
-import { ROAD_SEGMENTS, ROAD_NODES, DISTRICT_DEFINITIONS } from './mapData';
+import { ROAD_SEGMENTS, ROAD_NODES, DISTRICT_DEFINITIONS, mapVersionRef } from './mapData';
 import { Player, Civilian, SparkParticle, SkidMark, TireSmokeParticle, DeterrenceBlob, CollectionEffect, FloatingScoreText, Explosion, PatrolPost, RIDSType } from '../types';
 import { getDistrictForPoint } from './geometry';
 
 // Pre-computed node positions for fast lookup
 const nodePosMap = new Map(ROAD_NODES.map(n => [n.id, n.pos]));
+
+// Procedural maps: when mapGen bumps the map version, every map-derived cache here
+// (node positions, decorations, ground-color grid, the static-map canvas) is stale.
+let rendererCachesForVersion = mapVersionRef.current;
+function ensureRendererCaches(): void {
+  if (rendererCachesForVersion === mapVersionRef.current) return;
+  rendererCachesForVersion = mapVersionRef.current;
+  nodePosMap.clear();
+  for (const n of ROAD_NODES) nodePosMap.set(n.id, n.pos);
+  decorationCache = null;
+  staticMapCanvas = null;
+  districtColorCache.clear();
+}
 
 // Decoration cache — generated once and reused
 interface Decoration {
@@ -316,6 +329,7 @@ export function drawGame(
   state: RenderState,
   time: number
 ): void {
+  ensureRendererCaches(); // rebuild map-derived caches after a procedural regen
   // gd-0wi.25: never shake the camera when the user prefers reduced motion.
   const shakeAmt = prefersReducedMotion ? 0 : camera.shake;
   const shakeX = shakeAmt > 0 ? (Math.random() - 0.5) * shakeAmt * 2 : 0;

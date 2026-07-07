@@ -26,8 +26,6 @@ const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
 const COLLISION_CHECK_RADIUS_SQ = (CONSTANTS.CAR_RADIUS * 2) ** 2;
 const HUD_UPDATE_INTERVAL_MS = 100;
 
-const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node]));
-
 // Haptic tap on the big moments (enforce/save/loss). No-op where unsupported (iOS Safari).
 const buzz = (pattern: number | number[]) => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(pattern);
@@ -235,6 +233,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   const highlightedPathRef = useRef<{x: number, y: number}[] | null>(null);
   const pathfindingTargetIdRef = useRef<number | null>(null);
+
+  // Per-mount (not module-level): the map can be regenerated between shifts (utils/mapGen),
+  // and Game always mounts after regeneration, so a fresh Map here is always current.
+  const nodeMap = useMemo(() => new Map(ROAD_NODES.map(node => [node.id, node])), []);
 
   const segmentLookup = useMemo(() => {
     const map = new Map<string, typeof ROAD_SEGMENTS[0]>();
@@ -504,7 +506,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       isLifeAtRisk: false, lifeAtRiskTimer: 0,
       swerveAngle: 0, speedFluctuationTimer: 0, speedFluctuationTarget: 1,
     };
-  }, []);
+  }, [nodeMap]);
 
   const spawnCivilian = useCallback((districtId?: DistrictName) => {
     const newCivilian = createCivilian(districtId);

@@ -1,18 +1,28 @@
 import { DistrictName } from '../types';
-import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS as MAP_DISTRICT_DEFINITIONS, RoadNode } from './mapData';
+import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS as MAP_DISTRICT_DEFINITIONS, RoadNode, mapVersionRef } from './mapData';
 
 export const DISTRICT_DEFINITIONS = MAP_DISTRICT_DEFINITIONS;
 
-const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node]));
+// Map-derived caches, rebuilt lazily whenever mapGen bumps mapVersionRef (procedural maps).
+const nodeMap = new Map<string, RoadNode>();
 const adjacencyList: Map<string, string[]> = new Map();
+let cachesForVersion = -1;
 
-for (const node of ROAD_NODES) {
-  adjacencyList.set(node.id, []);
+function ensureCaches(): void {
+  if (cachesForVersion === mapVersionRef.current) return;
+  cachesForVersion = mapVersionRef.current;
+  nodeMap.clear();
+  adjacencyList.clear();
+  for (const node of ROAD_NODES) {
+    nodeMap.set(node.id, node);
+    adjacencyList.set(node.id, []);
+  }
+  for (const segment of ROAD_SEGMENTS) {
+    adjacencyList.get(segment.startNodeId)?.push(segment.endNodeId);
+    adjacencyList.get(segment.endNodeId)?.push(segment.startNodeId);
+  }
 }
-for (const segment of ROAD_SEGMENTS) {
-  adjacencyList.get(segment.startNodeId)?.push(segment.endNodeId);
-  adjacencyList.get(segment.endNodeId)?.push(segment.startNodeId);
-}
+ensureCaches();
 
 export const getDistance = (p1: { x: number; y: number }, p2: { x: number; y: number }): number => {
   const dx = p1.x - p2.x;
@@ -31,6 +41,7 @@ export const getRads = (degrees: number): number => {
 };
 
 export const findClosestPointOnRoad = (point: { x: number, y: number }): { point: { x: number, y: number }, dist: number, angle: number } | null => {
+  ensureCaches();
   // Track the closest projection with scalars + squared distance (one alloc + one sqrt at the
   // end, instead of a point object + sqrt per segment).
   let bestX = 0, bestY = 0, minDistSq = Infinity, roadAngle = 0, found = false;
@@ -91,6 +102,7 @@ export const findClosestNode = (point: { x: number; y: number }): { node: RoadNo
 
 
 export const generateNewPath = (districtId?: DistrictName, startNodeId?: string, homeDistrictId?: DistrictName): string[] | null => {
+    ensureCaches();
     let startNode: RoadNode;
 
     let effectiveHomeDistrict = homeDistrictId;
@@ -204,6 +216,7 @@ class PriorityQueue<T> {
 }
 
 export const findShortestPath = (startNodeId: string, endNodeId: string): string[] | null => {
+    ensureCaches();
     if (!nodeMap.has(startNodeId) || !nodeMap.has(endNodeId)) return null;
 
     const openSet = new PriorityQueue<string>();
