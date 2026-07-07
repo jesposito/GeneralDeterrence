@@ -38,6 +38,8 @@ export interface Civilian extends Vehicle {
   isChampion?: boolean;
   /** Traffic variety: size/speed/render vary; campers wander a little (tourists, eh). */
   vehicleType?: VehicleType;
+  /** Fairness: which offender-schedule slot this car consumed (referral roll lives there). */
+  slotIndex?: number;
   zone: RoadZone;
   district: DistrictName;
   path: string[];
@@ -102,6 +104,8 @@ export interface LeaderboardEntry {
   timestamp?: number;
   station?: string | null;
   kudos?: number;
+  /** Daily attempts before this score (best-of-N transparency). */
+  attempts?: number | null;
 }
 
 export interface MiniGameProps {

@@ -7,7 +7,7 @@ describe('validateSubmission', () => {
   it('accepts and normalizes a valid submission', () => {
     const r = validateSubmission({ name: '  Ana  ', score: 1200 });
     expect(r.ok).toBe(true);
-    expect(r.value).toEqual({ name: 'Ana', score: 1200, email: null, station: null });
+    expect(r.value).toEqual({ name: 'Ana', score: 1200, email: null, station: null, attempts: null });
   });
 
   it('rejects missing / non-string / empty / overlong names', () => {

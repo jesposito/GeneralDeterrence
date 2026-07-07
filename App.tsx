@@ -6,7 +6,7 @@ import GameOver from './components/GameOver';
 import Tutorial from './components/Tutorial';
 import MuteToggle from './components/MuteToggle';
 import { regenerateMap } from './utils/mapGen';
-import { seedFromToday, randomSeed } from './utils/rng';
+import { seedFromToday, randomSeed, dateFromDayKey } from './utils/rng';
 
 // PB ghost storage: the patrol path of your best run on a specific daily seed.
 const GHOST_KEY = 'gd-ghost';
@@ -89,11 +89,34 @@ const App: React.FC = () => {
       .catch(() => { /* offline: no champion tonight */ });
   }, []);
 
+  // Fairness: the SERVER owns the competition day + seed (client-local dates put
+  // different timezones on different maps under one daily board). Offline: local fallback.
+  const serverDayRef = useRef<{ day: string; seed: number } | null>(null);
+  useEffect(() => {
+    fetch(`${API_BASE}/day`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && d.seed) serverDayRef.current = d; })
+      .catch(() => { /* offline: seedFromToday fallback */ });
+  }, []);
+
+  const bumpAttempts = (day: string): number => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('gd-attempts') || '{}');
+      const n = raw.day === day ? (raw.n || 0) + 1 : 1;
+      localStorage.setItem('gd-attempts', JSON.stringify({ day, n }));
+      return n;
+    } catch { return 1; }
+  };
+  const attemptsRef = useRef(1);
+
   const beginShift = useCallback((mode: 'daily' | 'free', to: GameState) => {
-    const seed = mode === 'daily' ? seedFromToday() : randomSeed();
-    const meta = regenerateMap(seed);
+    const server = serverDayRef.current;
+    const seed = mode === 'daily' ? (server?.seed ?? seedFromToday()) : randomSeed();
+    const date = mode === 'daily' && server ? dateFromDayKey(server.day) : new Date();
+    const meta = regenerateMap(seed, date);
     setShiftMode(mode);
     setMapSeed(seed);
+    if (mode === 'daily') attemptsRef.current = bumpAttempts(server?.day ?? new Date().toDateString());
     // Ghost only makes sense on a map you have played before: daily reruns.
     setGhostPath(mode === 'daily' ? loadGhost(seed)?.path ?? null : null);
     setMapLabel(`${mode === 'daily' ? 'Daily Shift' : 'Free Patrol'} · ${meta.layoutName} · ${meta.themeName}`);
@@ -132,6 +155,7 @@ const App: React.FC = () => {
       score: finalScoreBreakdown.finalScore,
       email,
       station,
+      attempts: shiftMode === 'daily' ? attemptsRef.current : undefined, // best-of-N transparency
       timestamp: Date.now()
     };
     if (isOnline) {
@@ -166,7 +190,7 @@ const App: React.FC = () => {
       case 'Tutorial':
         return <Tutorial onComplete={handleTutorialComplete} mapLabel={mapLabel} />;
       case 'Playing':
-        return <Game onGameOver={handleGameOver} ghostPath={ghostPath} championName={championName} />;
+        return <Game onGameOver={handleGameOver} ghostPath={ghostPath} championName={championName} mapSeed={mapSeed} />;
       case 'GameOver':
         return finalScoreBreakdown && (
           <GameOver

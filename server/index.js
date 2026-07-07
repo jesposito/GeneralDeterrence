@@ -40,23 +40,20 @@ for (const ddl of [
   `ALTER TABLE leaderboard ADD COLUMN day TEXT`,
   `ALTER TABLE leaderboard ADD COLUMN station TEXT`,
   `ALTER TABLE leaderboard ADD COLUMN kudos INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE leaderboard ADD COLUMN attempts INTEGER`,
 ]) {
   try { db.exec(ddl); } catch { /* column already exists */ }
 }
 db.exec(`CREATE INDEX IF NOT EXISTS idx_day_score ON leaderboard(day, score DESC)`);
 console.log('Database initialized');
 
-// The server owns "today" (its local date) so every player shares one daily board.
-const todayKey = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const yesterdayKey = () => {
-  const d = new Date(Date.now() - 86_400_000);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
+// The server owns "today", pinned to NZ time regardless of host/container timezone
+// (a UTC container would run yesterday's competition until midday NZT).
+const nzDay = (epochMs) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(epochMs));
+const todayKey = () => nzDay(Date.now());
+const yesterdayKey = () => nzDay(Date.now() - 86_400_000);
 
 // CORS: production serves the SPA same-origin (no CORS needed); this allowlist only
 // covers local dev origins. Override with ALLOWED_ORIGINS (comma-separated) if the API
@@ -111,26 +108,36 @@ const getTopScoresStation = db.prepare(`
   LIMIT 10
 `);
 
-const getByEmail = db.prepare(`
-  SELECT id, score FROM leaderboard WHERE LOWER(email) = LOWER(?)
+// Fairness: dedup per (email, day) — deduping against the ALL-TIME best hid a returning
+// player from today's board whenever today's run beat everyone-today but not their PB.
+const getByEmailToday = db.prepare(`
+  SELECT id, score FROM leaderboard WHERE LOWER(email) = LOWER(?) AND day = ?
 `);
 
 const updateScore = db.prepare(`
-  UPDATE leaderboard SET name = ?, score = ?, timestamp = ?, day = ?, station = ? WHERE id = ?
+  UPDATE leaderboard SET name = ?, score = ?, timestamp = ?, station = ?, attempts = ? WHERE id = ?
 `);
 
 const insertWithEmail = db.prepare(`
-  INSERT INTO leaderboard (name, score, email, timestamp, day, station) VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO leaderboard (name, score, email, timestamp, day, station, attempts) VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 const insertWithoutEmail = db.prepare(`
-  INSERT INTO leaderboard (name, score, timestamp, day, station) VALUES (?, ?, ?, ?, ?)
+  INSERT INTO leaderboard (name, score, timestamp, day, station, attempts) VALUES (?, ?, ?, ?, ?, ?)
 `);
 
 const countTodayAbove = db.prepare(`SELECT COUNT(*) AS n FROM leaderboard WHERE day = ? AND score > ?`);
 const countToday = db.prepare(`SELECT COUNT(*) AS n FROM leaderboard WHERE day = ?`);
 const addKudos = db.prepare(`UPDATE leaderboard SET kudos = kudos + 1 WHERE id = ?`);
 const getChampion = db.prepare(`SELECT name, score FROM leaderboard WHERE day = ? ORDER BY score DESC LIMIT 1`);
+
+// GET /api/day — the authoritative competition day + map seed (fairness: client-local
+// dates put players in different timezones on different maps under one daily board).
+app.get('/api/day', (req, res) => {
+  const day = todayKey();
+  const seed = Number(day.replace(/-/g, ''));
+  res.json({ day, seed });
+});
 
 // GET /api/leaderboard?scope=all|daily&station=XXXX - Fetch top scores
 app.get('/api/leaderboard', (req, res) => {
@@ -201,24 +208,24 @@ app.post('/api/leaderboard', submitLimiter, (req, res) => {
   if (!result.ok) {
     return res.status(400).json({ error: result.error });
   }
-  const { name, score, email, station } = result.value;
+  const { name, score, email, station, attempts } = result.value;
   // The server owns the timestamp and the day — never trust the client's.
   const ts = Date.now();
   const day = todayKey();
 
   try {
     if (email) {
-      const existing = getByEmail.get(email);
+      const existing = getByEmailToday.get(email, day);
       if (existing) {
-        // Only update if the new score is higher.
+        // Only update if today's new score is higher (per-day dedup).
         if (score > existing.score) {
-          updateScore.run(name, score, ts, day, station, existing.id);
+          updateScore.run(name, score, ts, station, attempts, existing.id);
         }
       } else {
-        insertWithEmail.run(name, score, email, ts, day, station);
+        insertWithEmail.run(name, score, email, ts, day, station, attempts);
       }
     } else {
-      insertWithoutEmail.run(name, score, ts, day, station);
+      insertWithoutEmail.run(name, score, ts, day, station, attempts);
     }
 
     res.json(getTopScores.all());

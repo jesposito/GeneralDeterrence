@@ -15,7 +15,9 @@ const clappedIds = (): Set<number> => {
 };
 
 const Leaderboard: React.FC<LeaderboardProps> = ({ scores }) => {
-  const [scope, setScope] = useState<Scope>('all');
+  // TODAY is the competitive default: the daily board compares runs on the SAME map;
+  // all-time mixes days of different generosity (fairness audit) — it's the Hall of Fame.
+  const [scope, setScope] = useState<Scope>('daily');
   const [rows, setRows] = useState<LeaderboardEntry[]>(scores);
   const [clapped, setClapped] = useState<Set<number>>(clappedIds);
   const station = (() => { try { return localStorage.getItem('gd-station') || ''; } catch { return ''; } })();
@@ -53,8 +55,8 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ scores }) => {
     <div className="w-full flex flex-col">
       <h2 className="text-2xl font-semibold text-yellow-400 mb-2 text-center font-display text-glow-yellow">Top Patrols</h2>
       <div className="flex gap-2 justify-center mb-3" role="group" aria-label="Leaderboard scope">
-        <button className={tabClass(scope === 'all')} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>ALL-TIME</button>
         <button className={tabClass(scope === 'daily')} aria-pressed={scope === 'daily'} onClick={() => setScope('daily')}>TODAY</button>
+        <button className={tabClass(scope === 'all')} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>HALL OF FAME</button>
         {station && <button className={tabClass(scope === 'station')} aria-pressed={scope === 'station'} onClick={() => setScope('station')}>{station}</button>}
       </div>
       {/* Announce what the scope switch loaded (the rows swap silently otherwise). */}
@@ -71,6 +73,7 @@ const Leaderboard: React.FC<LeaderboardProps> = ({ scores }) => {
               <span className="font-semibold text-cyan-400 flex-grow truncate min-w-0" title={entry.name}>
                 {entry.name}
                 {entry.station && <span className="ml-1 text-[10px] text-gray-400 font-display align-middle">[{entry.station}]</span>}
+                {scope === 'daily' && (entry.attempts ?? 0) > 1 && <span className="ml-1 text-[10px] text-gray-400 font-sans align-middle">· best of {entry.attempts}</span>}
               </span>
               {entry.id && (
                 <button

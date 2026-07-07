@@ -52,7 +52,7 @@ export function buildShareText(b: FinalScoreBreakdown, ctx: ShareContext): strin
         `${b.livesSaved} ${b.livesSaved === 1 ? 'life' : 'lives'} saved`,
     ];
     if (b.overtime) statBits.push('⏱ OVERTIME earned');
-    if (ctx.percentile) statBits.push(`Top ${ctx.percentile}% today`);
+    if (ctx.percentile) statBits.push(`Top ${ctx.percentile}% of today's runs`);
     if (ctx.streak && ctx.streak > 1) statBits.push(`🔥 ${ctx.streak}-day streak`);
 
     const lines = [

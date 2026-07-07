@@ -321,6 +321,10 @@ const INTERDICTIONS: Interdiction[] = [
 export const pickInterdiction = (): Interdiction =>
     INTERDICTIONS[Math.floor(Math.random() * INTERDICTIONS.length)];
 
+/** Seeded variant for the daily schedule (fairness: same crime for everyone). */
+export const interdictionAt = (index: number): Interdiction =>
+    INTERDICTIONS[Math.abs(index) % INTERDICTIONS.length];
+
 // ---------------------------------------------------------------------------
 // Passive education: principle-true briefing facts (no invented statistics) shown at
 // shift start, and a contextual one-line debrief for the results screen.

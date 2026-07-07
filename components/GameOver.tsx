@@ -356,7 +356,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
           ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest > 0 ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
           : <span className="text-gray-400">{(personal.best - scoreBreakdown.finalScore).toLocaleString()} short of your best ({personal.best.toLocaleString()})</span>}
         {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
-        {percentile && <span className="text-yellow-300"> · Top {percentile}% today</span>}
+        {percentile && <span className="text-yellow-300"> · Top {percentile}% of submitted runs today</span>}
         {scoreBreakdown.overtime && <span className="text-cyan-300"> · <span aria-hidden="true">⏱ </span>OVERTIME earned</span>}
       </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Player, Civilian, RIDSType, VehicleType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
 import { currentWeatherRef, weatherRadioLine } from '../utils/weather';
+import { buildOffenderSchedule, slotAt } from '../utils/schedule';
+import { mulberry32 } from '../utils/rng';
+import { interdictionAt } from '../utils/stories';
 import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
@@ -23,6 +26,8 @@ interface GameProps {
   ghostPath?: { x: number; y: number }[] | null;
   /** Yesterday's daily #1: patrols tonight's map as a friendly named unit. */
   championName?: string | null;
+  /** The map seed: drives the fairness schedule (offender rolls) + seeded player spawn. */
+  mapSeed?: number;
 }
 
 type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame' | 'Referral';
@@ -178,7 +183,7 @@ const ReferralModal: React.FC<{ onComplete: (success: boolean) => void }> = ({ o
     );
 };
 
-const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
+const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName, mapSeed = 0 }) => {
   // State for UI and major game phases
   const [gameState, setGameState] = useState<LocalGameState>('Starting');
   const [countdownText, setCountdownText] = useState<string>('3');
@@ -265,6 +270,9 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   // OVERTIME: hold FULL COVERAGE at the whistle → +30s, once. Gates extended scoring
   // behind mastery of the core teaching mechanic (leaderboard chasers must hold coverage).
   const overtimeUsedRef = useRef(false);
+  // Fairness schedule (gd-zz7.16): per-ordinal offender rolls from the map seed.
+  const offenderScheduleRef = useRef(buildOffenderSchedule(mapSeed));
+  const offenderOrdinalRef = useRef(0);
   // Arcade juice (gd-zz7.14): combo chain, brief slow-mo, end-of-shift slam, near-miss whoosh.
   const comboRef = useRef({ count: 0, mult: 1, expiresAt: 0 });
   const slowmoUntilRef = useRef(0);
@@ -325,7 +333,9 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   }, []);
 
   function initPlayer(): Player {
-    const startNode = ROAD_NODES[Math.floor(Math.random() * ROAD_NODES.length)];
+    // Fairness: everyone starts the daily from the same kerb (seeded, not rolled).
+    const spawnRoll = mapSeed ? mulberry32((mapSeed ^ 0x1b873593) >>> 0)() : Math.random();
+    const startNode = ROAD_NODES[Math.floor(spawnRoll * ROAD_NODES.length)];
     const connectedSegment = ROAD_SEGMENTS.find(s => s.startNodeId === startNode.id || s.endNodeId === startNode.id);
     let startAngle = 0;
 
@@ -1016,10 +1026,15 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
                 }
             }
             if (currentOffenders < targetOffenders) {
+                // FAIRNESS (gd-zz7.16): every roll below comes from the seeded per-ordinal
+                // schedule, not Math.random. The logic stays player-responsive (deterrence
+                // weights, state-dependent LAR chance) — but two players making the same
+                // choices meet the same offenders.
+                const slot = slotAt(offenderScheduleRef.current, offenderOrdinalRef.current);
                 const weightedDistricts = districtsRef.current.map(d => ({ districtId: d.id, weight: (101 - d.deterrence) * (d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 4 : 1) }));
                 const totalWeight = weightedDistricts.reduce((sum, wd) => sum + wd.weight, 0);
                 if (totalWeight > 0) {
-                    let randomWeight = Math.random() * totalWeight;
+                    let randomWeight = slot.uDistrict * totalWeight;
                     let districtToSpawnIn: DistrictName = weightedDistricts[weightedDistricts.length - 1].districtId;
                     for (const wd of weightedDistricts) {
                         randomWeight -= wd.weight;
@@ -1027,34 +1042,40 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
                     }
                     const potentialCandidates = civiliansRef.current.filter(c => !c.ridsType && !c.isChampion && c.roadType && c.district === districtToSpawnIn);
                     if (potentialCandidates.length > 0) {
-                        const carToOffend = potentialCandidates[Math.floor(Math.random() * potentialCandidates.length)];
+                        offenderOrdinalRef.current++; // slot consumed only when an offender is actually made
+                        const carToOffend = potentialCandidates[Math.floor(slot.uCar * potentialCandidates.length)];
+                        carToOffend.slotIndex = offenderOrdinalRef.current - 1;
                         const ridsChances = CONSTANTS.RIDS_SPAWN_CHANCE_BY_ROAD_TYPE[carToOffend.roadType!];
-                        const rand = Math.random(); let cumulative = 0; let assignedRidsType: RIDSType | null = null;
+                        const rand = slot.uType; let cumulative = 0; let assignedRidsType: RIDSType | null = null;
                         for (const [type, chance] of Object.entries(ridsChances)) {
                             cumulative += chance as number; if (rand < cumulative) { assignedRidsType = type as RIDSType; break; }
                         }
                         if (assignedRidsType) {
                             carToOffend.ridsType = assignedRidsType;
-                            // The interdiction car: exactly one offender per shift is secretly carrying
-                            // something much bigger. Looks like any other RIDS stop — that's the lesson.
-                            if (!interdictionAssignedRef.current && timeLeftRef.current < CONSTANTS.SHIFT_DURATION - 15) {
+                            // The interdiction car: the schedule fixes WHICH ordinal carries it and
+                            // which crime — same big one for everyone on the daily.
+                            if (!interdictionAssignedRef.current
+                                && timeLeftRef.current < CONSTANTS.SHIFT_DURATION - 15
+                                && offenderOrdinalRef.current >= offenderScheduleRef.current.interdictionOrdinal) {
                                 interdictionAssignedRef.current = true;
-                                carToOffend.specialCrime = pickInterdiction();
+                                carToOffend.specialCrime = mapSeed
+                                    ? interdictionAt(offenderScheduleRef.current.interdictionCrimeIndex)
+                                    : pickInterdiction();
                             }
                             carToOffend.deterrenceBlobsRemaining = CONSTANTS.MAX_DETERRENCE_BLOBS_PER_OFFENDER;
                             carToOffend.baseSpeed = assignedRidsType === 'Speed' ? CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] : CONSTANTS.CIVILIAN_BASE_SPEED[carToOffend.district];
-                            
+
                             // Bikes offend by speeding more often than not (the vehicle IS the offence profile).
-                            if (carToOffend.vehicleType === 'bike' && assignedRidsType !== 'Impairment' && Math.random() < 0.5) {
+                            if (carToOffend.vehicleType === 'bike' && assignedRidsType !== 'Impairment' && slot.uType < 0.5) {
                                 carToOffend.ridsType = 'Speed';
                                 carToOffend.baseSpeed = CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] * VEHICLE_SPEED_MULT.bike;
                             }
                             let lifeAtRiskChance = CONSTANTS.LIFE_AT_RISK_CHANCE * CONSTANTS.LIFE_AT_RISK_DISTRICT_MODIFIER[carToOffend.district] * currentWeatherRef.current.larChance;
                             if(isVigilanceBonusActiveRef.current) lifeAtRiskChance *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
                             if (isNeglectOfDutyActiveRef.current) lifeAtRiskChance *= CONSTANTS.NEGLECT_OF_DUTY_LAR_CHANCE_MULTIPLIER;
-                            
+
                             const larExists = civiliansRef.current.some(c => c.isLifeAtRisk);
-                            if (!larExists && Math.random() < lifeAtRiskChance) {
+                            if (!larExists && slot.uLar < lifeAtRiskChance) {
                                 carToOffend.isLifeAtRisk = true;
                                 let timer = CONSTANTS.LIFE_AT_RISK_TIMER_SECONDS * CONSTANTS.FRAMES_PER_SECOND;
                                 if (isNeglectOfDutyActiveRef.current) timer *= CONSTANTS.NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER;
@@ -1610,8 +1631,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
         resolveIntervention(activeRids.car, CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus, CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Enforce', 10);
         // The fourth pillar: some Impairment/Restraints enforcements surface a partner-agency
         // referral follow-up (MatchingGame — built for this, previously unwired).
+        // Fairness: the referral roll rides the offender's schedule slot.
+        const uReferral = activeRids.car.slotIndex !== undefined
+            ? slotAt(offenderScheduleRef.current, activeRids.car.slotIndex).uReferral
+            : Math.random();
         goReferral = (activeRids.ridsType === 'Impairment' || activeRids.ridsType === 'Restraints')
-            && Math.random() < CONSTANTS.REFERRAL_CHANCE;
+            && uReferral < CONSTANTS.REFERRAL_CHANCE;
       } else {
         timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_MINIGAME_FAIL);
       }

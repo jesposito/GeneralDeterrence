@@ -46,7 +46,17 @@ function validateSubmission(body) {
     cleanStation = station.trim().toUpperCase();
   }
 
-  return { ok: true, value: { name: cleanName, score, email: cleanEmail, station: cleanStation } };
+  // Attempts on the daily map (best-of-N transparency). Client-reported; clamp to sanity.
+  let cleanAttempts = null;
+  const { attempts } = body;
+  if (attempts !== undefined && attempts !== null) {
+    if (typeof attempts !== 'number' || !Number.isInteger(attempts) || attempts < 1 || attempts > 999) {
+      return { ok: false, error: 'Invalid attempts' };
+    }
+    cleanAttempts = attempts;
+  }
+
+  return { ok: true, value: { name: cleanName, score, email: cleanEmail, station: cleanStation, attempts: cleanAttempts } };
 }
 
 module.exports = { validateSubmission, MAX_SCORE, MAX_NAME, MAX_EMAIL, STATION_RE };

@@ -360,10 +360,12 @@ const SEASON_THEME_BIAS: Record<Season, string[]> = {
     spring: ['Aurora Watch', 'Rainshift'],
 };
 
-export function regenerateMap(seed: number): GeneratedMapMeta {
+export function regenerateMap(seed: number, date = new Date()): GeneratedMapMeta {
     const rng = mulberry32(seed);
     const region = pick(rng, REGIONS);
-    const weather = rollWeather(rng);
+    // date: the competition day (server-provided for dailies) so season/weather can't
+    // split across player timezones.
+    const weather = rollWeather(rng, date);
     currentWeatherRef.current = weather;
     // Theme: intersect the region's palette with the season's mood when possible.
     const seasonal = region.themeNames.filter(n => SEASON_THEME_BIAS[weather.season].includes(n));

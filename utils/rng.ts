@@ -20,6 +20,12 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 0xffffffff);
 }
 
+/** 'YYYY-MM-DD' → local Date (noon, DST-safe) — for deriving season from the server day. */
+export function dateFromDayKey(day: string): Date {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 12);
+}
+
 /** Pick one item; helper for generator code readability. */
 export function pick<T>(rng: Rng, items: readonly T[]): T {
   return items[Math.floor(rng() * items.length)];
