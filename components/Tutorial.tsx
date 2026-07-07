@@ -46,12 +46,12 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
     >
         <div className="w-full max-w-6xl">
             <h1 id="tutorial-title" className="text-3xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
-            {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL — {mapLabel}</p>}
+            {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL: {mapLabel}</p>}
 
             {/* The one sentence that matters, before any mechanics. */}
             <p className="max-w-3xl mx-auto text-center text-base sm:text-xl text-white font-sans mb-4 sm:mb-6 bg-cyan-950/50 border-2 border-cyan-500/40 rounded-lg px-4 py-3">
                 <span className="text-cyan-300 font-bold font-display">THE JOB:</span> keep every district's <span className="text-white font-bold">deterrence</span> high by <em>being seen</em>.
-                Stops score points — <span className="text-cyan-300 font-bold">presence saves lives</span>.
+                Stops score points. <span className="text-cyan-300 font-bold">presence saves lives</span>.
             </p>
 
             <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
@@ -72,7 +72,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
                     <ul className="space-y-1.5">
                         <li>Near one? <span className="text-yellow-300 font-bold">RIDS CHECK</span>.</li>
                         <li><span className="text-cyan-300 font-bold">Warn</span>: fast, small. <span className="text-pink-400 font-bold">Enforce</span>: mini-game, big, −6s.</li>
-                        <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go — or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
+                        <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go, or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
                         <li>One car each shift hides something <em>much</em> bigger…</li>
                     </ul>
                 </TutorialInfoCard>
@@ -93,7 +93,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
                     {/* Touch: same grid, on-screen button names. */}
                     <div className="hidden [@media(pointer:coarse)]:block">
                         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
-                            <span className="font-bold text-white whitespace-nowrap">Joystick</span><span className="whitespace-nowrap">Drive — harder push = faster</span>
+                            <span className="font-bold text-white whitespace-nowrap">Joystick</span><span className="whitespace-nowrap">Drive: harder push = faster</span>
                             <span className="font-bold text-yellow-300">RIDS</span><span className="whitespace-nowrap">Check nearby offender</span>
                             <span className="font-bold text-cyan-400">BOOST</span><span className="whitespace-nowrap">Speed burst</span>
                             <span className="font-bold text-red-400">SIREN</span><span className="whitespace-nowrap">Clear traffic, deter</span>

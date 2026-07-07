@@ -80,7 +80,7 @@ const ControlsSettings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             <span className="text-sm text-gray-300 font-sans">{ACTION_LABELS[action]}</span>
                             <span className="flex items-center gap-2">
                                 <kbd className="bg-gray-200 text-black font-bold px-2 py-0.5 rounded text-sm min-w-[3rem] text-center">
-                                    {bindings[action].length ? bindings[action].map(displayKey).join(' / ') : '—'}
+                                    {bindings[action].length ? bindings[action].map(displayKey).join(' / ') : 'none'}
                                 </kbd>
                                 <button
                                     onClick={() => { setCapturing(action); setAnnounce(`Press a key for ${ACTION_LABELS[action]}. Escape cancels.`); }}

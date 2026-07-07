@@ -63,7 +63,7 @@ const AMAZING = [
     "{name} raised two kids who both became ICU nurses. They saved hundreds more.",
     '{name} planted 80,000 native trees along the awa. The tūī came back in spring.',
     '{name} donated a kidney to a stranger. The stranger became their best mate.',
-    '{name} became a youth mentor — three of their kids are now doctors.',
+    '{name} became a youth mentor. Three of their kids are now doctors.',
     '{name} led the kiwi-recovery programme that brought the local population back from 12 birds.',
     "{name} wrote the children's book every Kiwi kid now learns to read with.",
     '{name} started a free driving school for teens who couldn\'t afford lessons. Zero crashes in ten years.',
@@ -108,7 +108,7 @@ const RADIO_CHATTER = [
     'Reports of a burnout on the main drag. Eyes open.',
     'Kick-off just ended at the stadium. Expect traffic.',
     "Rain's coming in later. Watch the speeds.",
-    'School fair on today — extra foot traffic around the centre.',
+    'School fair on today: extra foot traffic around the centre.',
     'Pūkeko on the carriageway again. Not a euphemism. Drive safe.',
     'Long weekend starts tonight. You know what that means.',
     'Coffee machine at the station is broken. Godspeed out there.',
@@ -204,11 +204,11 @@ export const pickInterdiction = (): Interdiction =>
 // Passive education: principle-true briefing facts (no invented statistics) shown at
 // shift start, and a contextual one-line debrief for the results screen.
 const BRIEFING_FACTS = [
-    'General deterrence: drivers change behaviour because they might be seen — not because they were stopped.',
-    'RIDS: Restraints, Impairment, Distractions, Speed — the four behaviours behind most serious road harm.',
+    'General deterrence: drivers change behaviour because they might be seen, not because they were stopped.',
+    'RIDS: Restraints, Impairment, Distractions, Speed: the four behaviours behind most serious road harm.',
     'An unpredictable patrol pattern deters more than a predictable one. Keep them guessing.',
-    'Every roadside stop is also a chance to educate — and occasionally to uncover something far worse.',
-    'High-visibility presence protects roads you never drive — word travels faster than you do.',
+    'Every roadside stop is also a chance to educate, and occasionally to uncover something far worse.',
+    'High-visibility presence protects roads you never drive. Word travels faster than you do.',
     'A warning delivered well can change behaviour as much as a ticket. Pick the right tool.',
     'Deterrence decays. A district patrolled yesterday is not a district patrolled today.',
 ];
@@ -216,15 +216,27 @@ const BRIEFING_FACTS = [
 export const pickBriefingFact = (): string =>
     BRIEFING_FACTS[Math.floor(Math.random() * BRIEFING_FACTS.length)];
 
+// Real-world juxtaposition, Papers-Please style: the lesson lands by FORMAT (styled like
+// your run stats), not lecture. Qualitative and defensible only — no invented statistics.
+const REAL_SHIFT_LINES = [
+    'Real patrols screen thousands of drivers a day. Nearly all are sober, and that is the point.',
+    'Real road policing counts success in crashes that never happened.',
+    'Real officers will tell you: the quiet shifts are the ones that worked.',
+    'Real deterrence is invisible. Nobody thanks you for the crash they didn\'t have.',
+    'Real shifts end with paperwork instead of a score screen. Otherwise: reasonably accurate.',
+];
+export const pickRealShiftLine = (seed: number): string =>
+    REAL_SHIFT_LINES[Math.abs(seed) % REAL_SHIFT_LINES.length];
+
 export function pickDebrief(stats: { coverageRatio: number; livesLost: number; enforcementScore: number; deterrenceScore: number }): string {
     if (stats.coverageRatio >= 0.7) {
-        return 'That\'s general deterrence at work: everyone who saw you slowed down — including every driver you never stopped.';
+        return 'That\'s general deterrence at work: everyone who saw you slowed down, including every driver you never stopped.';
     }
     if (stats.livesLost > 0) {
         return 'Some losses can\'t be chased down after the fact. Coverage and patrol posts buy time before the next one.';
     }
     if (stats.enforcementScore > stats.deterrenceScore * 2) {
-        return 'Enforcement matters — but a ticket protects one road. Visible presence protects all of them at once.';
+        return 'Enforcement matters, but a ticket protects one road. Visible presence protects all of them at once.';
     }
     return 'Visible, unpredictable presence changes driver behaviour before offences happen. That\'s the whole job.';
 }

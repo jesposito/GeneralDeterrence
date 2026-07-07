@@ -18,6 +18,10 @@ import * as audio from '../utils/audio';
 
 interface GameProps {
   onGameOver: (scoreBreakdown: FinalScoreBreakdown) => void;
+  /** PB run's patrol path for this exact map (daily): rendered as a faded ghost. */
+  ghostPath?: { x: number; y: number }[] | null;
+  /** Yesterday's daily #1: patrols tonight's map as a friendly named unit. */
+  championName?: string | null;
 }
 
 type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame' | 'Referral';
@@ -138,7 +142,7 @@ const ReferralModal: React.FC<{ onComplete: (success: boolean) => void }> = ({ o
     );
 };
 
-const Game: React.FC<GameProps> = ({ onGameOver }) => {
+const Game: React.FC<GameProps> = ({ onGameOver, ghostPath, championName }) => {
   // State for UI and major game phases
   const [gameState, setGameState] = useState<LocalGameState>('Starting');
   const [countdownText, setCountdownText] = useState<string>('3');
@@ -222,6 +226,14 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   // The once-per-shift interdiction car + its outcome for the end screen.
   const interdictionAssignedRef = useRef(false);
   const interdictionResultRef = useRef<FinalScoreBreakdown['interdiction']>(null);
+  // OVERTIME: hold FULL COVERAGE at the whistle → +30s, once. Gates extended scoring
+  // behind mastery of the core teaching mechanic (leaderboard chasers must hold coverage).
+  const overtimeUsedRef = useRef(false);
+  // PB ghost: replays ghostPath at the same cadence it was recorded (one sample per
+  // PATROL_PATH_SAMPLE_RATE frames ≈ 0.5s), lerped between samples.
+  const ghostElapsedRef = useRef(0);
+  const ghostPosRef = useRef<{ x: number; y: number; angle: number } | null>(null);
+  const championIntroPendingRef = useRef(!!championName);
   const [radioLine, setRadioLine] = useState<string | null>(null); // 📻 dispatch banner
   const radioTimerRef = useRef<number | null>(null);
   const nextRadioAtRef = useRef(0);
@@ -544,10 +556,20 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const newCar = createCivilian();
         if (newCar) civiliansRef.current.push(newCar);
     }
+    // Yesterday's champion rides tonight: a friendly unit using ordinary civilian pathing.
+    // Never an offender (excluded from candidate selection by the isChampion flag).
+    if (championName && !civiliansRef.current.some(c => c.isChampion)) {
+        const unit = createCivilian();
+        if (unit) {
+            unit.isChampion = true;
+            unit.baseSpeed = unit.baseSpeed * 1.15;
+            civiliansRef.current.push(unit);
+        }
+    }
     patrolPathRef.current = [playerRef.current.pos];
     cameraPosRef.current = { ...playerRef.current.pos };
     lastPlayerDistrictRef.current = getDistrictForPoint(playerRef.current.pos);
-  }, [createCivilian]);
+  }, [createCivilian, championName]);
 
     const updatePlayerMovement = (now: number, dt: number) => {
         const dtScale = 60 * dt; // Scale from per-frame@60fps to per-dt
@@ -882,10 +904,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
         
-        // Mid-shift dispatch chatter every ~25-40s.
+        // Mid-shift dispatch chatter every ~25-40s. The champion intro goes first if present.
         if (nextRadioAtRef.current > 0 && now >= nextRadioAtRef.current) {
             nextRadioAtRef.current = now + 25000 + Math.random() * 15000;
-            playRadio(pickRadioChatter());
+            if (championIntroPendingRef.current && championName) {
+                championIntroPendingRef.current = false;
+                playRadio(`Insp. ${championName} is out with you tonight. Yesterday's top patrol.`);
+            } else {
+                playRadio(pickRadioChatter());
+            }
         }
 
         // Ambient car chatter: every ~8-16s a nearby law-abiding car says something very kiwi.
@@ -939,7 +966,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                         randomWeight -= wd.weight;
                         if (randomWeight <= 0) { districtToSpawnIn = wd.districtId; break; }
                     }
-                    const potentialCandidates = civiliansRef.current.filter(c => !c.ridsType && c.roadType && c.district === districtToSpawnIn);
+                    const potentialCandidates = civiliansRef.current.filter(c => !c.ridsType && !c.isChampion && c.roadType && c.district === districtToSpawnIn);
                     if (potentialCandidates.length > 0) {
                         const carToOffend = potentialCandidates[Math.floor(Math.random() * potentialCandidates.length)];
                         const ridsChances = CONSTANTS.RIDS_SPAWN_CHANCE_BY_ROAD_TYPE[carToOffend.roadType!];
@@ -969,7 +996,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                                 if (isNeglectOfDutyActiveRef.current) timer *= CONSTANTS.NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER;
                                 carToOffend.lifeAtRiskTimer = timer;
                                 // Announce onset (a11y C2): the pulsing red car was visual-only.
-                                setGameMessage('LIFE AT RISK — RESPOND NOW');
+                                setGameMessage('LIFE AT RISK: RESPOND NOW');
                                 if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
                                 gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2500);
                             }
@@ -1301,22 +1328,34 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     
     if (timeLeftRef.current <= 0) {
         if (gameOverFiredRef.current) return;
-        gameOverFiredRef.current = true;
-        const coverageRatio = Math.min(1, fullCoverageSecondsRef.current / CONSTANTS.SHIFT_DURATION);
-        const finalBreakdown: FinalScoreBreakdown = {
-            ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
-            patrolPath: patrolPathRef.current,
-            enforcementActions: enforcementActionsRef.current,
-            colleagueCallActions: colleagueCallActionsRef.current,
-            offencesPrevented: Math.floor(offencesPreventedRef.current),
-            livesSaved: scoreRef.current.livesSaved,
-            livesLost: scoreRef.current.livesLost,
-            interdiction: interdictionResultRef.current,
-            coverageRatio,
-            presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
-        };
-        onGameOver(finalBreakdown);
-        return;
+        // OVERTIME: full coverage at the final whistle earns +30s, once per shift.
+        if (!overtimeUsedRef.current && isVigilanceBonusActiveRef.current) {
+            overtimeUsedRef.current = true;
+            timeLeftRef.current = 30;
+            lastBeepedSecondRef.current = 31; // re-arm the final-10s tick sequence
+            playRadio('OVERTIME APPROVED. Full coverage held. 30 more seconds, make them count.');
+            audio.zap();
+            buzz([40, 40, 40]);
+            hitStopUntilRef.current = now + 110;
+        } else {
+            gameOverFiredRef.current = true;
+            const coverageRatio = Math.min(1, fullCoverageSecondsRef.current / CONSTANTS.SHIFT_DURATION);
+            const finalBreakdown: FinalScoreBreakdown = {
+                ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
+                patrolPath: patrolPathRef.current,
+                enforcementActions: enforcementActionsRef.current,
+                colleagueCallActions: colleagueCallActionsRef.current,
+                offencesPrevented: Math.floor(offencesPreventedRef.current),
+                livesSaved: scoreRef.current.livesSaved,
+                livesLost: scoreRef.current.livesLost,
+                interdiction: interdictionResultRef.current,
+                overtime: overtimeUsedRef.current,
+                coverageRatio,
+                presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
+            };
+            onGameOver(finalBreakdown);
+            return;
+        }
     }
 
     // Delta time calculation
@@ -1330,7 +1369,25 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     lastTimeRef.current = now;
 
     timeLeftRef.current -= dt;
-    
+
+    // Advance the PB ghost along its recorded path (0.5s per sample, lerped).
+    if (ghostPath && ghostPath.length > 1) {
+        ghostElapsedRef.current += dt;
+        const f = ghostElapsedRef.current / (PATROL_PATH_SAMPLE_RATE / 60);
+        const i = Math.floor(f);
+        if (i < ghostPath.length - 1) {
+            const t = f - i;
+            const a = ghostPath[i], b = ghostPath[i + 1];
+            const gx = a.x + (b.x - a.x) * t;
+            const gy = a.y + (b.y - a.y) * t;
+            const ang = Math.atan2(b.y - a.y, b.x - a.x) * (180 / Math.PI) + 90;
+            if (ghostPosRef.current) { ghostPosRef.current.x = gx; ghostPosRef.current.y = gy; ghostPosRef.current.angle = ang; }
+            else ghostPosRef.current = { x: gx, y: gy, angle: ang };
+        } else {
+            ghostPosRef.current = null; // the PB run ended here
+        }
+    }
+
     updatePlayerMovement(now, dt);
     updateVigilance(dt);
     updateCiviliansAndSpawners(now, dt);
@@ -1374,6 +1431,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                     pathfindingTargetId: pathfindingTargetIdRef.current,
                     targetedCarId: targetedCarId,
                     isBraking: isBrakingRef.current,
+                    ghost: ghostPosRef.current,
+                    championName: championName ?? null,
                 };
                 drawGame(ctx, cssWidth, cssHeight, cameraRef.current, renderState, now);
                 drawOk = true;
@@ -1528,7 +1587,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       <canvas
         ref={canvasRef}
         role="img"
-        aria-label="General Deterrence — a top-down patrol driving game. Drive with the on-screen joystick or the W A S D keys; watch the meters and on-screen messages for game state."
+        aria-label="General Deterrence: a top-down patrol driving game. Drive with the on-screen joystick or the W A S D keys; watch the meters and on-screen messages for game state."
         className="absolute top-0 left-0 w-full h-full block"
         style={{ touchAction: 'none' }}
       />

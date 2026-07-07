@@ -484,6 +484,10 @@ export interface CameraState {
 export interface RenderState {
   player: Player;
   civilians: Civilian[];
+  /** Faded replay marker of the player's PB run on this daily map. */
+  ghost?: { x: number; y: number; angle: number } | null;
+  /** Display name for the isChampion unit (yesterday's daily #1). */
+  championName?: string | null;
   sparks: SparkParticle[];
   skidMarks: SkidMark[];
   tireSmoke: TireSmokeParticle[];
@@ -621,9 +625,50 @@ export function drawGame(
     ctx.stroke();
   }
 
+  // Ghost of your personal-best run (Devil Daggers lesson: losing to something visible teaches).
+  if (state.ghost && onScreen(state.ghost)) {
+    ctx.save();
+    ctx.translate(state.ghost.x, state.ghost.y);
+    ctx.rotate(((state.ghost.angle - 90) * Math.PI) / 180);
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-22, -12, 44, 24);
+    ctx.restore();
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = 'bold 14px Orbitron, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PB', state.ghost.x, state.ghost.y - 24);
+    ctx.globalAlpha = 1;
+  }
+
   // Draw civilian cars (off-screen culled)
   for (const car of state.civilians) {
     if (!onScreen(car.pos)) continue;
+    if (car.isChampion) {
+      // Yesterday's #1 patrols tonight's map: white unit, red/blue bar, name tag.
+      ctx.save();
+      ctx.translate(car.pos.x, car.pos.y);
+      ctx.rotate(((car.angle - 90) * Math.PI) / 180);
+      ctx.fillStyle = '#e5e7eb';
+      ctx.fillRect(-22, -12, 44, 24);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(-6, -12, 6, 24);
+      ctx.fillStyle = '#3b82f6';
+      ctx.fillRect(0, -12, 6, 24);
+      ctx.strokeStyle = '#0d0221';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-22, -12, 44, 24);
+      ctx.restore();
+      if (state.championName) {
+        ctx.fillStyle = '#fde047';
+        ctx.font = 'bold 13px Orbitron, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`INSP. ${state.championName.toUpperCase().slice(0, 10)}`, car.pos.x, car.pos.y - 26);
+      }
+      continue;
+    }
     drawCivilianCar(ctx, car, car.id === state.targetedCarId, car.id === state.pathfindingTargetId, !!car.isYieldingToSiren, time);
   }
 

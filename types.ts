@@ -32,6 +32,8 @@ export interface Civilian extends Vehicle {
   ridsType: RIDSType | null;
   /** The once-per-shift interdiction car: an Enforce on it uncovers a major crime. */
   specialCrime?: { crime: string; reveal: string; detail: string; missed: string };
+  /** Yesterday's daily #1, patrolling tonight's map as a friendly unit. Never an offender. */
+  isChampion?: boolean;
   zone: RoadZone;
   district: DistrictName;
   path: string[];
@@ -80,6 +82,8 @@ export interface FinalScoreBreakdown {
   livesLost: number;
   /** The once-per-shift interdiction car: what it was carrying and whether the stop found it. */
   interdiction: { crime: string; detail: string; outcome: 'busted' | 'missed' } | null;
+  /** Earned the +30s by holding FULL COVERAGE at the final whistle. */
+  overtime: boolean;
   /** Fraction of the shift with every district ≥50% deterrence. */
   coverageRatio: number;
   /** Grade derived from coverageRatio: S ≥0.9, A ≥0.7, B ≥0.45, else C. */
@@ -87,10 +91,13 @@ export interface FinalScoreBreakdown {
 }
 
 export interface LeaderboardEntry {
+  id?: number;
   name: string;
   score: number;
   email?: string;
   timestamp?: number;
+  station?: string | null;
+  kudos?: number;
 }
 
 export interface MiniGameProps {

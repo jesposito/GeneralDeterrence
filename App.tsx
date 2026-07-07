@@ -8,6 +8,19 @@ import MuteToggle from './components/MuteToggle';
 import { regenerateMap } from './utils/mapGen';
 import { seedFromToday, randomSeed } from './utils/rng';
 
+// PB ghost storage: the patrol path of your best run on a specific daily seed.
+const GHOST_KEY = 'gd-ghost';
+interface StoredGhost { seed: number; score: number; path: { x: number; y: number }[] }
+const loadGhost = (seed: number): StoredGhost | null => {
+  try {
+    const g = JSON.parse(localStorage.getItem(GHOST_KEY) || 'null') as StoredGhost | null;
+    return g && g.seed === seed && Array.isArray(g.path) ? g : null;
+  } catch { return null; }
+};
+const saveGhost = (g: StoredGhost) => {
+  try { localStorage.setItem(GHOST_KEY, JSON.stringify(g)); } catch { /* ignore */ }
+};
+
 declare global {
   interface Window { LEADERBOARD_API?: string }
 }
@@ -63,32 +76,62 @@ const App: React.FC = () => {
 
   // Daily = date-seeded map (same for everyone → fair leaderboard); Free = fresh random map.
   const [mapLabel, setMapLabel] = useState<string>('');
-  const handleStartGame = useCallback((mode: 'daily' | 'free') => {
+  const [shiftMode, setShiftMode] = useState<'daily' | 'free'>('daily');
+  const [mapSeed, setMapSeed] = useState<number>(0);
+  const [ghostPath, setGhostPath] = useState<{ x: number; y: number }[] | null>(null);
+  const [championName, setChampionName] = useState<string | null>(null);
+
+  // Yesterday's daily #1 patrols tonight's map as a named unit.
+  useEffect(() => {
+    fetch(`${API_BASE}/leaderboard/champion`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && typeof d.name === 'string') setChampionName(d.name); })
+      .catch(() => { /* offline: no champion tonight */ });
+  }, []);
+
+  const beginShift = useCallback((mode: 'daily' | 'free', to: GameState) => {
     const seed = mode === 'daily' ? seedFromToday() : randomSeed();
     const meta = regenerateMap(seed);
+    setShiftMode(mode);
+    setMapSeed(seed);
+    // Ghost only makes sense on a map you have played before: daily reruns.
+    setGhostPath(mode === 'daily' ? loadGhost(seed)?.path ?? null : null);
     setMapLabel(`${mode === 'daily' ? 'Daily Shift' : 'Free Patrol'} · ${meta.layoutName} · ${meta.themeName}`);
-    setGameState('Tutorial');
+    setGameState(to);
   }, []);
+
+  const handleStartGame = useCallback((mode: 'daily' | 'free') => beginShift(mode, 'Tutorial'), [beginShift]);
+  // "Run It Back": straight into another shift, no menu, no tutorial. Daily reuses
+  // today's map (retry the same shift); Free rolls a fresh one.
+  const handleQuickRestart = useCallback(() => beginShift(shiftMode, 'Playing'), [beginShift, shiftMode]);
   
   const handleTutorialComplete = useCallback(() => {
     setGameState('Playing');
   }, []);
 
   const handleGameOver = useCallback((breakdown: FinalScoreBreakdown) => {
+    // Record the PB ghost for this daily map (best score on this seed wins the slot).
+    if (shiftMode === 'daily' && breakdown.patrolPath.length > 1) {
+      const existing = loadGhost(mapSeed);
+      if (!existing || breakdown.finalScore > existing.score) {
+        saveGhost({ seed: mapSeed, score: breakdown.finalScore, path: breakdown.patrolPath });
+      }
+    }
     setFinalScoreBreakdown(breakdown);
     setGameState('GameOver');
-  }, []);
+  }, [shiftMode, mapSeed]);
 
   const handlePlayAgain = useCallback(() => {
     setGameState('MainMenu');
   }, []);
 
-  const handleAddToLeaderboard = useCallback(async (name: string, email?: string) => {
+  const handleAddToLeaderboard = useCallback(async (name: string, email?: string, station?: string) => {
     if (!finalScoreBreakdown) return;
-    const newEntry: LeaderboardEntry = { 
-      name, 
+    const newEntry: LeaderboardEntry = {
+      name,
       score: finalScoreBreakdown.finalScore,
       email,
+      station,
       timestamp: Date.now()
     };
     if (isOnline) {
@@ -123,15 +166,17 @@ const App: React.FC = () => {
       case 'Tutorial':
         return <Tutorial onComplete={handleTutorialComplete} mapLabel={mapLabel} />;
       case 'Playing':
-        return <Game onGameOver={handleGameOver} />;
+        return <Game onGameOver={handleGameOver} ghostPath={ghostPath} championName={championName} />;
       case 'GameOver':
         return finalScoreBreakdown && (
           <GameOver
             scoreBreakdown={finalScoreBreakdown}
             leaderboard={leaderboard}
             onPlayAgain={handlePlayAgain}
+            onQuickRestart={handleQuickRestart}
             onAddToLeaderboard={handleAddToLeaderboard}
             mapLabel={mapLabel}
+            shiftMode={shiftMode}
           />
         );
       case 'MainMenu':

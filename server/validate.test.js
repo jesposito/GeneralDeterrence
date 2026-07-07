@@ -7,7 +7,7 @@ describe('validateSubmission', () => {
   it('accepts and normalizes a valid submission', () => {
     const r = validateSubmission({ name: '  Ana  ', score: 1200 });
     expect(r.ok).toBe(true);
-    expect(r.value).toEqual({ name: 'Ana', score: 1200, email: null });
+    expect(r.value).toEqual({ name: 'Ana', score: 1200, email: null, station: null });
   });
 
   it('rejects missing / non-string / empty / overlong names', () => {
@@ -40,5 +40,20 @@ describe('validateSubmission', () => {
     const r = validateSubmission({ name: 'A', score: 1, timestamp: 0, extra: 'ignored' });
     expect(r.value).not.toHaveProperty('timestamp');
     expect(r.value).not.toHaveProperty('extra');
+  });
+});
+
+describe('station codes', () => {
+  it('accepts and uppercases a valid station code', () => {
+    const r = validateSubmission({ name: 'Ana', score: 1, station: 'tawa' });
+    expect(r.ok).toBe(true);
+    expect(r.value.station).toBe('TAWA');
+  });
+
+  it('treats empty station as null and rejects bad codes', () => {
+    expect(validateSubmission({ name: 'Ana', score: 1, station: '' }).value.station).toBe(null);
+    expect(validateSubmission({ name: 'Ana', score: 1, station: 'X' }).ok).toBe(false);
+    expect(validateSubmission({ name: 'Ana', score: 1, station: 'TOOLONG' }).ok).toBe(false);
+    expect(validateSubmission({ name: 'Ana', score: 1, station: 'a b' }).ok).toBe(false);
   });
 });

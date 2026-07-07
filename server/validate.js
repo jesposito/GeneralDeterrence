@@ -5,6 +5,8 @@ const MAX_SCORE = 100000; // ponytail: generous 90s-shift ceiling; tighten when 
 const MAX_NAME = 24;
 const MAX_EMAIL = 254;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// Station codes: optional 2-4 char crew tag (friend cohorts with zero auth).
+const STATION_RE = /^[A-Z0-9]{2,4}$/;
 
 /**
  * Validate + normalize a leaderboard submission body.
@@ -13,7 +15,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  */
 function validateSubmission(body) {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Invalid request body' };
-  const { name, score, email } = body;
+  const { name, score, email, station } = body;
 
   if (typeof name !== 'string') return { ok: false, error: 'Name is required' };
   const cleanName = name.trim();
@@ -36,7 +38,15 @@ function validateSubmission(body) {
     cleanEmail = email.trim().toLowerCase();
   }
 
-  return { ok: true, value: { name: cleanName, score, email: cleanEmail } };
+  let cleanStation = null;
+  if (station !== undefined && station !== null && station !== '') {
+    if (typeof station !== 'string' || !STATION_RE.test(station.trim().toUpperCase())) {
+      return { ok: false, error: 'Station code must be 2-4 letters/numbers' };
+    }
+    cleanStation = station.trim().toUpperCase();
+  }
+
+  return { ok: true, value: { name: cleanName, score, email: cleanEmail, station: cleanStation } };
 }
 
-module.exports = { validateSubmission, MAX_SCORE, MAX_NAME, MAX_EMAIL };
+module.exports = { validateSubmission, MAX_SCORE, MAX_NAME, MAX_EMAIL, STATION_RE };

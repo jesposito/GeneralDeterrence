@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { LeaderboardEntry } from '../types';
 import Leaderboard from './Leaderboard';
 import ControlsSettings from './ControlsSettings';
+import StoryCodex from './StoryCodex';
+import { getCodex } from '../utils/codex';
 import * as audio from '../utils/audio';
 
 interface MainMenuProps {
@@ -11,6 +13,8 @@ interface MainMenuProps {
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
   const [showControls, setShowControls] = useState(false);
+  const [showCodex, setShowCodex] = useState(false);
+  const codexCount = getCodex().length;
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Route-change focus: the h1 had tabIndex={-1} but nothing ever moved focus to it,
   // so AT never announced the screen.
@@ -37,19 +41,27 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
             >
               Daily Shift
             </button>
-            <p className="text-xs text-gray-400 mt-1 font-sans">Today's map — same for everyone. New one at midnight.</p>
+            <p className="text-xs text-gray-400 mt-1 font-sans">Today's map, same for everyone. New one at midnight.</p>
             <button
               onClick={() => { audio.unlockAudio(); onStartGame('free'); }}
               className="mt-3 w-full bg-transparent hover:bg-pink-900/40 border-2 border-pink-500/50 text-pink-300 font-bold py-2 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             >
               Free Patrol <span className="font-sans font-normal">(random map)</span>
             </button>
-            <button
-              onClick={() => setShowControls(true)}
-              className="mt-3 w-full bg-transparent hover:bg-cyan-900/50 border-2 border-cyan-500/50 text-cyan-300 font-bold py-2 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            >
-              Controls
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setShowControls(true)}
+                className="flex-1 bg-transparent hover:bg-cyan-900/50 border-2 border-cyan-500/50 text-cyan-300 font-bold py-2 px-3 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Controls
+              </button>
+              <button
+                onClick={() => setShowCodex(true)}
+                className="flex-1 bg-transparent hover:bg-green-900/50 border-2 border-green-500/50 text-green-300 font-bold py-2 px-3 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Stories{codexCount > 0 ? ` (${codexCount})` : ''}
+              </button>
+            </div>
           </div>
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50 min-w-[280px]">
             <Leaderboard scores={leaderboard} />
@@ -58,9 +70,10 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
       </main>
 
        <footer className="absolute bottom-4 text-gray-400 text-sm z-10">
-         An arcade game about road policing. Educational, but a game — not affiliated with NZ Police.
+         An arcade game about road policing. Educational, but a game. Not affiliated with NZ Police.
        </footer>
       {showControls && <ControlsSettings onClose={() => setShowControls(false)} />}
+      {showCodex && <StoryCodex onClose={() => setShowCodex(false)} />}
     </div>
   );
 };
