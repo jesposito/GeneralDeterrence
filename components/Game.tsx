@@ -1128,11 +1128,15 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
                 </h1>
             </div>
         )}
-      <canvas 
+      <canvas
         ref={canvasRef}
+        role="img"
+        aria-label="General Deterrence — a top-down patrol driving game. Drive with the on-screen joystick or the W A S D keys; watch the meters and on-screen messages for game state."
         className="absolute top-0 left-0 w-full h-full block"
         style={{ touchAction: 'none' }}
       />
+      {/* Announce discrete game-state messages (target locked, life lost, neglect, patrol post) to AT. */}
+      <div role="status" aria-live="assertive" className="sr-only">{gameMessage}</div>
       {isDebugMode && (
         <div className="absolute top-2 left-2 z-50 bg-black/70 text-yellow-400 text-xs font-mono p-2 rounded pointer-events-none">
           {debugInfo}

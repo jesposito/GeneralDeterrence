@@ -269,48 +269,36 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   const [scorePop, setScorePop] = useState(false);
   const [vigilanceGained, setVigilanceGained] = useState(false);
   const prevVigilance = useRef(player.vigilance);
+  const scoreTargetRef = useRef(score);
+  scoreTargetRef.current = score;
 
   useEffect(() => {
-    if(player.vigilance > prevVigilance.current) {
+    // Advance the baseline unconditionally, THEN flash — otherwise a gain returns early and
+    // prevVigilance never advances, so the flash latches on every subsequent render.
+    const gained = player.vigilance > prevVigilance.current;
+    prevVigilance.current = player.vigilance;
+    if (gained) {
       setVigilanceGained(true);
       const timer = setTimeout(() => setVigilanceGained(false), 500);
       return () => clearTimeout(timer);
     }
-    prevVigilance.current = player.vigilance;
   }, [player.vigilance]);
 
   useEffect(() => {
-    if (scoreDisplay === score) return;
-
-    if (score > scoreDisplay) {
-        setScorePop(true);
-        const popTimer = setTimeout(() => setScorePop(false), 300);
-        
-        const diff = score - scoreDisplay;
-        const duration = 500; // ms
-        const stepTime = 20; // ms
-        const steps = duration / stepTime;
-        const increment = diff / steps;
-        let current = scoreDisplay;
-
-        const timer = setInterval(() => {
-            current += increment;
-            if (current >= score) {
-                setScoreDisplay(score);
-                clearInterval(timer);
-            } else {
-                setScoreDisplay(Math.round(current));
-            }
-        }, stepTime);
-        
-        return () => {
-            clearTimeout(popTimer);
-            clearInterval(timer);
-        };
-    } else {
-        setScoreDisplay(score);
-    }
-  }, [score, scoreDisplay]);
+    // One interval per score change — scoreDisplay is NOT a dep (that churned the interval and
+    // latched the pop). Ramp toward the latest target via a ref.
+    if (score > scoreDisplay) setScorePop(true);
+    const popTimer = setTimeout(() => setScorePop(false), 300);
+    const timer = setInterval(() => {
+      setScoreDisplay(cur => {
+        const target = scoreTargetRef.current;
+        if (cur === target) { clearInterval(timer); return cur; }
+        const step = Math.max(1, Math.ceil(Math.abs(target - cur) / 8));
+        return cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step);
+      });
+    }, 30);
+    return () => { clearTimeout(popTimer); clearInterval(timer); };
+  }, [score]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isBoostReady = player.boostCharge === CONSTANTS.PLAYER_BOOST_MAX_CHARGE && !player.isSirenActive && !player.isBoosting;
 
@@ -449,7 +437,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
        {gameMessage && (
         // key is the message text (not Date.now()) so the fade animation plays once per
         // distinct message instead of restarting every render (which read as a flicker).
-        <div key={gameMessage} className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
+        <div key={gameMessage} aria-hidden="true" className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
             {gameMessage}
         </div>
        )}
