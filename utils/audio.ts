@@ -35,7 +35,14 @@ function getCtx(): AudioContext | null {
     ctx = new Ctor();
     masterGain = ctx.createGain();
     masterGain.gain.value = 0.5;
-    masterGain.connect(ctx.destination);
+    // Master limiter — cheap insurance against transient stacking / clipping when many
+    // synth voices overlap. masterGain -> compressor -> destination.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.ratio.value = 4;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    masterGain.connect(limiter).connect(ctx.destination);
     return ctx;
   } catch {
     return null;

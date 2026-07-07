@@ -31,44 +31,43 @@ export const getRads = (degrees: number): number => {
 };
 
 export const findClosestPointOnRoad = (point: { x: number, y: number }): { point: { x: number, y: number }, dist: number, angle: number } | null => {
-  let closestPointResult: { x: number, y: number } | null = null;
-  let minDistance = Infinity;
-  let roadAngle = 0;
+  // Track the closest projection with scalars + squared distance (one alloc + one sqrt at the
+  // end, instead of a point object + sqrt per segment).
+  let bestX = 0, bestY = 0, minDistSq = Infinity, roadAngle = 0, found = false;
+  const { x, y } = point;
 
   for (const segment of ROAD_SEGMENTS) {
     const startNode = nodeMap.get(segment.startNodeId);
     const endNode = nodeMap.get(segment.endNodeId);
     if (!startNode || !endNode) continue;
-    
+
     const { x: x1, y: y1 } = startNode.pos;
     const { x: x2, y: y2 } = endNode.pos;
-    const { x, y } = point;
 
     const lenSq = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
-    
+
     let t = 0;
     if (lenSq !== 0) {
       t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / lenSq;
-      t = Math.max(0, Math.min(1, t)); // Clamp t to the segment
+      t = t < 0 ? 0 : t > 1 ? 1 : t; // Clamp t to the segment
     }
 
-    const currentClosestPoint = {
-      x: x1 + t * (x2 - x1),
-      y: y1 + t * (y2 - y1)
-    };
-    
-    const dist = getDistance(point, currentClosestPoint);
+    const px = x1 + t * (x2 - x1);
+    const py = y1 + t * (y2 - y1);
+    const dx = x - px, dy = y - py;
+    const distSq = dx * dx + dy * dy;
 
-    if (dist < minDistance) {
-      minDistance = dist;
-      closestPointResult = currentClosestPoint;
+    if (distSq < minDistSq) {
+      minDistSq = distSq;
+      bestX = px; bestY = py;
       roadAngle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+      found = true;
     }
   }
 
-  if (!closestPointResult) return null;
+  if (!found) return null;
 
-  return { point: closestPointResult, dist: minDistance, angle: roadAngle };
+  return { point: { x: bestX, y: bestY }, dist: Math.sqrt(minDistSq), angle: roadAngle };
 };
 
 export const findClosestNode = (point: { x: number; y: number }): { node: RoadNode; dist: number } | null => {

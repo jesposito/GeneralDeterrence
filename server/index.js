@@ -31,6 +31,8 @@ db.exec(`
   )
 `);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_email ON leaderboard(email)`);
+// Index on LOWER(email) so the case-insensitive dedup lookup can use an index (not a full scan).
+db.exec(`CREATE INDEX IF NOT EXISTS idx_email_lower ON leaderboard(LOWER(email))`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_score ON leaderboard(score DESC)`);
 console.log('Database initialized');
 

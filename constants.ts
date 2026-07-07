@@ -16,7 +16,6 @@ export const FRAMES_PER_SECOND = 60;
 // Player Car (New Arcade-Style Controls)
 export const PLAYER_ACCELERATION = 0.2;
 export const PLAYER_MAX_SPEED = 7;
-export const PLAYER_MAX_REVERSE_SPEED = 2.5;
 export const PLAYER_HANDLING = 5.4; // How fast the car turns - INCREASED for responsiveness
 export const PLAYER_FORWARD_FRICTION = 0.98; // Grip in the direction of travel
 export const PLAYER_LATERAL_FRICTION = 0.90; // Grip for sideways movement (lower = less drift / more grip) - INCREASED GRIP
@@ -103,7 +102,6 @@ export const MAX_DETERRENCE_BLOBS_PER_OFFENDER = 5;
 
 // RIDS
 export const RIDS_SPAWN_INTERVAL = 500; // Faster spawn interval
-export const BASE_RIDS_SPAWN_CHANCE = 0.5; // Base chance, will be modified by zone deterrence
 export const RIDS_TIME_PENALTY_INCORRECT_CHECK = 3; // seconds
 export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 7; // seconds
 
@@ -135,12 +133,10 @@ export const FLOATING_SCORE_TEXT_LIFESPAN = 2000; // ms
 // Vigilance Bonus System
 export const DETERRENCE_VIGILANCE_THRESHOLD = 85; // % deterrence needed in all districts
 export const VIGILANCE_BONUS_MULTIPLIER = 2.0;
-export const VIGILANCE_LIFE_AT_RISK_MODIFIER = 1.5; // 50% higher chance for LAR events
 
 // Neglect of Duty System
 export const NEGLECT_OF_DUTY_TIME_THRESHOLD = 10; // seconds before penalty
 export const NEGLECT_OF_DUTY_DETERRENCE_THRESHOLD = 66; // Deterrence level above which idling is penalized
-export const NEGLECT_OF_DUTY_DISTANCE_THRESHOLD = 50; // pixels player must stay within
 export const NEGLECT_OF_DUTY_RESET_DISTANCE = 150; // pixels player must travel to reset
 export const NEGLECT_OF_DUTY_DETERRENCE_DECAY_MULTIPLIER = 2.0;
 export const NEGLECT_OF_DUTY_LAR_CHANCE_MULTIPLIER = 2.5; // 150% increase
@@ -148,7 +144,6 @@ export const NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER = 0.75; // 25% reduction
 export const COLLEAGUE_ASSIST_FLASH_THRESHOLD_SECONDS = 5; // When to start flashing UI
 
 // Civilian Cars & Traffic Density
-export const CIVILIAN_TURN_RATE = 2.5;
 export const MAX_CIVILIAN_CARS = 80; // More cars overall
 export const TARGET_OFFENDER_COUNT = 7; // Target number of RIDS offenders on the map, scaled by deterrence
 export const MIN_TARGET_OFFENDER_COUNT = 3; // Always have at least this many offenders
@@ -192,5 +187,3 @@ export const DT_ACCEL_PER_SEC = PLAYER_ACCELERATION * FRAMES_PER_SECOND;
 export const DT_DISTRICT_DECAY_PER_SEC = DISTRICT_DECAY_RATE * FRAMES_PER_SECOND;
 export const DT_PRESENCE_BOOST_PER_SEC = DISTRICT_PLAYER_PRESENCE_BASE_BOOST * FRAMES_PER_SECOND;
 export const DT_SIREN_BOOST_PER_SEC = DISTRICT_SIREN_BOOST * FRAMES_PER_SECOND;
-export const DT_PATROL_POST_DURATION_SEC = 30;
-export const DT_CIVILIAN_TURN_PER_SEC = CIVILIAN_TURN_RATE * FRAMES_PER_SECOND;

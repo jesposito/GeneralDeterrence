@@ -15,6 +15,12 @@ primary_region = 'syd'
   min_machines_running = 1
   processes = ['app']
 
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "3s"
+  method = "get"
+  path = "/api/health"
+
 [[mounts]]
   source = "gd_data"
   destination = "/data"
