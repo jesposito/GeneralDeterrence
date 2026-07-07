@@ -453,4 +453,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   );
 };
 
+// hudTick is the sole parent-driven render clock: Game samples every HUD input from refs and bumps
+// hudTick at a throttled rate, so gating re-render on hudTick alone is intentional — not a stale-props
+// bug. Any new HUD input must be sampled at tick time, not expected to trigger its own re-render.
 export default React.memo(HUD, (prev, next) => prev.hudTick === next.hudTick);

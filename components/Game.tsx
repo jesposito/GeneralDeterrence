@@ -674,7 +674,10 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             }
             const currentOffenders = civiliansRef.current.filter(c => c.ridsType).length;
             const avgDeterrenceModifier = 1 - (avgDeterrenceRef.current / 100);
-            const dynamicTarget = Math.ceil(CONSTANTS.TARGET_OFFENDER_COUNT * avgDeterrenceModifier);
+            // Climax ramp: as the shift ends keep offender pressure up even at high deterrence — the
+            // count was purely deterrence-driven, so a strong shift self-suppressed to nothing.
+            const shiftProgress = Math.min(1, Math.max(0, 1 - timeLeftRef.current / CONSTANTS.SHIFT_DURATION));
+            const dynamicTarget = Math.ceil(CONSTANTS.TARGET_OFFENDER_COUNT * Math.max(avgDeterrenceModifier, shiftProgress * 0.75));
             const targetOffenders = Math.max(CONSTANTS.MIN_TARGET_OFFENDER_COUNT, dynamicTarget);
             if (currentOffenders < targetOffenders) {
                 const weightedDistricts = districtsRef.current.map(d => ({ districtId: d.id, weight: (101 - d.deterrence) * (d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 4 : 1) }));
