@@ -324,6 +324,15 @@ export function drawGame(
   ctx.scale(camera.zoom, camera.zoom);
   ctx.translate(-camera.x, -camera.y);
 
+  // Frustum culling (gd-0wi.7): skip entities outside the visible viewport. Bounds are the
+  // world rect the camera shows, plus a margin for entity radius + glow. This also skips the
+  // per-entity shadowBlur of off-screen cars (gd-0wi.8).
+  const cullHalfW = width / 2 / camera.zoom + 80;
+  const cullHalfH = height / 2 / camera.zoom + 80;
+  const cminX = camera.x - cullHalfW, cmaxX = camera.x + cullHalfW;
+  const cminY = camera.y - cullHalfH, cmaxY = camera.y + cullHalfH;
+  const onScreen = (p: { x: number; y: number }) => p.x >= cminX && p.x <= cmaxX && p.y >= cminY && p.y <= cmaxY;
+
   // Draw cached static map (background, district grounds, grid, decorations,
   // road kerbs/surfaces, intersection hubs, lane markings) — single drawImage
   // replaces thousands of canvas operations per frame. Built once on first call.
@@ -350,6 +359,7 @@ export function drawGame(
 
   // Draw patrol post auras
   for (const post of state.patrolPosts) {
+    if (!onScreen(post.pos)) continue;
     const alpha = post.remainingTime / CONSTANTS.PATROL_POST_DURATION;
     ctx.fillStyle = `rgba(6, 182, 212, ${alpha * 0.3})`;
     ctx.strokeStyle = `rgba(6, 182, 212, ${alpha * 0.6})`;
@@ -362,6 +372,7 @@ export function drawGame(
 
   // Draw skid marks
   for (const skid of state.skidMarks) {
+    if (!onScreen(skid.pos)) continue;
     const age = (time - skid.spawnTime) / CONSTANTS.SKID_MARK_LIFESPAN;
     ctx.globalAlpha = 1 - age;
     ctx.strokeStyle = '#1f2937';
@@ -380,6 +391,7 @@ export function drawGame(
 
   // Draw tire smoke
   for (const smoke of state.tireSmoke) {
+    if (!onScreen(smoke.pos)) continue;
     const age = (time - smoke.spawnTime) / CONSTANTS.TIRE_SMOKE_PARTICLE_LIFESPAN;
     const scale = 0.5 + age * 1.5;
     ctx.fillStyle = `rgba(255, 255, 255, ${0.4 * (1 - age)})`;
@@ -390,6 +402,7 @@ export function drawGame(
 
   // Draw explosions
   for (const exp of state.explosions) {
+    if (!onScreen(exp.pos)) continue;
     const age = (time - exp.spawnTime) / CONSTANTS.EXPLOSION_LIFESPAN;
     const radius = age * CONSTANTS.EXPLOSION_MAX_RADIUS;
     ctx.fillStyle = `rgba(239, 68, 68, ${1 - age})`;
@@ -403,8 +416,9 @@ export function drawGame(
     ctx.stroke();
   }
 
-  // Draw civilian cars
+  // Draw civilian cars (off-screen culled)
   for (const car of state.civilians) {
+    if (!onScreen(car.pos)) continue;
     drawCivilianCar(ctx, car, car.id === state.targetedCarId, car.id === state.pathfindingTargetId, !!car.isYieldingToSiren, time);
   }
 
@@ -413,6 +427,7 @@ export function drawGame(
 
   // Draw deterrence blobs
   for (const blob of state.deterrenceBlobs) {
+    if (!onScreen(blob.pos)) continue;
     const age = (time - blob.spawnTime) / CONSTANTS.DETERRENCE_BLOB_LIFESPAN;
     ctx.fillStyle = `rgba(217, 70, 239, ${1 - age})`;
     ctx.beginPath();
@@ -422,6 +437,7 @@ export function drawGame(
 
   // Draw collection effects
   for (const effect of state.collectionEffects) {
+    if (!onScreen(effect.pos)) continue;
     const age = (time - effect.spawnTime) / 400;
     const scale = 1 + age * 2;
     ctx.strokeStyle = `rgba(217, 70, 239, ${1 - age})`;
@@ -433,6 +449,7 @@ export function drawGame(
 
   // Draw sparks
   for (const spark of state.sparks) {
+    if (!onScreen(spark.pos)) continue;
     const age = (time - spark.spawnTime) / CONSTANTS.SPARK_LIFESPAN;
     ctx.fillStyle = `rgba(251, 191, 36, ${1 - age})`;
     ctx.beginPath();
@@ -444,6 +461,7 @@ export function drawGame(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const text of state.floatingScoreTexts) {
+    if (!onScreen(text.pos)) continue;
     const age = (time - text.spawnTime) / CONSTANTS.FLOATING_SCORE_TEXT_LIFESPAN;
     const yOffset = -80 * age;
     ctx.globalAlpha = 1 - age;

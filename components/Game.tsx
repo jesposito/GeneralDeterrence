@@ -67,6 +67,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const [minimapMode, setMinimapMode] = useState<MinimapMode>('Tactical');
   const [gameMessage, setGameMessage] = useState<string | null>(null);
   const [stationaryCountdown, setStationaryCountdown] = useState<StationaryCountdown>(null);
+  const lastCountdownSigRef = useRef<string>('null'); // throttles the 60fps countdown re-render (gd-0wi.6)
   const [ridsChoiceSelection, setRidsChoiceSelection] = useState<'warn' | 'enforce'>('warn');
   const [hudTick, setHudTick] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string>('initializing...');
@@ -488,8 +489,9 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         if (finalSpeed > maxSpeed) { const ratio = maxSpeed / finalSpeed; player.vel.x *= ratio; player.vel.y *= ratio; }
         if (finalSpeed < 0.01 && thrust === 0) { player.vel.x = 0; player.vel.y = 0; }
         const lateralSpeed = Math.sqrt(lateralVelocity.x ** 2 + lateralVelocity.y ** 2);
-        if (lateralSpeed > CONSTANTS.SKID_LATERAL_VELOCITY_THRESHOLD) skidMarksRef.current.push({ id: now + Math.random(), pos: { ...player.pos }, angle: player.angle, spawnTime: now });
-        if (lateralSpeed > CONSTANTS.TIRE_SMOKE_LATERAL_VELOCITY_THRESHOLD) {
+        // gd-0wi.5: gate particle spawns by dt so density is frame-rate-independent.
+        if (lateralSpeed > CONSTANTS.SKID_LATERAL_VELOCITY_THRESHOLD && Math.random() < dtScale) skidMarksRef.current.push({ id: now + Math.random(), pos: { ...player.pos }, angle: player.angle, spawnTime: now });
+        if (lateralSpeed > CONSTANTS.TIRE_SMOKE_LATERAL_VELOCITY_THRESHOLD && Math.random() < dtScale) {
             const backOffset = 20; const rads = getRads(player.angle - 90);
             tireSmokeRef.current.push({id: now + Math.random(), pos: {x: player.pos.x - Math.cos(rads) * backOffset, y: player.pos.y - Math.sin(rads) * backOffset}, spawnTime: now});
         }
@@ -581,15 +583,12 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             } else {
                 const stationaryDuration = (now - stationaryStartTime.current) / 1000;
 
-                if (isInHighDeterrenceZone) {
-                    const totalTime = CONSTANTS.NEGLECT_OF_DUTY_TIME_THRESHOLD;
-                    const timeLeft = totalTime - stationaryDuration;
-                    setStationaryCountdown(timeLeft > 0 ? { type: 'neglect', timeLeft, totalTime } : null);
-                } else {
-                    const totalTime = CONSTANTS.PATROL_POST_SETUP_TIME;
-                    const timeLeft = totalTime - stationaryDuration;
-                    setStationaryCountdown(timeLeft > 0 ? { type: 'patrolPost', timeLeft, totalTime } : null);
-                }
+                const totalTime = isInHighDeterrenceZone ? CONSTANTS.NEGLECT_OF_DUTY_TIME_THRESHOLD : CONSTANTS.PATROL_POST_SETUP_TIME;
+                const timeLeft = totalTime - stationaryDuration;
+                const cd: StationaryCountdown = timeLeft > 0 ? { type: isInHighDeterrenceZone ? 'neglect' : 'patrolPost', timeLeft, totalTime } : null;
+                // gd-0wi.6: only re-render when the displayed value changes (~10fps), not every frame.
+                const cdSig = cd ? `${cd.type}:${Math.ceil(cd.timeLeft * 10)}` : 'null';
+                if (cdSig !== lastCountdownSigRef.current) { lastCountdownSigRef.current = cdSig; setStationaryCountdown(cd); }
 
                 if (isInHighDeterrenceZone && stationaryDuration > CONSTANTS.NEGLECT_OF_DUTY_TIME_THRESHOLD) {
                     isNeglectOfDutyActiveRef.current = true;
@@ -612,7 +611,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             }
         } else {
             stationaryStartTime.current = null;
-            setStationaryCountdown(null);
+            if (lastCountdownSigRef.current !== 'null') { lastCountdownSigRef.current = 'null'; setStationaryCountdown(null); }
             if (isNeglectOfDutyActiveRef.current) {
                 const movedFarEnough = stationaryStartPosition.current && getDistance(player.pos, stationaryStartPosition.current) > CONSTANTS.NEGLECT_OF_DUTY_RESET_DISTANCE;
                 if (movedFarEnough) {
@@ -783,8 +782,8 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
             if (c.ridsType === 'Impairment') {
                 c.swerveAngle = ((c.swerveAngle || 0) + 0.04 * dtScale) % (Math.PI * 2);
                 const perpVec = { x: -segmentDir.y, y: segmentDir.x };
-                c.pos.x += perpVec.x * Math.sin(c.swerveAngle) * 2;
-                c.pos.y += perpVec.y * Math.sin(c.swerveAngle) * 2;
+                c.pos.x += perpVec.x * Math.sin(c.swerveAngle) * 2 * dtScale;
+                c.pos.y += perpVec.y * Math.sin(c.swerveAngle) * 2 * dtScale;
             }
             c.angle = Math.atan2(segmentDir.y, segmentDir.x) * (180 / Math.PI) + 90;
             c.vel.x = segmentDir.x * c.speed; c.vel.y = segmentDir.y * c.speed;
@@ -879,15 +878,17 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
         const dynamicZoom = player.isBoosting ? 0.85 : (isBrakingRef.current && player.speed > 2 ? 1.02 : 1.0);
         const targetZoom = baseZoom * dynamicZoom;
-        cameraRef.current.zoom += (targetZoom - cameraRef.current.zoom) * 0.04;
+        // Frame-rate-independent exponential smoothing (gd-0wi.5).
+        const camLerp = (base: number) => 1 - Math.pow(1 - base, dt * CONSTANTS.FRAMES_PER_SECOND);
+        cameraRef.current.zoom += (targetZoom - cameraRef.current.zoom) * camLerp(0.04);
         if (player.isBoosting) cameraRef.current.shake = Math.max(cameraRef.current.shake, 4);
-        cameraRef.current.shake *= 0.92;
+        cameraRef.current.shake *= Math.pow(0.92, dt * CONSTANTS.FRAMES_PER_SECOND);
 
         const lookAheadDist = player.speed * 8;
         const rads = getRads(player.angle - 90);
         const targetPos = { x: player.pos.x + Math.cos(rads) * lookAheadDist, y: player.pos.y + Math.sin(rads) * lookAheadDist };
-        cameraPosRef.current.x += (targetPos.x - cameraPosRef.current.x) * 0.05;
-        cameraPosRef.current.y += (targetPos.y - cameraPosRef.current.y) * 0.05;
+        cameraPosRef.current.x += (targetPos.x - cameraPosRef.current.x) * camLerp(0.05);
+        cameraPosRef.current.y += (targetPos.y - cameraPosRef.current.y) * camLerp(0.05);
         cameraRef.current.x = cameraPosRef.current.x;
         cameraRef.current.y = cameraPosRef.current.y;
     };

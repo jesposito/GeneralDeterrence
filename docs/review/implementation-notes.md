@@ -18,6 +18,16 @@ docker run -d --name general-deterrence --restart unless-stopped \
 ```
 (`docker-compose.yml` is still valid for anyone on Compose v2 / `docker compose`.)
 
+## Batch 5 — render performance
+
+- **gd-0wi.8 (shadowBlur)** is *mitigated*, not eliminated. Frustum culling means only
+  on-screen cars (~10-20, not up to 80) reach the shadowBlur code; the neon glow on visible
+  cars is retained by design. Full removal would be an aesthetic change — left as an option.
+- **gd-0wi.9 (per-frame allocations)** deferred to batch 6. Culling is draw-only; the ~240-480
+  objects/frame come from the civilian *update* loop (segmentDir/perpVec/carVec per car), which
+  runs regardless of visibility. Better fixed when the sim is extracted (batch 6) with tests
+  guarding the movement math, rather than a risky blind micro-opt now.
+
 ## Batch 4 — gameplay/balance + mini-game retool
 
 - **Mini-game retooled (user direction), not just fixed.** The audit framed
