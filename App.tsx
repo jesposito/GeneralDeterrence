@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GameState, LeaderboardEntry, FinalScoreBreakdown } from './types';
 import MainMenu from './components/MainMenu';
 import Game from './components/Game';
@@ -41,6 +41,23 @@ const App: React.FC = () => {
     };
     fetchLeaderboard();
   }, []);
+
+  // Route-change a11y: per-screen document title + move focus to the new screen's heading on
+  // transition (Tutorial + GameOver manage their own focus). Skip the initial paint.
+  const isFirstScreen = useRef(true);
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      MainMenu: 'General Deterrence',
+      Tutorial: 'Pre-Shift Briefing · General Deterrence',
+      Playing: 'On Patrol · General Deterrence',
+      GameOver: 'Shift Over · General Deterrence',
+    };
+    document.title = titles[gameState] || 'General Deterrence';
+    if (isFirstScreen.current) { isFirstScreen.current = false; return; }
+    if (gameState !== 'Tutorial' && gameState !== 'GameOver') {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('#root h1')?.focus?.());
+    }
+  }, [gameState]);
 
   const handleStartGame = useCallback(() => {
     setGameState('Tutorial');
