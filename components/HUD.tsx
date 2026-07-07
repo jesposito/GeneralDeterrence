@@ -362,6 +362,26 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
         </div>
 
         <div className="flex-grow flex flex-col justify-start items-center space-y-2 pt-2">
+            {/* Compact meters for touch players (gd-0wi.17/.21): the bottom cluster is hidden on
+                coarse pointers to leave room for the on-screen controls, so surface key state here. */}
+            <div className="hidden [@media(pointer:coarse)]:flex items-center gap-2 bg-black/90 px-3 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10">
+                <div className="flex items-center gap-1">
+                    <span className={`font-bold ${player.isSirenActive ? 'text-red-400' : 'text-cyan-400'}`}>{player.isSirenActive ? 'SIREN' : 'BOOST'}</span>
+                    <div className="w-14 h-2.5 bg-gray-900 rounded-full border border-gray-600 overflow-hidden" role="progressbar" aria-label={player.isSirenActive ? 'Siren energy' : 'Boost charge'} aria-valuenow={Math.round(player.boostCharge)} aria-valuemin={0} aria-valuemax={100}>
+                        <div className={`h-full rounded-full ${player.isSirenActive ? 'bg-red-500' : (player.isBoosting ? 'bg-yellow-400' : 'bg-cyan-400')}`} style={{ width: `${player.boostCharge}%` }}></div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className="font-bold text-purple-300">VIG</span>
+                    <div className="w-14 h-2.5 bg-gray-900 rounded-full border border-gray-600 overflow-hidden" role="progressbar" aria-label="Vigilance" aria-valuenow={Math.round(player.vigilance)} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="h-full rounded-full bg-purple-400" style={{ width: `${player.vigilance}%` }}></div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className="font-bold text-yellow-400">ASSIST</span>
+                    <span className="text-yellow-300 font-bold" aria-label={`${colleagueCalls} colleague assists available`}>{colleagueCalls}</span>
+                </div>
+            </div>
             {isVigilanceBonusActive && (
                 <div className="bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
                     <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">VIGILANCE BONUS 2.0x</p>

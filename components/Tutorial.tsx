@@ -6,7 +6,7 @@ interface TutorialProps {
 
 const TutorialInfoCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <div className="bg-black/60 p-3 sm:p-4 rounded-lg border-2 border-cyan-500/30 w-full sm:w-auto sm:min-w-[300px] sm:flex-1">
-        <h3 className="text-lg sm:text-xl font-bold font-display text-yellow-400 text-glow-yellow mb-2 sm:mb-3 tracking-wider">{title}</h3>
+        <h2 className="text-lg sm:text-xl font-bold font-display text-yellow-400 text-glow-yellow mb-2 sm:mb-3 tracking-wider">{title}</h2>
         <div className="text-gray-300 space-y-2 font-sans text-sm sm:text-base">{children}</div>
     </div>
 );
@@ -51,12 +51,21 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="CONTROLS">
-                    <ul className="list-inside space-y-1">
+                    {/* Keyboard controls (fine pointer / desktop) — hidden on touch (display:none => out of a11y tree) */}
+                    <ul className="list-inside space-y-1 [@media(pointer:coarse)]:hidden">
                         <li><span aria-label="W A S D keys"><KeyDisplay>W</KeyDisplay><KeyDisplay>A</KeyDisplay><KeyDisplay>S</KeyDisplay><KeyDisplay>D</KeyDisplay></span> / <KeyDisplay>Arrows</KeyDisplay> - Drive</li>
                         <li><KeyDisplay>SHIFT</KeyDisplay> - Boost <span className="text-cyan-400">(uses energy)</span></li>
                         <li><KeyDisplay>E</KeyDisplay> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
                         <li><KeyDisplay>C</KeyDisplay> - Colleague Assist <span className="text-yellow-400">(handles a high-priority event)</span></li>
                         <li><KeyDisplay>M</KeyDisplay> - Toggle Minimap</li>
+                    </ul>
+                    {/* Touch controls (coarse pointer) — gd-0wi.14. Plain text; names match the on-screen buttons. */}
+                    <ul className="list-inside space-y-1 hidden [@media(pointer:coarse)]:block">
+                        <li><span className="font-bold text-white">Joystick</span> (bottom-left) - Drive: push up to accelerate, down to reverse, steer left / right</li>
+                        <li>Tap <span className="font-bold text-cyan-400">BOOST</span> - Boost <span className="text-cyan-400">(uses energy)</span></li>
+                        <li>Tap <span className="font-bold text-red-400">SIREN</span> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
+                        <li>Tap <span className="font-bold text-yellow-300">RIDS CHECK</span> - Intervene with a nearby offender</li>
+                        <li>Tap <span className="font-bold text-yellow-400">ASSIST</span> - Colleague Assist <span className="text-yellow-400">(high-priority event)</span></li>
                     </ul>
                 </TutorialInfoCard>
             </div>

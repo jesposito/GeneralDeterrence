@@ -57,3 +57,14 @@ HUD is a `pointer-events-none` overlay — nothing focusable, so findings are no
   hides districts `:359`. `hidden`=display:none is correct (no phantom AT). Restore parity via the
   Game.tsx live region announcing boost-ready/siren/vigilance-bonus/assist, not sr-only meter dupes.
 - **minor** — assist emoji `:401` repeats `aria-label` N times; use one labelled container, emojis aria-hidden.
+
+## components/Tutorial.tsx (reviewed 2026-07-07)
+
+Already strong (role=dialog, aria-modal, aria-labelledby, focus move/return, Escape, focus-visible).
+Batch-7 change added touch-controls variant + h3→h2 (P2, done). Remaining minors for batch 8:
+- **P1 (2.4.3)** — `aria-modal` set but no focus trap / background not inert; Tab off the single
+  button reaches obscured game controls. Fix: toggle `inert` on the game root while the modal is open.
+- **P3 (1.1.1)** — `Tutorial.tsx:48` example emoji are aria-hidden, so SR reads "(e.g., )". Give the
+  examples text ("a phone icon, a fire icon") or drop the parenthetical for SR.
+- **P4 (1.4.6 AAA)** — semi-transparent cards over the live game; accent text (red-400/pink-400) may
+  dip under 7:1 with game bleed-through. Verify computed contrast.
