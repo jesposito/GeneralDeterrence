@@ -4,6 +4,7 @@ import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
 import useKeyPress, { normalizeKey } from '../hooks/useKeyPress';
+import { loadBindings, type Bindings } from '../utils/keybindings';
 import { computeScoreBreakdown } from '../utils/scoring';
 import { getDistance, getDistanceSq, getRads, findClosestPointOnRoad, findClosestNode, getDistrictForPoint, DISTRICT_DEFINITIONS, generateNewPath, findShortestPath } from '../utils/geometry';
 import TouchControls from './TouchControls';
@@ -110,6 +111,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   const lastTimeRef = useRef<number>(0);
   const hitStopUntilRef = useRef(0); // brief sim freeze (hit-stop) on the biggest moments
   const prevPadButtonsRef = useRef<boolean[]>([]); // gamepad button edge detection
+  const bindingsRef = useRef<Bindings>(loadBindings()); // configurable key bindings (defaults = classic controls)
   const lastHudUpdateRef = useRef<number>(0);
 
   // Refs for all frequently updated game data to avoid re-renders
@@ -327,10 +329,11 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.repeat) return; // toggles: ignore auto-repeat so a held key doesn't strobe
-        const k = e.key.toLowerCase();
-        if (k === 'm') setMinimapMode(prev => prev === 'Tactical' ? 'Strategic' : 'Tactical');
-        if (k === 'c') handleColleagueCall();
-        if (k === 'e') handleSirenToggle();
+        const k = normalizeKey(e.key);
+        const b = bindingsRef.current;
+        if (b.minimap.includes(k)) setMinimapMode(prev => prev === 'Tactical' ? 'Strategic' : 'Tactical');
+        if (b.colleague.includes(k)) handleColleagueCall();
+        if (b.siren.includes(k)) handleSirenToggle();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -375,7 +378,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' && !e.repeat) { e.preventDefault(); handleRidsCheck(); }
+      if (bindingsRef.current.rids.includes(normalizeKey(e.key)) && !e.repeat) { e.preventDefault(); handleRidsCheck(); }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -451,11 +454,13 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
         }
 
         const keys = { ...keysPressed.current, ...touchStateRef.current };
-        const moveForward = keys['ArrowUp'] || keys['w'] || keys['forward'];
-        const moveBackward = keys['ArrowDown'] || keys['s'] || keys['backward'];
-        const turnLeft = keys['ArrowLeft'] || keys['a'] || keys['left'];
-        const turnRight = keys['ArrowRight'] || keys['d'] || keys['right'];
-        const isTryingToBoost = keys['Shift'] || keys['boost'];
+        const b = bindingsRef.current;
+        const bound = (action: keyof Bindings) => b[action].some(key => keys[key]);
+        const moveForward = bound('forward') || keys['forward'];
+        const moveBackward = bound('backward') || keys['backward'];
+        const turnLeft = bound('left') || keys['left'];
+        const turnRight = bound('right') || keys['right'];
+        const isTryingToBoost = bound('boost') || keys['boost'];
         
         // Boost works with any movement intent — keyboard forward OR joystick deflection (touch driving
         // is omnidirectional, so gating on 'forward' silently broke boost in most headings).
