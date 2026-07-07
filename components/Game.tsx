@@ -3,6 +3,7 @@ import { Player, Civilian, RIDSType, DeterrenceBlob as DeterrenceBlobType, Colle
 import * as CONSTANTS from '../constants';
 import HUD from './HUD';
 import MiniGameModal from './MiniGameModal';
+import MatchingGame from './mini-games/MatchingGame';
 import useKeyPress, { normalizeKey } from '../hooks/useKeyPress';
 import { loadBindings, type Bindings } from '../utils/keybindings';
 import { retainInPlace } from '../utils/pool';
@@ -18,7 +19,7 @@ interface GameProps {
   onGameOver: (scoreBreakdown: FinalScoreBreakdown) => void;
 }
 
-type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame';
+type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame' | 'Referral';
 
 const PATROL_PATH_SAMPLE_RATE = 30; // Record player position every 30 frames
 const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
@@ -108,6 +109,35 @@ const RidsChoiceModal: React.FC<{
     </div>
 );};
 
+
+// Referral follow-up (the wired-in MatchingGame): same dialog semantics/trap as MiniGameModal.
+const ReferralModal: React.FC<{ onComplete: (success: boolean) => void }> = ({ onComplete }) => {
+    const panelRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const prev = document.activeElement as HTMLElement | null;
+        panelRef.current?.focus();
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Tab') return;
+            const focusables = panelRef.current?.querySelectorAll<HTMLElement>('button');
+            if (!focusables || focusables.length === 0) { e.preventDefault(); return; }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => { document.removeEventListener('keydown', onKey); prev?.focus?.(); };
+    }, []);
+    return (
+        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn">
+            <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="referral-title" className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-green-500 shadow-lg shadow-green-500/50 focus:outline-none">
+                <h2 id="referral-title" className="text-3xl font-bold text-green-400 mb-2 font-display">Referral Opportunity</h2>
+                <p className="text-sm text-gray-400 mb-4 font-sans">Bonus: +{CONSTANTS.REFERRAL_BONUS} for the right partner agency. No penalty for a miss.</p>
+                <MatchingGame onComplete={onComplete} ridsType="Restraints" />
+            </div>
+        </div>
+    );
+};
 
 const Game: React.FC<GameProps> = ({ onGameOver }) => {
   // State for UI and major game phases
@@ -1314,19 +1344,41 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
     // One completion per mini-game (QTE's StrictMode double-invoke called this twice).
     if (ridsPhaseRef.current !== 'minigame') return;
     ridsPhaseRef.current = 'idle';
+    let goReferral = false;
     if (activeRids) {
       if (success) {
         audio.zap();
         const district = districtsRef.current.find(d => d.id === activeRids.car.district);
         const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
         resolveIntervention(activeRids.car, CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus, CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Enforce', 10);
+        // The fourth pillar: some Impairment/Restraints enforcements surface a partner-agency
+        // referral follow-up (MatchingGame — built for this, previously unwired).
+        goReferral = (activeRids.ridsType === 'Impairment' || activeRids.ridsType === 'Restraints')
+            && Math.random() < CONSTANTS.REFERRAL_CHANCE;
       } else {
         timeLeftRef.current = Math.max(0, timeLeftRef.current - CONSTANTS.RIDS_TIME_PENALTY_MINIGAME_FAIL);
       }
       setActiveRids(null);
     }
-    setTargetedCarId(null); setGameState('Playing');
+    setTargetedCarId(null);
+    if (goReferral) {
+        setGameMessage('REFERRAL OPPORTUNITY');
+        if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+        gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2000);
+        setGameState('Referral');
+    } else {
+        setGameState('Playing');
+    }
   }, [activeRids]);
+
+  const onReferralComplete = useCallback((success: boolean) => {
+    if (success) {
+        audio.zap();
+        scoreRef.current.enforcement += CONSTANTS.REFERRAL_BONUS;
+        floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `REFERRAL +${CONSTANTS.REFERRAL_BONUS}`, spawnTime: Date.now() });
+    }
+    setGameState('Playing'); // no penalty on a miss — the referral is a bonus opportunity
+  }, []);
 
   // Pause/resume on visibility change
   useEffect(() => {
@@ -1422,6 +1474,7 @@ const Game: React.FC<GameProps> = ({ onGameOver }) => {
       {gameState === 'MiniGame' && activeRids && (
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} difficulty={Math.min(1, Math.max(0, 1 - timeLeftRef.current / CONSTANTS.SHIFT_DURATION))} />
       )}
+      {gameState === 'Referral' && <ReferralModal onComplete={onReferralComplete} />}
        {isTouchDevice && gameState === 'Playing' && (
         <TouchControls
             onControlChange={handleControlChange}

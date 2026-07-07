@@ -10,6 +10,28 @@ const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = 
 };
 const COLLEAGUE_CALL_ICON = '🤝';
 
+// Personal best + day streak, persisted locally. Computed once per breakdown (WeakMap) so
+// StrictMode's double render can't double-count the streak or hide the "new best" flag.
+const PERSONAL_KEY = 'gd-personal';
+const personalStatsCache = new WeakMap<FinalScoreBreakdown, { isNewBest: boolean; best: number; streak: number }>();
+function getPersonalStats(breakdown: FinalScoreBreakdown) {
+  const cached = personalStatsCache.get(breakdown);
+  if (cached) return cached;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = dayKey(new Date());
+  const yesterday = dayKey(new Date(Date.now() - 86_400_000));
+  let prev = { best: 0, lastDay: '', streak: 0 };
+  try { prev = { ...prev, ...JSON.parse(localStorage.getItem(PERSONAL_KEY) || '{}') }; } catch { /* defaults */ }
+  const isNewBest = breakdown.finalScore > prev.best;
+  const streak = prev.lastDay === today ? prev.streak : prev.lastDay === yesterday ? prev.streak + 1 : 1;
+  const next = { best: Math.max(prev.best, breakdown.finalScore), lastDay: today, streak };
+  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  const stats = { isNewBest, best: next.best, streak };
+  personalStatsCache.set(breakdown, stats);
+  return stats;
+}
+
 interface HeatmapCell {
   x: number;
   y: number;
@@ -270,6 +292,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   // After submit the form (holding focus) unmounts; move focus to Play Again.
   useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
 
+  const personal = getPersonalStats(scoreBreakdown);
   const gradeStyles: Record<string, string> = {
     S: 'text-yellow-300 border-yellow-300',
     A: 'text-green-400 border-green-400',
@@ -293,6 +316,12 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
           {scoreBreakdown.offencesPrevented} {scoreBreakdown.offencesPrevented === 1 ? 'OFFENCE' : 'OFFENCES'} NEVER HAPPENED — your visible presence prevented them.
         </p>
       )}
+      <p className="text-sm md:text-base font-display mb-2">
+        {personal.isNewBest
+          ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST!</span>
+          : <span className="text-gray-400">Personal best: {personal.best.toLocaleString()}</span>}
+        {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
+      </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
       <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-6 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
       
