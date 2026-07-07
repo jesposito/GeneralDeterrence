@@ -10,10 +10,6 @@ services:
       - ./data:/data
     environment:
       - PORT=3000
-      - DATA_FILE=/data/leaderboard.json
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/leaderboard"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
+    # Healthcheck is inherited from the Dockerfile (uses 127.0.0.1 /api/health to avoid
+    # the localhost IPv6/IPv4 mismatch, and a cheap endpoint that doesn't query the DB).

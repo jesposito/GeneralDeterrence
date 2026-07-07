@@ -1,8 +1,10 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { validateSubmission } = require('./validate');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,8 +34,16 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_email ON leaderboard(email)`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_score ON leaderboard(score DESC)`);
 console.log('Database initialized');
 
-app.use(cors());
-app.use(express.json());
+// CORS: production serves the SPA same-origin (no CORS needed); this allowlist only
+// covers local dev origins. Override with ALLOWED_ORIGINS (comma-separated) if the API
+// is ever hosted cross-origin from the frontend.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:5173')
+  .split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
+app.use(express.json({ limit: '8kb' }));
+
+// Rate-limit the unauthenticated write endpoint to blunt score-spamming and table growth.
+const submitLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
 
 // Serve static files from the built frontend
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -74,21 +84,20 @@ app.get('/api/leaderboard', (req, res) => {
 });
 
 // POST /api/leaderboard - Submit a new score
-app.post('/api/leaderboard', (req, res) => {
-  const { name, score, email, timestamp } = req.body;
-  
-  if (!name || typeof score !== 'number') {
-    return res.status(400).json({ error: 'Name and score are required' });
+app.post('/api/leaderboard', submitLimiter, (req, res) => {
+  const result = validateSubmission(req.body);
+  if (!result.ok) {
+    return res.status(400).json({ error: result.error });
   }
-
-  const ts = timestamp || Date.now();
+  const { name, score, email } = result.value;
+  // The server owns the timestamp — never trust the client's.
+  const ts = Date.now();
 
   try {
     if (email) {
       const existing = getByEmail.get(email);
-      
       if (existing) {
-        // Only update if new score is higher
+        // Only update if the new score is higher.
         if (score > existing.score) {
           updateScore.run(name, score, ts, existing.id);
         }
@@ -98,10 +107,8 @@ app.post('/api/leaderboard', (req, res) => {
     } else {
       insertWithoutEmail.run(name, score, ts);
     }
-    
-    // Return updated top 10
-    const rows = getTopScores.all();
-    res.json(rows);
+
+    res.json(getTopScores.all());
   } catch (error) {
     console.error('Error updating leaderboard:', error);
     res.status(500).json({ error: 'Failed to update leaderboard' });
