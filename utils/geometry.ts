@@ -1,5 +1,6 @@
 import { DistrictName } from '../types';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS as MAP_DISTRICT_DEFINITIONS, RoadNode, mapVersionRef } from './mapData';
+import type { Rng } from './rng';
 
 export const DISTRICT_DEFINITIONS = MAP_DISTRICT_DEFINITIONS;
 
@@ -101,7 +102,12 @@ export const findClosestNode = (point: { x: number; y: number }): { node: RoadNo
 };
 
 
-export const generateNewPath = (districtId?: DistrictName, startNodeId?: string, homeDistrictId?: DistrictName): string[] | null => {
+export const generateNewPath = (
+    districtId?: DistrictName,
+    startNodeId?: string,
+    homeDistrictId?: DistrictName,
+    rng: Rng = Math.random,
+): string[] | null => {
     ensureCaches();
     let startNode: RoadNode;
 
@@ -119,7 +125,7 @@ export const generateNewPath = (districtId?: DistrictName, startNodeId?: string,
             // Fallback if provided ID is invalid
             const potentialStartNodes = ROAD_NODES;
             if (potentialStartNodes.length === 0) return null;
-            startNode = potentialStartNodes[Math.floor(Math.random() * potentialStartNodes.length)];
+            startNode = potentialStartNodes[Math.floor(rng() * potentialStartNodes.length)];
         }
     } else {
         // Original logic for spawning new cars
@@ -139,13 +145,13 @@ export const generateNewPath = (districtId?: DistrictName, startNodeId?: string,
             }
         }
         if (potentialStartNodes.length === 0) return null;
-        startNode = potentialStartNodes[Math.floor(Math.random() * potentialStartNodes.length)];
+        startNode = potentialStartNodes[Math.floor(rng() * potentialStartNodes.length)];
     }
     
     let currentNodeId = startNode.id;
     
     const pathNodeIds: string[] = [currentNodeId];
-    const pathLength = 3 + Math.floor(Math.random() * 5); // Path of 3 to 7 segments
+    const pathLength = 3 + Math.floor(rng() * 5); // Path of 3 to 7 segments
 
     for(let i = 0; i < pathLength; i++) {
         const neighbors = adjacencyList.get(currentNodeId);
@@ -165,21 +171,21 @@ export const generateNewPath = (districtId?: DistrictName, startNodeId?: string,
 
         // Apply home district logic if applicable
         if (effectiveHomeDistrict && candidates.length > 1) {
-            const stayInDistrict = Math.random() < 0.8; // 80% chance
+            const stayInDistrict = rng() < 0.8; // 80% chance
             const neighborsInDistrict = candidates.filter(id => {
                 const node = nodeMap.get(id);
                 return node && getDistrictForPoint(node.pos) === effectiveHomeDistrict;
             });
 
             if (stayInDistrict && neighborsInDistrict.length > 0) {
-                nextNodeId = neighborsInDistrict[Math.floor(Math.random() * neighborsInDistrict.length)];
+                nextNodeId = neighborsInDistrict[Math.floor(rng() * neighborsInDistrict.length)];
             } else {
                 // Roam (20% chance) or no path available within district, so pick from any candidate
-                nextNodeId = candidates[Math.floor(Math.random() * candidates.length)];
+                nextNodeId = candidates[Math.floor(rng() * candidates.length)];
             }
         } else {
             // Default behavior if no home district or at a dead end
-            nextNodeId = candidates[Math.floor(Math.random() * candidates.length)];
+            nextNodeId = candidates[Math.floor(rng() * candidates.length)];
         }
 
         pathNodeIds.push(nextNodeId);
@@ -190,6 +196,34 @@ export const generateNewPath = (districtId?: DistrictName, startNodeId?: string,
     
     return pathNodeIds;
 };
+
+/** Nearest target inside the player's forward cone. Angle 0 points up, matching vehicles. */
+export function findNearestInCone<T extends { pos: { x: number; y: number } }>(
+    origin: { x: number; y: number },
+    headingDegrees: number,
+    candidates: readonly T[],
+    maxDistance: number,
+    halfAngleDegrees = 60,
+): T | null {
+    const heading = getRads(headingDegrees - 90);
+    const forwardX = Math.cos(heading);
+    const forwardY = Math.sin(heading);
+    const minDot = Math.cos(getRads(halfAngleDegrees));
+    const maxDistanceSq = maxDistance * maxDistance;
+    let nearest: T | null = null;
+    let nearestDistanceSq = Infinity;
+
+    for (const candidate of candidates) {
+        const dx = candidate.pos.x - origin.x;
+        const dy = candidate.pos.y - origin.y;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq > maxDistanceSq || distanceSq >= nearestDistanceSq) continue;
+        if (distanceSq > 0 && (dx * forwardX + dy * forwardY) / Math.sqrt(distanceSq) < minDot) continue;
+        nearest = candidate;
+        nearestDistanceSq = distanceSq;
+    }
+    return nearest;
+}
 
 
 export const getDistrictForPoint = (pos: {x: number, y: number}): DistrictName => {

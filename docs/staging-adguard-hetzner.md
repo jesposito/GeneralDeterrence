@@ -96,7 +96,7 @@ Suggested local paths and names:
 Suggested container command:
 
 ```bash
-mkdir -p /opt/general-deterrence/data
+install -d -o 1000 -g 1000 -m 0750 /opt/general-deterrence/data
 
 docker run -d \
   --name general-deterrence-staging \
@@ -106,6 +106,7 @@ docker run -d \
   -v /opt/general-deterrence/data:/data \
   -e PORT=3000 \
   -e DATA_DIR=/data \
+  -e TRUST_PROXY=1 \
   ghcr.io/jesposito/generaldeterrence:latest
 ```
 
@@ -157,6 +158,13 @@ this IPv4 healthcheck:
 --health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"
 ```
 
+Provision the bind mount for the image's unprivileged `node` user (UID/GID 1000)
+before creating or replacing the container:
+
+```bash
+install -d -o 1000 -g 1000 -m 0750 /opt/general-deterrence/data
+```
+
 Current deployed command shape:
 
 ```bash
@@ -168,6 +176,7 @@ docker run -d \
   -v /opt/general-deterrence/data:/data \
   -e PORT=3000 \
   -e DATA_DIR=/data \
+  -e TRUST_PROXY=1 \
   --health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1" \
   --health-interval=30s \
   --health-timeout=3s \
@@ -203,7 +212,15 @@ container — do not confuse them.
 - Container: `general-deterrence-mobile-staging`
 - Host bind: `127.0.0.1:3101 -> container :3000`
 - Image tag in use: `ghcr.io/jesposito/generaldeterrence:staging`
-- Data directory: `/opt/general-deterrence/data` (SHARED with `general-deterrence-staging` — both containers write to the same SQLite leaderboard. Intentional? Unverified. Treat any leaderboard write here as visible on `gd.esponet.me` as well.)
+- Data directory: `/opt/general-deterrence/staging2-data` (must be separate from
+  `/opt/general-deterrence/data`; staging must never write production-style scores or
+  player identifiers)
+
+Before recreating staging2:
+
+```bash
+install -d -o 1000 -g 1000 -m 0750 /opt/general-deterrence/staging2-data
+```
 
 ### Caddy block (do not modify other blocks)
 
@@ -223,7 +240,8 @@ and we want every refresh to hit the latest bundle hash, not a CDN-cached one.
 ### Image source
 
 `ghcr.io/jesposito/generaldeterrence:staging` is NOT produced by `.github/workflows/docker-publish.yml`
-(that workflow only fires on `v*` tags, building the `:latest` tag). The `:staging` tag
+(that workflow fires on `v*` tags, publishes semantic-version tags, and adds `:latest` only
+for stable releases). The `:staging` tag
 is built and shipped MANUALLY from a developer machine:
 
 ```bash
@@ -244,9 +262,10 @@ docker run -d \
   --name general-deterrence-mobile-staging \
   --restart unless-stopped \
   -p 127.0.0.1:3101:3000 \
-  -v /opt/general-deterrence/data:/data \
+  -v /opt/general-deterrence/staging2-data:/data \
   -e PORT=3000 \
   -e DATA_DIR=/data \
+  -e TRUST_PROXY=1 \
   --health-cmd="wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1" \
   --health-interval=30s \
   --health-timeout=3s \

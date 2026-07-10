@@ -221,13 +221,13 @@ const CAR_CHATTER = [
     'Just done the big shop. Trolley had a mind of its own.',
     'Following the surf report, officer.', 'On a pie pilgrimage.',
 ];
-const WARN_REACTIONS = [
+const STANDARD_ACTION_REACTIONS = [
     'Yeah nah, sorry officer.', 'My bad, chur.', "Won't happen again, eh.", 'All good, slowing down.',
     'Good as gold, officer.', 'Cheers for the heads up, aye.', 'Hard case. Sorted now.',
     'Choice, thanks officer.', 'Sweet, my bad bro.', 'Aroha mai, officer.',
     'Tā, officer. Slowing down.', 'True that. Easing off.', 'Ka pai, message received.',
 ];
-const ENFORCE_REACTIONS = [
+const INVESTIGATE_REACTIONS = [
     'Fair cop.', 'Aw, not even ow.', 'Shot, officer…', 'The missus is gonna hear about this.',
     'Stink one.', 'Busted, eh.', "Mum's gonna kill me.", 'Nek minnit… ticket.',
     'There goes the pie money.', 'The group chat cannot know.', 'Aw, stink buzz.',
@@ -236,17 +236,17 @@ const ENFORCE_REACTIONS = [
 ];
 
 export const pickCarChatter = (): string => CAR_CHATTER[Math.floor(Math.random() * CAR_CHATTER.length)];
-export const pickWarnReaction = (): string => WARN_REACTIONS[Math.floor(Math.random() * WARN_REACTIONS.length)];
-export const pickEnforceReaction = (): string => ENFORCE_REACTIONS[Math.floor(Math.random() * ENFORCE_REACTIONS.length)];
+export const pickStandardActionReaction = (): string => STANDARD_ACTION_REACTIONS[Math.floor(Math.random() * STANDARD_ACTION_REACTIONS.length)];
+export const pickInvestigateReaction = (): string => INVESTIGATE_REACTIONS[Math.floor(Math.random() * INVESTIGATE_REACTIONS.length)];
 
 // ---------------------------------------------------------------------------
 // Crime interdiction: once per shift a routine stop can uncover something far bigger.
 // The real road-policing lesson — you never know what a stop will find.
 export interface Interdiction {
     crime: string;      // short label for banners
-    reveal: string;     // in-game flash when the enforce lands
+    reveal: string;     // in-game flash when the investigation succeeds
     detail: string;     // end-screen story when busted
-    missed: string;     // end-screen line when the car was only warned
+    missed: string;     // end-screen line when the stop did not receive a full investigation
 }
 
 const INTERDICTIONS: Interdiction[] = [
@@ -333,16 +333,16 @@ const BRIEFING_FACTS = [
     'RIDS: Restraints, Impairment, Distractions, Speed: the four behaviours behind most serious road harm.',
     'An unpredictable patrol pattern deters more than a predictable one. Keep them guessing.',
     'Every roadside stop is also a chance to educate, and occasionally to uncover something far worse.',
-    'High-visibility presence protects roads you never drive. Word travels faster than you do.',
-    'A warning delivered well can change behaviour as much as a ticket. Pick the right tool.',
+    'High-visibility presence can influence drivers on roads you never reach.',
+    'Consistent enforcement makes detection and consequences feel likely.',
     'Deterrence decays. A district patrolled yesterday is not a district patrolled today.',
     'A wave to a kid in a car seat is road-safety marketing that lasts twenty years.',
     'The best shift is the boring one. Boring means everyone got home.',
-    'Drivers slow down for the patrol car they saw an hour ago. Memory is a speed camera.',
-    'Parked visibly at a school crossing beats parked invisibly anywhere.',
-    'You cannot ticket your way to a safe district. You can be seen into one.',
+    'Drivers may slow down after seeing a patrol car earlier. Perceived detection matters.',
+    'A visible patrol at a school crossing can influence behaviour beyond one stop.',
+    'Safe districts need both targeted enforcement and visible, unpredictable presence.',
     'Routine stops find un-routine things. That is why they matter.',
-    'The offender you never met, deterred by the lights you left on: still a win.',
+    'The offence that may never occur because detection felt likely: still a win.',
 ];
 
 export const pickBriefingFact = (): string =>
@@ -362,13 +362,13 @@ export const pickRealShiftLine = (seed: number): string =>
 
 export function pickDebrief(stats: { coverageRatio: number; livesLost: number; enforcementScore: number; deterrenceScore: number }): string {
     if (stats.coverageRatio >= 0.7) {
-        return 'That\'s general deterrence at work: everyone who saw you slowed down, including every driver you never stopped.';
+        return 'That\'s general deterrence at work: visible patrols can influence drivers far beyond those you stopped.';
     }
     if (stats.livesLost > 0) {
         return 'Some losses can\'t be chased down after the fact. Coverage and patrol posts buy time before the next one.';
     }
     if (stats.enforcementScore > stats.deterrenceScore * 2) {
-        return 'Enforcement matters, but a ticket protects one road. Visible presence protects all of them at once.';
+        return 'Enforcement matters, while visible presence can influence behaviour across a much wider area.';
     }
     return 'Visible, unpredictable presence changes driver behaviour before offences happen. That\'s the whole job.';
 }

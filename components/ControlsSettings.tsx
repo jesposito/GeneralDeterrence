@@ -3,18 +3,27 @@ import {
     ACTION_LABELS, displayKey, loadBindings, normalizeBindingKey,
     resetBindings, saveBindings, type Bindings, type GameAction,
 } from '../utils/keybindings';
+import { useGamepadNavigation } from './useGamepadNavigation';
+import { loadChallengeAssist, saveChallengeAssist } from '../utils/preferences';
 
 const ACTIONS = Object.keys(ACTION_LABELS) as GameAction[];
 
-// Minimal rebinding UI (WCAG 2.1.4: single-character shortcuts must be remappable — the
-// bindings layer existed but had no surface). Rules kept simple: rebinding an action replaces
-// all its keys with the one pressed; a key already bound elsewhere moves (the other action can
-// end up unbound — shown as "—" — until rebound or reset).
+export const rebind = (bindings: Bindings, action: GameAction, key: string): { bindings: Bindings; blockedOwner?: GameAction } => {
+    const blockedOwner = ACTIONS.find(owner => owner !== action && bindings[owner].includes(key) && bindings[owner].length === 1);
+    if (blockedOwner) return { bindings, blockedOwner };
+    const next = {} as Bindings;
+    for (const owner of ACTIONS) next[owner] = owner === action ? [key] : bindings[owner].filter(existing => existing !== key);
+    return { bindings: next };
+};
+
 const ControlsSettings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [bindings, setBindings] = useState<Bindings>(() => loadBindings());
     const [capturing, setCapturing] = useState<GameAction | null>(null);
     const [announce, setAnnounce] = useState('');
+    const [challengeAssist, setChallengeAssist] = useState(loadChallengeAssist);
     const panelRef = useRef<HTMLDivElement>(null);
+
+    useGamepadNavigation(panelRef, { active: capturing === null, onBack: onClose });
 
     // Dialog focus in/trap/restore (same pattern as MiniGameModal).
     useEffect(() => {
@@ -22,7 +31,9 @@ const ControlsSettings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         panelRef.current?.focus();
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Tab') return;
-            const focusables = panelRef.current?.querySelectorAll<HTMLElement>('button');
+            const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
+                'input:not(:disabled), button:not(:disabled)',
+            );
             if (!focusables || focusables.length === 0) { e.preventDefault(); return; }
             const first = focusables[0];
             const last = focusables[focusables.length - 1];
@@ -54,25 +65,41 @@ const ControlsSettings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             }
             if (e.key === 'Tab') return; // Tab stays reserved for focus navigation
             const k = normalizeBindingKey(e.key);
-            setBindings(prev => {
-                const next = {} as Bindings;
-                for (const a of ACTIONS) next[a] = prev[a].filter(key => key !== k);
-                next[capturing] = [k];
-                saveBindings(next);
-                return next;
-            });
+            const result = rebind(bindings, capturing, k);
+            const { blockedOwner } = result;
+            if (blockedOwner) {
+                setAnnounce(`${displayKey(k)} is the only key for ${ACTION_LABELS[blockedOwner]}. Choose another key or reset the controls.`);
+                setCapturing(null);
+                return;
+            }
+            saveBindings(result.bindings);
+            setBindings(result.bindings);
             setAnnounce(`${ACTION_LABELS[capturing]} is now ${displayKey(k)}.`);
             setCapturing(null);
         };
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
-    }, [capturing]);
+    }, [bindings, capturing]);
 
     return (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40 animate-fadeIn p-4" role="dialog" aria-modal="true" aria-labelledby="controls-title">
-            <div ref={panelRef} tabIndex={-1} className="bg-gray-900 p-6 rounded-lg shadow-2xl w-full max-w-md text-left border-4 border-cyan-500 shadow-cyan-500/50 focus:outline-none max-h-full overflow-y-auto">
+        <div className="absolute inset-0 bg-black/90 flex items-start justify-center z-40 animate-fadeIn p-2 sm:p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="controls-title">
+            <div ref={panelRef} tabIndex={-1} className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-2xl w-full max-w-md text-left border-4 border-cyan-500 shadow-cyan-500/50 focus:outline-none my-auto">
                 <h2 id="controls-title" className="text-2xl font-bold text-cyan-400 mb-1 font-display text-glow-cyan text-center">Controls</h2>
-                <p className="text-xs text-gray-400 mb-4 font-sans text-center">Changes apply from your next shift. Rebinding replaces an action's keys with the one you press.</p>
+                <p className="text-xs text-gray-400 mb-3 font-sans text-center">Changes apply from your next shift. Every action keeps at least one unique key.</p>
+                <label className="mb-3 flex items-center gap-3 rounded border border-gray-700 bg-black/30 p-2 text-left">
+                    <input
+                        type="checkbox"
+                        checked={challengeAssist}
+                        onChange={(event) => {
+                            const enabled = event.target.checked;
+                            setChallengeAssist(enabled);
+                            saveChallengeAssist(enabled);
+                            setAnnounce(`Decision challenge assist ${enabled ? 'enabled' : 'disabled'} for the next shift.`);
+                        }}
+                        className="h-5 w-5 accent-cyan-500"
+                    />
+                    <span className="text-sm text-gray-200 font-sans">Untimed decision challenges</span>
+                </label>
                 <div role="status" aria-live="polite" className="sr-only">{announce}</div>
                 <ul className="space-y-1">
                     {ACTIONS.map(action => (

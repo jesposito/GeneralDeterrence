@@ -1,94 +1,115 @@
-import React, { useMemo, useState } from 'react';
-import { MiniGameProps } from '../../types';
+import React, { useMemo, useRef, useState } from 'react';
+import { MiniGameProps, RIDSType } from '../../types';
+import { useGamepadNavigation } from '../useGamepadNavigation';
 
-// Timeless teaching content: classify a scenario as GENERAL vs SPECIFIC deterrence.
-// Deliberately no specific legislation/policy detail — that dates quickly. The concepts do not.
-//   General deterrence  = visible, unpredictable enforcement deters the WHOLE population.
-//   Specific deterrence = a consequence to an individual deters THAT person from reoffending.
-type DeterrenceType = 'General' | 'Specific';
-interface Scenario { text: string; answer: DeterrenceType; why: string; }
+interface Scenario {
+  prompt: string;
+  choices: [string, string];
+  answer: 0 | 1;
+  why: string;
+}
 
-const SCENARIOS: Scenario[] = [
-  { text: "Drivers across a whole suburb ease off because patrol cars turn up at unpredictable times and places.",
-    answer: 'General', why: "Visible, unpredictable presence deters the entire driving population — not just those who get stopped." },
-  { text: "A driver who copped a heavy fine for speeding now sticks to the limit to avoid another one.",
-    answer: 'Specific', why: "The penalty deters that one individual from reoffending." },
-  { text: "Publicised, randomly-sited breath testing means fewer people drink-drive region-wide, even where no checkpoint is set up.",
-    answer: 'General', why: "The perceived risk of being caught anywhere deters the whole population." },
-  { text: "After being disqualified from driving, a repeat offender stops driving dangerously.",
-    answer: 'Specific', why: "The sanction changed that specific person's behaviour." },
-  { text: "Marked patrol cars parked at known crash hotspots cause every passing driver to slow down.",
-    answer: 'General', why: "Visible presence deters everyone who sees it, not one offender." },
-  { text: "A driver ticketed for using a phone now always uses hands-free.",
-    answer: 'Specific', why: "The consequence deters that one individual." },
-  { text: "Because patrols could appear at any moment, drivers can never assume they're unwatched, so offending drops everywhere.",
-    answer: 'General', why: "Unpredictability maximises the perceived risk across the whole population." },
-  { text: "A young driver caught street racing completes a defensive-driving course and no longer races.",
-    answer: 'Specific', why: "The individual intervention deterred that person." },
-];
+const SCENARIOS: Record<'Restraints' | 'Distractions', Scenario[]> = {
+  Restraints: [
+    {
+      prompt: 'A stopped vehicle has an unrestrained occupant. Which response best supports safer behaviour after the stop?',
+      choices: ['Address the restraint issue, explain the safety risk, and require it to be corrected before travel resumes.', 'Ignore it because the trip is short.'],
+      answer: 0,
+      why: 'A clear intervention links the unsafe behaviour to an immediate correction and makes future enforcement feel credible.',
+    },
+    {
+      prompt: 'The driver says restraints are unnecessary at low speed. What is the strongest deterrence response?',
+      choices: ['Treat low speed as an exemption.', 'Correct the behaviour consistently and explain that crash risk still exists on short, low-speed trips.'],
+      answer: 1,
+      why: 'Consistency prevents drivers from inventing situations where they expect the safety rule will not be enforced.',
+    },
+  ],
+  Distractions: [
+    {
+      prompt: 'A driver was handling a phone while the vehicle was moving. Which intervention best supports safer future behaviour?',
+      choices: ['Address the distraction, explain the crash risk, and have the phone put away before travel resumes.', 'Wait until the behaviour causes a crash.'],
+      answer: 0,
+      why: 'Intervening before harm occurs reinforces that distracted driving is detectable and preventable.',
+    },
+    {
+      prompt: 'A driver says checking one message was harmless. What response best reinforces deterrence?',
+      choices: ['Ignore brief phone use.', 'Make the unsafe choice explicit and require a non-distracting way to continue the journey.'],
+      answer: 1,
+      why: 'A consistent consequence removes the expectation that short distractions will be overlooked.',
+    },
+  ],
+};
 
-const SituationalJudgement: React.FC<MiniGameProps> = ({ onComplete }) => {
-  // One scenario per playthrough, chosen once on mount.
-  const scenario = useMemo(() => SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)], []);
-  const [picked, setPicked] = useState<DeterrenceType | null>(null);
+type SituationalJudgementProps = MiniGameProps & { paused?: boolean; scenarioIndex?: number };
+
+const SituationalJudgement: React.FC<SituationalJudgementProps> = ({
+  onComplete,
+  ridsType,
+  paused = false,
+  scenarioIndex,
+}) => {
+  const type: 'Restraints' | 'Distractions' = ridsType === 'Distractions' ? 'Distractions' : 'Restraints';
+  const scenario = useMemo(() => {
+    const options = SCENARIOS[type];
+    const index = scenarioIndex === undefined ? Math.floor(Math.random() * options.length) : Math.abs(scenarioIndex) % options.length;
+    return options[index];
+  }, [scenarioIndex, type]);
+  const [picked, setPicked] = useState<0 | 1 | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const correct = picked !== null && picked === scenario.answer;
 
-  const choose = (choice: DeterrenceType) => {
-    if (!picked) setPicked(choice);
-  };
+  useGamepadNavigation(containerRef, { active: !paused });
 
   return (
-    <div>
-      <div className="bg-black/50 p-4 rounded-lg mb-4 border-2 border-cyan-500/50 min-h-[90px]">
-        <p className="text-sm text-cyan-300 font-sans mb-1">Is this GENERAL or SPECIFIC deterrence?</p>
-        <p className="text-lg text-gray-200 font-sans">{scenario.text}</p>
+    <div ref={containerRef}>
+      <div className="bg-black/50 p-3 sm:p-4 rounded-lg mb-3 border-2 border-cyan-500/50">
+        <p className="text-xs sm:text-sm text-cyan-300 font-sans mb-1">Choose the safer intervention</p>
+        <p className="text-base sm:text-lg text-gray-200 font-sans">{scenario.prompt}</p>
       </div>
 
-      {/* Two native buttons: Tab + Enter/Space/click all work and each activates itself. */}
-      <div className="grid grid-cols-2 gap-3">
-        {(['General', 'Specific'] as DeterrenceType[]).map(type => {
-          const isPicked = picked === type;
-          const isAnswer = scenario.answer === type;
-          let cls = 'bg-cyan-700 hover:bg-cyan-600 border-cyan-500';
-          if (picked) {
-            if (isAnswer) cls = 'bg-green-600 border-green-400';
-            else if (isPicked) cls = 'bg-red-600 border-red-400';
-            else cls = 'bg-gray-700 border-gray-600 opacity-60';
+      <div className="grid gap-2">
+        {scenario.choices.map((choice, index) => {
+          const isPicked = picked === index;
+          const isAnswer = scenario.answer === index;
+          let className = 'bg-cyan-700 hover:bg-cyan-600 border-cyan-500';
+          if (picked !== null) {
+            if (isAnswer) className = 'bg-green-600 border-green-400';
+            else if (isPicked) className = 'bg-red-600 border-red-400';
+            else className = 'bg-gray-700 border-gray-600 opacity-60';
           }
           return (
             <button
-              key={type}
-              onClick={() => choose(type)}
-              disabled={!!picked}
-              className={`text-white font-bold py-4 px-4 rounded-lg text-lg transition border-2 ${cls} font-sans focus-visible:ring-4 focus-visible:ring-yellow-400 focus-visible:outline-none`}
+              key={choice}
+              type="button"
+              onClick={() => { if (!paused && picked === null) setPicked(index as 0 | 1); }}
+              disabled={picked !== null}
+              className={`text-white font-bold py-3 px-3 rounded-lg text-sm sm:text-base border-2 ${className} font-sans focus-visible:ring-4 focus-visible:ring-yellow-400 focus-visible:outline-none`}
             >
-              {type}
-              <span className="block text-xs font-normal opacity-80">deterrence</span>
+              {choice}
             </button>
           );
         })}
       </div>
 
-      {/* Verdict + explanation announced together, only after choosing (no answer key up front). */}
-      <div role="status" aria-live="polite" className="mt-4 min-h-[64px]">
-        {picked && (
-          <div className={`p-3 rounded-lg font-sans ${correct ? 'text-green-300' : 'text-red-300'}`}>
-            <p className="font-bold">{correct ? 'Correct' : 'Not quite'} — {scenario.answer} deterrence</p>
+      <div role="status" aria-live="polite" className="mt-3 min-h-[4.5rem]">
+        {picked !== null && (
+          <div className={`p-2 rounded-lg font-sans ${correct ? 'text-green-300' : 'text-red-300'}`}>
+            <p className="font-bold">{correct ? 'Sound intervention' : 'Not the safer choice'}</p>
             <p className="text-sm text-gray-300 mt-1">{scenario.why}</p>
           </div>
         )}
       </div>
 
-      {picked ? (
+      {picked !== null ? (
         <button
-          autoFocus
+          type="button"
           onClick={() => onComplete(correct)}
-          className="mt-2 w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg font-sans focus-visible:ring-4 focus-visible:ring-white focus-visible:outline-none"
+          className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg font-sans focus-visible:ring-4 focus-visible:ring-white focus-visible:outline-none"
         >
           Continue
         </button>
       ) : (
-        <p className="mt-4 text-sm text-gray-400 font-sans">Pick General or Specific. Tab to move, Enter or Space to choose.</p>
+        <p className="mt-2 text-sm text-gray-400 font-sans">Use Tab or the D-pad to move; Enter, Space, or gamepad A selects.</p>
       )}
     </div>
   );

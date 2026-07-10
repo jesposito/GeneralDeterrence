@@ -5,24 +5,28 @@ import ControlsSettings from './ControlsSettings';
 import StoryCodex from './StoryCodex';
 import { getCodex } from '../utils/codex';
 import * as audio from '../utils/audio';
+import { useGamepadNavigation } from './useGamepadNavigation';
 
 interface MainMenuProps {
   onStartGame: (mode: 'daily' | 'free') => void;
   leaderboard: LeaderboardEntry[];
+  onDeleteMyScores: () => Promise<boolean>;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard, onDeleteMyScores }) => {
   const [showControls, setShowControls] = useState(false);
   const [showCodex, setShowCodex] = useState(false);
   const codexCount = getCodex().length;
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useGamepadNavigation(menuRef, { active: !showControls && !showCodex });
   // Route-change focus: the h1 had tabIndex={-1} but nothing ever moved focus to it,
   // so AT never announced the screen.
   useEffect(() => { headingRef.current?.focus(); }, []);
   return (
     // overflow-y-auto + m-auto child (not justify-center): flex-centering an overflowing
     // column makes the top unreachable; margin-auto centres when short, scrolls when tall.
-    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center overflow-y-auto p-4 md:p-8 text-center animate-fadeIn relative">
+    <div ref={menuRef} className="w-full h-full bg-[#0d0221] flex flex-col items-center overflow-y-auto p-4 md:p-8 text-center animate-fadeIn relative">
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:2rem_2rem] opacity-20 animate-slow-pan pointer-events-none"></div>
 
       <main className="relative z-10 m-auto">
@@ -66,7 +70,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard }) => {
             </div>
           </div>
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50 min-w-[280px]">
-            <Leaderboard scores={leaderboard} />
+            <Leaderboard scores={leaderboard} onDeleteMine={onDeleteMyScores} />
           </div>
         </div>
       </main>

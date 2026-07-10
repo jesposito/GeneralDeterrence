@@ -6,8 +6,8 @@ An arcade-style patrol game about road policing in Aotearoa. It teaches the prin
 
 ### ⚡ Quick Start (TL;DR)
 If you're already a pro and just want to get moving:
-1. **Docker**: `docker run -d -p 3000:3000 -v ./data:/data ghcr.io/jesposito/generaldeterrence:latest`
-2. **Local Dev**: `npm install && npm run dev` (frontend) or `cd server && npm install && node index.js` (full stack)
+1. **Docker**: `docker run -d -p 3000:3000 -v general-deterrence-data:/data ghcr.io/jesposito/generaldeterrence:latest`
+2. **Local Dev**: `npm install && npm run dev` (frontend; `/api` proxies to the server on port 3001)
 3. **URL**: [http://localhost:3000](http://localhost:3000)
 
 ---
@@ -26,9 +26,9 @@ General deterrence is a policing strategy based on the premise that **visible, u
 
 ### The Goal (Core Loop)
 1. **Patrol** your district in a police vehicle for a 90-second shift.
-2. **Maintain Deterrence** by being visible across all districts (Karori North, West, Central, East).
+2. **Maintain Deterrence** by staying visible across all five map districts.
 3. **Identify RIDS Offenders** - drivers exhibiting Restraints, Impairment, Distractions, or Speed violations.
-4. **Intervene** - Choose to **Warn** (quick, low reward) or **Enforce** (mini-game, high reward).
+4. **Intervene** - Choose **Standard Enforcement** (quick, low reward) or **Investigate** (mini-game, high reward).
 5. **Save Lives** - Prioritize pulsing red "Life at Risk" vehicles before their timer expires!
 
 ### ⌨️ Controls
@@ -41,18 +41,29 @@ General deterrence is a policing strategy based on the premise that **visible, u
 | `E` | **Toggle Siren** (boosts deterrence, clears traffic, but drains energy) |
 | `C` | **Colleague Assist** (dispatches backup to high-priority events) |
 | `M` | **Toggle Minimap** mode |
+| `ESC` | **Pause** the shift |
+
+Touch controls and standard gamepads are supported throughout the shift and menus. Controls
+can be rebound from the title or pause screen.
 
 ### 🛠️ Game Systems
 
 *   **Deterrence Meters**: Each district has a level (0-100%). Your presence boosts it; your absence causes it to drop. Keep all districts above 85% to get the **Vigilance Bonus** (2x points!).
 *   **Vigilance**: Your personal alertness. Grows with successful interventions and steady patrol speed. Decays if you sit still. High vigilance = larger detection area.
-*   **Patrol Posts**: Stop in a low-deterrence area for 10 seconds to set up a post that stays visible after you leave.
+*   **Patrol Posts**: Stop in a low-deterrence area for 5 seconds to set up a post that stays visible after you leave.
 *   **Neglect of Duty**: Don't just sit in "safe" areas! You'll be penalized for idling where you aren't needed.
 
 ### 🎯 Mini-Games
 *   **Breath Screening Test**: Rapidly tap the key to perform a breathalyzer test.
 *   **Speed Enforcement**: A precision slider - try to hit the "target zone" perfectly.
 *   **Driver Intervention**: Choose the best educational or enforcement response based on NZ law.
+
+### Community Scores
+
+Daily runs can be submitted to an informal, player-reported community board. Scores are
+unverified, so it is not an anti-cheat competitive ladder. The server does not collect email:
+public names, optional station codes, scores, and run summaries use a 90-day retention window.
+Use **Delete my community scores** on the board to remove the identity stored by that browser.
 
 ---
 
@@ -85,7 +96,9 @@ This is the part that looks like a movie hacker screen, but don't be scared! It'
 #### 3. Run the Game
 Copy and paste this exact line into your terminal and press **Enter**:
 ```bash
-docker run -d -p 3000:3000 --name police-game ghcr.io/jesposito/generaldeterrence:latest
+docker run -d -p 3000:3000 --name police-game \
+  -v general-deterrence-data:/data \
+  ghcr.io/jesposito/generaldeterrence:latest
 ```
 *(This tells your computer: "Go get the game, name it 'police-game', and run it in the background.")*
 
@@ -100,7 +113,7 @@ Open your web browser and go to:
 If you want to modify the game or run it from the source files, follow these steps.
 
 #### 1. Prerequisites
-You will need **Node.js** (Version 20 or higher) installed.
+You will need **Node.js 24 LTS** installed.
 *   Download it from [nodejs.org](https://nodejs.org/).
 
 #### 2. Download the Code
@@ -116,14 +129,22 @@ Open your terminal inside the project folder and run:
 # Install everything needed
 npm install
 
-# Start the game for testing
+# Start the frontend with hot reload (API requests proxy to localhost:3001)
 npm run dev
 ```
-> **Note:** `npm run dev` only starts the game screen. If you want the **Leaderboard** to work, you also need to start the backend:
+In a second terminal, start the API:
 ```bash
 cd server
 npm install
-node index.js
+npm start
+```
+
+To run the built production stack from source instead:
+```bash
+npm run build
+cd server
+npm install
+npm start
 ```
 
 ---
@@ -143,6 +164,7 @@ If you use an **Unraid** server, you can host the game permanently for your netw
 7.  **Storage (Critical for Leaderboard)**: Add a Path mapping.
     *   Container Path: `/data`
     *   Host Path: `/mnt/user/appdata/generaldeterrence/data`
+    *   Ensure the host directory is writable by UID/GID `1000:1000` before starting.
 8.  Click **Apply**.
 
 ---
@@ -157,23 +179,58 @@ If you use an **Unraid** server, you can host the game permanently for your netw
 *   The leaderboard needs the **Backend Server** to be running. If you are using Docker, this happens automatically. If you are in "Development Mode," make sure you ran the steps in the `server` folder.
 
 ### "The game is laggy"
-*   This game uses modern web features. Try using **Google Chrome** or **Microsoft Edge** for the best experience. Make sure "Hardware Acceleration" is turned on in your browser settings.
+*   This game uses modern web features. Use a current Chrome, Edge, Firefox, or Safari release and enable hardware acceleration.
+
+---
+
+## Operations
+
+SQLite data lives under `DATA_DIR` (`/data` in the container). Create a consistent backup with:
+
+```bash
+cd server
+DATA_DIR=/path/to/data npm run backup -- /path/to/backups/leaderboard-$(date +%F).db
+```
+
+Compose now uses a named volume. If upgrading from the older `./data:/data` bind mount,
+back up `./data/leaderboard.db`, then copy it once before starting the new service:
+
+```bash
+docker compose down
+docker compose run --rm -v ./data:/legacy-data:ro general-deterrence \
+  sh -c 'test ! -e /data/leaderboard.db && cp -R /legacy-data/. /data/'
+docker compose up -d
+```
+
+The container entrypoint repairs ownership on `/data` and then runs the server as the
+unprivileged `node` user. The one-time copy refuses to overwrite an existing named-volume
+database.
+
+Direct Docker deployments should leave `TRUST_PROXY` unset. Behind one trusted reverse-proxy
+hop, set `TRUST_PROXY=1`; an explicit proxy address or CIDR list is also accepted. Stable
+release tags publish `latest`, while prereleases publish only their versioned image tags.
+
+For a public community board, set a random 32+ character `LEADERBOARD_ADMIN_TOKEN` and remove
+an abusive entry with `DELETE /api/leaderboard/<id>` plus
+`Authorization: Bearer <token>`. Player names reject control and bidirectional-formatting
+characters; browsers can also delete all scores associated with their own private edit token.
+Expired rows are pruned hourly and before community-board reads.
 
 ---
 
 ## ⚖️ Legal Accuracy
 
-The situational judgement scenarios are based on current **New Zealand Law** and Police policy (2025/2026):
+The scenarios draw on current New Zealand law, but simplify operational processes for play and are not police guidance:
 
 - **Land Transport Act 1998**
 - **Land Transport (Road User) Rule 2004**
-- **NZ Police operational policies**
+- **NZ Police public road-safety guidance**
 
 **Key Legal Facts in the Game:**
 - Drivers are responsible for passengers **under 15** wearing seatbelts.
 - Passengers **15+** are legally responsible for their own seatbelt compliance.
 - Mobile phone laws apply even when you are **stationary in traffic**.
-- **111 calls** are a legal exception to phone use rules.
+- **111 or \*555 calls** are permitted while driving only when stopping and parking is unsafe or impracticable.
 - Children **under 7** must use an approved child restraint.
 
 ---

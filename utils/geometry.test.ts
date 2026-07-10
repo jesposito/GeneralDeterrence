@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { getDistance, getDistanceSq, findClosestPointOnRoad, getDistrictForPoint, findShortestPath } from './geometry';
+import { getDistance, getDistanceSq, findClosestPointOnRoad, getDistrictForPoint, findNearestInCone, findShortestPath, generateNewPath } from './geometry';
+import { mulberry32 } from './rng';
 
 describe('geometry', () => {
   it('getDistance is the Euclidean distance', () => {
@@ -24,5 +25,18 @@ describe('geometry', () => {
 
   it('findShortestPath returns null for unknown nodes', () => {
     expect(findShortestPath('__nope__', '__nada__')).toBeNull();
+  });
+
+  it('generates the same traffic path from the same RNG seed', () => {
+    expect(generateNewPath(undefined, undefined, undefined, mulberry32(42)))
+      .toEqual(generateNewPath(undefined, undefined, undefined, mulberry32(42)));
+  });
+
+  it('targets the nearest candidate inside the forward cone', () => {
+    const behind = { id: 'behind', pos: { x: 0, y: 20 } };
+    const far = { id: 'far', pos: { x: 0, y: -80 } };
+    const near = { id: 'near', pos: { x: 10, y: -40 } };
+    expect(findNearestInCone({ x: 0, y: 0 }, 0, [behind, far, near], 100, 60)).toBe(near);
+    expect(findNearestInCone({ x: 0, y: 0 }, 0, [behind], 100, 60)).toBeNull();
   });
 });

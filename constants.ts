@@ -44,7 +44,7 @@ export const VIGILANCE_AURA_BONUS_MAX = 125; // Max additional pixels to aura ra
 
 // Patrol Post System (New)
 // ponytail:tune — fable-audit B10: 10s stationary (−30 vigilance) for a ~1.3x boost was a trap
-// (one Warn beat it). Halved setup, posts now meaningfully outperform driving presence.
+// Halved setup so posts meaningfully outperform driving presence.
 export const PATROL_POST_SETUP_TIME = 5; // seconds player must be stationary (was 10)
 export const PATROL_POST_DURATION = 30 * FRAMES_PER_SECOND; // 30 seconds in frames
 
@@ -65,6 +65,8 @@ export const EXPLOSION_MAX_RADIUS = 150; // pixels
 // "Lives at Risk" System
 export const LIFE_AT_RISK_CHANCE = 0.25; // Chance for a high-risk RIDS to be "Life at Risk"
 export const LIFE_AT_RISK_TIMER_SECONDS = 15; // How long player has to intervene
+// Broad visible coverage prevents emergencies; it must never create more of them.
+export const FULL_COVERAGE_LAR_CHANCE_MULTIPLIER = 0.5;
 // Rebalanced (gd-0wi.12): a single LAR save was 5000 (~10-16 enforcements) and dominated
 // scoring, rewarding reactive LAR-chasing over the general-deterrence patrol the game teaches.
 // Halved so saves matter but sustained deterrence + enforcement stay the main economy.
@@ -90,10 +92,10 @@ export const DISPATCH_CALL_SCORE_BONUS = 5000;
 export const DISTRICT_DECAY_RATE = 0.007; // Slower decay per frame
 export const DISTRICT_PLAYER_PRESENCE_BASE_BOOST = 0.022; // Base boost per frame, REBALANCED from 0.09
 export const DISTRICT_SIREN_BOOST = 0.025; // Slow, constant boost from siren presence
-// ponytail:tune — fable-audit B2: at 32, one Enforce equalled ~53 minutes of rural presence,
+// ponytail:tune — at 32, one investigation equalled ~53 minutes of rural presence,
 // making punishment (not presence) the #1 deterrence-meter mover — the opposite of the lesson.
 export const ENFORCEMENT_DETERRENCE_BOOST = 20; // was 32
-export const WARN_DETERRENCE_BOOST = 12; // Smaller boost for a warning, increased from 5
+export const STANDARD_ACTION_DETERRENCE_BOOST = 12;
 export const COLLEAGUE_DETERRENCE_BOOST = 18; // Boost for using colleague assist
 export const DETERRENCE_HOTSPOT_THRESHOLD = 33; // Below this, a district is a hotspot
 
@@ -107,7 +109,9 @@ export const MAX_DETERRENCE_BLOBS_PER_OFFENDER = 5;
 // RIDS
 export const RIDS_SPAWN_INTERVAL = 500; // Faster spawn interval
 export const RIDS_TIME_PENALTY_INCORRECT_CHECK = 3; // seconds
-export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 3; // was 7 (per audit: a 7s fail skewed choice toward the safe Warn). ponytail: tune to taste after playtest
+export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 3;
+export const RIDS_SCAN_COOLDOWN_SECONDS = 0.75;
+export const RIDS_TARGET_HALF_ANGLE_DEGREES = 60;
 
 export const RIDS_SPAWN_CHANCE_BY_ROAD_TYPE: Record<RoadType, Record<RIDSType, number>> = {
     Motorway:   { Speed: 0.8, Distractions: 0.2, Impairment: 0, Restraints: 0 },
@@ -118,7 +122,7 @@ export const RIDS_SPAWN_CHANCE_BY_ROAD_TYPE: Record<RoadType, Record<RIDSType, n
 };
 
 // Scoring
-export const WARN_SCORE_POINTS = 150; // was 100 — ponytail:tune, narrows the Warn/Enforce gap (fable-audit C)
+export const STANDARD_ACTION_SCORE_POINTS = 150;
 export const BASE_ENFORCEMENT_POINTS: { [key in RIDSType]: number } = {
   Impairment: 500,
   Speed: 400,
@@ -136,10 +140,10 @@ export const CLUTCH_SAVE_BONUS = 250; // resolved a Life-at-Risk with <3s left. 
 export const COMBO_WINDOW_MS = 10000;   // chain another intervention inside this window
 export const COMBO_STEP = 0.5;          // x1 -> x1.5 -> x2 -> x2.5 -> x3
 export const COMBO_MAX_MULT = 3;
-export const SLOWMO_MS = 350;           // brief slow-mo exiting a successful enforce
+export const SLOWMO_MS = 350;           // brief slow-mo exiting a successful investigation
 export const SLOWMO_SCALE = 0.35;
 export const SHIFT_END_SLAM_MS = 900;   // SHIFT OVER freeze-slam before the results screen
-// Once per shift a routine Enforce uncovers a major crime (the interdiction car).
+// Once per shift a deeper investigation uncovers a major crime (the interdiction car).
 export const INTERDICTION_BONUS = 1000;
 export const SPEECH_BUBBLE_LIFESPAN = 4200; // ms — long enough to actually read (user feedback)
 export const ENFORCEMENT_BONUS_POINTS = 150;
@@ -147,15 +151,22 @@ export const ENFORCEMENT_BONUS_POINTS = 150;
 // The ±12,500-swing final bonus invited a last-20s blitz that ignored 70s of neglect.
 export const DETERRENCE_SCORE_RATE = 40; // was 25 (and 10 before that) — continuous accrual is the main deterrence income
 export const FINAL_DETERRENCE_SCORE_MULTIPLIER = 25; // was 50 — points per percentage point over/under 50 at shift end
-// The advertised Warn/Enforce tradeoff: Enforce pays more but costs real shift time
+// A deeper investigation pays more but costs real shift time.
 // (the shift clock freezes during modals, so without this the "slow" option was free).
 export const ENFORCE_TIME_COST_SECONDS = 6;
+export const OVERTIME_DURATION_SECONDS = 30;
 // Colleague saves pay half a personal save — attending yourself must stay the best play
 // (fable-audit B9: 3 free auto-targeted +2500 saves strictly dominated driving there).
 export const COLLEAGUE_SAVE_SCORE_BONUS = 1250;
 export const DETERRENCE_MULTIPLIER_MIN = 1.0;
 export const DETERRENCE_MULTIPLIER_MAX = 1.5;
 export const FLOATING_SCORE_TEXT_LIFESPAN = 2000; // ms
+
+// Traffic collisions should matter without adding a damage model.
+export const CIVILIAN_COLLISION_DISTANCE = 42;
+export const CIVILIAN_COLLISION_COOLDOWN_SECONDS = 1;
+export const CIVILIAN_COLLISION_TIME_PENALTY_SECONDS = 1;
+export const CIVILIAN_COLLISION_VIGILANCE_PENALTY = 12;
 
 // Vigilance Bonus System
 export const DETERRENCE_VIGILANCE_THRESHOLD = 85; // % deterrence needed in all districts
@@ -207,6 +218,10 @@ export const CIVILIAN_SPEEDING_SPEED: Record<DistrictName, number> = {
 export const MINIMAP_WIDTH = 200;
 export const MINIMAP_HEIGHT = 200;
 export const MINIMAP_VIEW_RANGE = 1200; // World units visible from the center of the minimap
+
+// Bound mobile fill-rate while retaining enough backing pixels for crisp HUD-independent art.
+export const MAX_RENDER_DPR = 1.5;
+export const MAX_CANVAS_PIXELS = 5_000_000;
 
 // Per-second rates for delta-time based game loop.
 // Must come AFTER all base constants — TDZ at module evaluation otherwise.

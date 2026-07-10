@@ -1,10 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Player, Civilian, District, DispatchedCall, MinimapMode } from '../types';
 import * as CONSTANTS from '../constants';
-import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
-
-// Static — derived purely from ROAD_NODES; hoisted so it isn't rebuilt every render.
-const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node.pos]));
+import { ROAD_NODES, ROAD_SEGMENTS, mapVersionRef } from '../utils/mapData';
 
 interface MinimapProps {
   player: Player;
@@ -15,6 +12,8 @@ interface MinimapProps {
 }
 
 const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatchedCall, mode }) => {
+  const mapVersion = mapVersionRef.current;
+  const nodeMap = useMemo(() => new Map(ROAD_NODES.map(node => [node.id, node.pos])), [mapVersion]);
   const ridsCars = civilians.filter(c => c.ridsType);
   const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
 

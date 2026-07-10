@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as audio from '../utils/audio';
 import { loadBindings, displayKey, type GameAction } from '../utils/keybindings';
+import { useGamepadNavigation } from './useGamepadNavigation';
 
 interface TutorialProps {
   onComplete: () => void;
@@ -21,13 +22,16 @@ const KeyDisplay: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 
 const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   // Show the player's ACTUAL bindings (they're rebindable in Controls on the menu).
   const bindings = useMemo(() => loadBindings(), []);
   const keysFor = (a: GameAction) => bindings[a].map(displayKey).join(' / ');
 
+  useGamepadNavigation(panelRef);
+
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
-    buttonRef.current?.focus();
+    panelRef.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onComplete();
       // P1: aria-modal without a trap let Tab reach the obscured game. One focusable → pin it.
@@ -42,16 +46,17 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="tutorial-title"
-      className="absolute inset-0 bg-black/80 flex flex-col items-center z-30 p-4 sm:p-8 overflow-y-auto animate-fadeIn"
+      className="absolute inset-0 bg-black/90 flex flex-col items-center z-30 p-3 sm:p-8 overflow-y-auto animate-fadeIn"
+      data-testid="tutorial-shell"
     >
         {/* my-auto centres when content fits, scrolls from the top when it doesn't
             (sm:justify-center clipped the top on landscape phones). */}
-        <div className="w-full max-w-6xl my-auto">
-            <h1 id="tutorial-title" className="text-3xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
+        <div ref={panelRef} tabIndex={-1} className="w-full max-w-6xl my-auto focus:outline-none">
+            <h1 id="tutorial-title" className="text-2xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
             {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL: {mapLabel}</p>}
 
             {/* The one sentence that matters, before any mechanics. */}
-            <p className="max-w-3xl mx-auto text-center text-base sm:text-xl text-white font-sans mb-4 sm:mb-6 bg-cyan-950/50 border-2 border-cyan-500/40 rounded-lg px-4 py-3">
+            <p className="max-w-3xl mx-auto text-center text-sm sm:text-xl text-white font-sans mb-3 sm:mb-6 bg-cyan-950/50 border-2 border-cyan-500/40 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
                 <span className="text-cyan-300 font-bold font-display">THE JOB:</span> keep every district's <span className="text-white font-bold">deterrence</span> high by <em>being seen</em>.
                 Stops score points. <span className="text-cyan-300 font-bold">presence saves lives</span>.
             </p>
@@ -73,7 +78,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
                     </p>
                     <ul className="space-y-1.5">
                         <li>Near one? <span className="text-yellow-300 font-bold">RIDS CHECK</span>.</li>
-                        <li><span className="text-cyan-300 font-bold">Warn</span>: fast, small. <span className="text-pink-400 font-bold">Enforce</span>: mini-game, big, −6s.</li>
+                        <li><span className="text-cyan-300 font-bold">Standard enforcement</span>: fast, small. <span className="text-pink-400 font-bold">Investigate</span>: mini-game, big, −6s.</li>
                         <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go, or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
                         <li>One car each shift hides something <em>much</em> bigger…</li>
                     </ul>
@@ -81,7 +86,7 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
 
                 <TutorialInfoCard title="3 · CONTROLS">
                     {/* Keyboard (desktop): live bindings in a no-wrap grid — chips never split lines. */}
-                    <div className="[@media(pointer:coarse)]:hidden">
+                    <div className="[@media(any-pointer:coarse)]:hidden">
                         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
                             <span className="whitespace-nowrap"><KeyDisplay>{[bindings.forward[0], bindings.left[0], bindings.backward[0], bindings.right[0]].map(displayKey).join(' ')}</KeyDisplay></span><span className="whitespace-nowrap">Drive <span className="text-gray-400">(or arrows)</span></span>
                             <span><KeyDisplay>{keysFor('rids')}</KeyDisplay></span><span className="whitespace-nowrap">RIDS Check</span>
@@ -93,20 +98,20 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
                         <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · gamepad works · rebind from the menu.</p>
                     </div>
                     {/* Touch: same grid, on-screen button names. */}
-                    <div className="hidden [@media(pointer:coarse)]:block">
+                    <div className="hidden [@media(any-pointer:coarse)]:block">
                         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
-                            <span className="font-bold text-white whitespace-nowrap">Joystick</span><span className="whitespace-nowrap">Drive: harder push = faster</span>
-                            <span className="font-bold text-yellow-300">RIDS</span><span className="whitespace-nowrap">Check nearby offender</span>
-                            <span className="font-bold text-cyan-400">BOOST</span><span className="whitespace-nowrap">Speed burst</span>
-                            <span className="font-bold text-red-400">SIREN</span><span className="whitespace-nowrap">Clear traffic, deter</span>
-                            <span className="font-bold text-yellow-400">ASSIST</span><span className="whitespace-nowrap">Send a colleague</span>
+                            <span className="font-bold text-white">Joystick</span><span>Drive: harder push = faster</span>
+                            <span className="font-bold text-yellow-300">RIDS</span><span>Check nearby offender</span>
+                            <span className="font-bold text-cyan-400">BOOST</span><span>Speed burst</span>
+                            <span className="font-bold text-red-400">SIREN</span><span>Clear traffic, deter</span>
+                            <span className="font-bold text-yellow-400">ASSIST</span><span>Send a colleague</span>
                         </div>
                         <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · top dots = district deterrence.</p>
                     </div>
                 </TutorialInfoCard>
             </div>
 
-            <div className="text-center mt-6 sm:mt-10">
+            <div className="text-center mt-4 sm:mt-10">
                 <button
                     ref={buttonRef}
                     onClick={() => {
@@ -122,11 +127,11 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
                         try { (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.('landscape')?.catch?.(() => {}); } catch { /* ignore */ }
                         onComplete();
                     }}
-                    className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-4 px-12 rounded-lg text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
+                    className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 sm:py-4 px-8 sm:px-12 rounded-lg text-xl sm:text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
                 >
                     Start Patrol
                 </button>
-                <p className="text-gray-400 text-sm mt-3">Press <KeyDisplay>Esc</KeyDisplay> to skip</p>
+                <p className="text-gray-400 text-sm mt-2">Press <KeyDisplay>Esc</KeyDisplay> to skip · gamepad A starts</p>
             </div>
         </div>
     </div>

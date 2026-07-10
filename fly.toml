@@ -2,10 +2,11 @@ app = 'generaldeterrence'
 primary_region = 'syd'
 
 [build]
-  image = "ghcr.io/jesposito/generaldeterrence:latest"
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "3000"
+  TRUST_PROXY = "1"
 
 [http_service]
   internal_port = 3000

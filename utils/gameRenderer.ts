@@ -5,6 +5,20 @@ import { currentWeatherRef } from './weather';
 import { Player, Civilian, SparkParticle, SkidMark, TireSmokeParticle, DeterrenceBlob, CollectionEffect, FloatingScoreText, Explosion, PatrolPost, RIDSType } from '../types';
 import { getDistrictForPoint } from './geometry';
 
+export function getCanvasRenderScale(
+  cssWidth: number,
+  cssHeight: number,
+  devicePixelRatio: number,
+  maxRenderDpr: number,
+  maxCanvasPixels: number,
+): number {
+  const width = Math.max(1, cssWidth);
+  const height = Math.max(1, cssHeight);
+  const requestedDpr = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
+  const pixelBudgetScale = Math.sqrt(maxCanvasPixels / (width * height));
+  return Math.max(Number.EPSILON, Math.min(requestedDpr, maxRenderDpr, pixelBudgetScale));
+}
+
 // Pre-computed node positions for fast lookup
 const nodePosMap = new Map(ROAD_NODES.map(n => [n.id, n.pos]));
 
@@ -560,8 +574,8 @@ export function drawGame(
 
   ctx.save();
 
-  // Handle DPR for crisp rendering on mobile
-  const dpr = window.devicePixelRatio || 1;
+  // Match the actual backing store. Game caps this by a pixel budget on high-DPR devices.
+  const dpr = ctx.canvas.width / Math.max(1, width);
   ctx.scale(dpr, dpr);
 
   // Camera transform: center on camera position, apply zoom and shake
@@ -802,7 +816,7 @@ export function drawGame(
 function drawWeatherOverlay(ctx: CanvasRenderingContext2D, width: number, height: number, time: number): void {
   const w = currentWeatherRef.current;
   if (w.kind === 'clear' || w.kind === 'wind') return; // wind is sim/audio flavour only
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = ctx.canvas.width / Math.max(1, width);
   ctx.save();
   ctx.scale(dpr, dpr);
 

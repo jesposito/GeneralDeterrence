@@ -6,10 +6,11 @@ import { generateSavedLifeStories, pickDebrief, pickRealShiftLine } from '../uti
 import { collectStory } from '../utils/codex';
 import ShareResult from './ShareResult';
 import * as CONSTANTS from '../constants';
+import { useGamepadNavigation } from './useGamepadNavigation';
 
 const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = {
-  Enforce: '🚨',
-  Warn: '⚠️',
+  Investigate: '🚨',
+  Standard: '📋',
 };
 const COLLEAGUE_CALL_ICON = '🤝';
 
@@ -17,25 +18,27 @@ const COLLEAGUE_CALL_ICON = '🤝';
 // StrictMode's double render can't double-count the streak or hide the "new best" flag.
 const PERSONAL_KEY = 'gd-personal';
 const personalStatsCache = new WeakMap<FinalScoreBreakdown, { isNewBest: boolean; best: number; prevBest: number; streak: number }>();
-function getPersonalStats(breakdown: FinalScoreBreakdown) {
+function getPersonalStats(breakdown: FinalScoreBreakdown, mode: 'daily' | 'free', competitionDay?: string) {
   const cached = personalStatsCache.get(breakdown);
   if (cached) return cached;
   const pad = (n: number) => String(n).padStart(2, '0');
   const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const today = dayKey(new Date());
-  const yesterday = dayKey(new Date(Date.now() - 86_400_000));
+  const today = mode === 'daily' && competitionDay ? competitionDay : dayKey(new Date());
+  const [year, month, day] = today.split('-').map(Number);
+  const yesterday = new Date(Date.UTC(year, month - 1, day) - 86_400_000).toISOString().slice(0, 10);
+  const storageKey = mode === 'daily' ? PERSONAL_KEY : `${PERSONAL_KEY}-free`;
   let prev = { best: 0, lastDay: '', streak: 0 };
-  try { prev = { ...prev, ...JSON.parse(localStorage.getItem(PERSONAL_KEY) || '{}') }; } catch { /* defaults */ }
+  try { prev = { ...prev, ...JSON.parse(localStorage.getItem(storageKey) || '{}') }; } catch { /* defaults */ }
   const isNewBest = breakdown.finalScore > prev.best;
-  const streak = prev.lastDay === today ? prev.streak : prev.lastDay === yesterday ? prev.streak + 1 : 1;
+  const streak = mode === 'daily'
+    ? (prev.lastDay === today ? prev.streak : prev.lastDay === yesterday ? prev.streak + 1 : 1)
+    : 0;
   const next = { best: Math.max(prev.best, breakdown.finalScore), lastDay: today, streak };
-  try { localStorage.setItem(PERSONAL_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
   const stats = { isNewBest, best: next.best, prevBest: prev.best, streak };
   personalStatsCache.set(breakdown, stats);
   return stats;
 }
-
-const API_BASE = (typeof window !== 'undefined' && (window as unknown as { LEADERBOARD_API?: string }).LEADERBOARD_API) || '/api';
 
 interface HeatmapCell {
   x: number;
@@ -256,23 +259,32 @@ const useCountUp = (endValue: number, duration = 1500) => {
     return count;
 };
 
+export type SubmissionResult = {
+  status: 'uploaded' | 'queued-offline' | 'rejected';
+  message: string;
+  percentile?: number | null;
+};
+
 interface GameOverProps {
   scoreBreakdown: FinalScoreBreakdown;
   leaderboard: LeaderboardEntry[];
   onPlayAgain: () => void;
   onQuickRestart?: () => void;
-  onAddToLeaderboard: (name: string, email?: string, station?: string) => void;
+  onAddToLeaderboard: (name: string, station?: string) => Promise<SubmissionResult>;
   mapLabel?: string;
   shiftMode?: 'daily' | 'free';
+  competitionDay?: string;
+  submissionEligible?: boolean;
+  leaderboardRefreshKey?: number;
+  onDeleteMyScores: () => Promise<boolean>;
 }
 
-const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onQuickRestart, onAddToLeaderboard, mapLabel, shiftMode = 'daily' }) => {
+const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onQuickRestart, onAddToLeaderboard, mapLabel, shiftMode = 'daily', competitionDay, submissionEligible = false, leaderboardRefreshKey = 0, onDeleteMyScores }) => {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [station, setStation] = useState(() => { try { return localStorage.getItem('gd-station') || ''; } catch { return ''; } });
-  const [submitted, setSubmitted] = useState(false);
+  const [submission, setSubmission] = useState<SubmissionResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
-  const [percentile, setPercentile] = useState<number | null>(null);
   const { enforcementScore, deterrenceScore, livesSavedBonus, livesLostPenalty, finalScore, finalDeterrenceBonus } = scoreBreakdown;
 
   const animatedFinalScore = useCountUp(finalScore);
@@ -282,39 +294,40 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   const animatedLivesSavedBonus = useCountUp(livesSavedBonus);
   const animatedLivesLostPenalty = useCountUp(livesLostPenalty);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && !submitted) {
+    if (name.trim() && !submitting) {
       const cleanStation = station.trim().toUpperCase();
-      try { if (cleanStation) localStorage.setItem('gd-station', cleanStation); } catch { /* ignore */ }
-      onAddToLeaderboard(name.trim(), email.trim() || undefined, cleanStation || undefined);
-      setSubmitted(true);
+      if (cleanStation && !/^[A-Z0-9]{2,4}$/.test(cleanStation)) {
+        setSubmission({ status: 'rejected', message: 'Station code must be 2-4 letters or numbers.' });
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const result = await onAddToLeaderboard(name.trim(), cleanStation || undefined);
+        setSubmission(result);
+        if (result.status !== 'rejected' && cleanStation) {
+          try { localStorage.setItem('gd-station', cleanStation); } catch { /* ignore */ }
+        }
+      } catch {
+        setSubmission({ status: 'rejected', message: 'The score could not be submitted.' });
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
-  // "Top X% today" from the daily board; hidden when offline or empty.
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/leaderboard/percentile?score=${scoreBreakdown.finalScore}`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (!cancelled && d && d.percentile) setPercentile(d.percentile); })
-      .catch(() => { /* offline: just don't show it */ });
-    return () => { cancelled = true; };
-  }, [scoreBreakdown.finalScore]);
-
-  // finalScore can be negative (livesLostPenalty); don't prompt the required name/email form for a
-  // zero/negative shift.
-  const isHighScore = finalScore > 0 && (leaderboard.length < 10 || finalScore > (leaderboard[leaderboard.length - 1]?.score ?? 0));
-
   const headingRef = useRef<HTMLHeadingElement>(null);
   const playAgainRef = useRef<HTMLButtonElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  useGamepadNavigation(reportRef);
   // Move focus to the results heading on mount so AT announces the new screen (not the input —
   // that pops the mobile keyboard over the score and skips the breakdown).
   useEffect(() => { headingRef.current?.focus(); }, []);
   // After submit the form (holding focus) unmounts; move focus to Play Again.
-  useEffect(() => { if (submitted) playAgainRef.current?.focus(); }, [submitted]);
+  useEffect(() => { if (submission?.status === 'uploaded' || submission?.status === 'queued-offline') playAgainRef.current?.focus(); }, [submission]);
 
-  const personal = getPersonalStats(scoreBreakdown);
+  const personal = getPersonalStats(scoreBreakdown, shiftMode, competitionDay);
   // Where are they now? One line per saved life (cap 4 shown), seeded off the score so
   // re-renders show the same stories.
   const stories = useMemo(
@@ -335,7 +348,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   return (
     // No justify-center: the report is taller than any viewport now, and flex-centering an
     // overflowing column makes the top unreachable and scrolling erratic.
-    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
+    <div ref={reportRef} className="w-full h-full bg-[#0d0221] flex flex-col items-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
       <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
       {mapLabel && <p className="text-xs md:text-sm text-gray-400 mb-2 font-display tracking-wider">{mapLabel}</p>}
       {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}
@@ -346,6 +359,9 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
       <p className="text-sm md:text-base text-gray-400 mb-1 font-sans">
         All districts held ≥50% deterrence for {Math.round(scoreBreakdown.coverageRatio * 100)}% of your shift.
       </p>
+      {scoreBreakdown.challengeAssist && (
+        <p className="text-xs text-cyan-300 mb-2 font-sans">Untimed decision challenges were enabled for this shift.</p>
+      )}
       {scoreBreakdown.offencesPrevented > 0 && (
         <p className="text-base md:text-xl text-cyan-300 mb-4 font-display tracking-wide">
           {scoreBreakdown.offencesPrevented} {scoreBreakdown.offencesPrevented === 1 ? 'OFFENCE' : 'OFFENCES'} NEVER HAPPENED. Your visible presence prevented them.
@@ -356,11 +372,21 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
           ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest > 0 ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
           : <span className="text-gray-400">{(personal.best - scoreBreakdown.finalScore).toLocaleString()} short of your best ({personal.best.toLocaleString()})</span>}
         {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
-        {percentile && <span className="text-yellow-300"> · Top {percentile}% of submitted runs today</span>}
+        {shiftMode === 'daily' && submission?.percentile && <span className="text-yellow-300"> · Top {submission.percentile}% of submitted runs that day</span>}
         {scoreBreakdown.overtime && <span className="text-cyan-300"> · <span aria-hidden="true">⏱ </span>OVERTIME earned</span>}
       </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
       <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-4 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
+      <div className="w-full max-w-xl grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        {onQuickRestart && (
+          <button ref={playAgainRef} onClick={onQuickRestart} className="w-full bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider animate-button-pulse-glow">
+            Run It Back
+          </button>
+        )}
+        <button ref={onQuickRestart ? undefined : playAgainRef} onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-base md:text-lg transition font-display tracking-wider">
+          Main Menu
+        </button>
+      </div>
 
       {/* The once-per-shift interdiction: the routine stop that turned out to be anything but. */}
       {scoreBreakdown.interdiction && (
@@ -393,7 +419,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
 
       <ShareResult
         breakdown={scoreBreakdown}
-        ctx={{ mode: shiftMode, storyLine: stories[0]?.story, percentile, streak: personal.streak }}
+        ctx={{ mode: shiftMode, storyLine: stories[0]?.story, percentile: submission?.percentile ?? undefined, streak: personal.streak, competitionDay }}
       />
 
       {/* Your run next to the real thing, styled the same. The lesson lands by format. */}
@@ -464,9 +490,9 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
         {/* Leaderboard & Actions */}
         <div className="bg-black/50 p-4 md:p-6 rounded-lg shadow-lg flex flex-col space-y-4 border-2 border-cyan-500/50">
             <div className="flex-grow min-h-[150px] flex flex-col justify-center">
-                 {isHighScore && !submitted && (
+                 {shiftMode === 'daily' && submissionEligible && submission?.status !== 'uploaded' && submission?.status !== 'queued-offline' && (
                      <form onSubmit={handleSubmit} className="flex flex-col items-center space-y-3">
-                        <h2 className="text-xl md:text-2xl font-semibold text-green-400 font-display">New High Score!</h2>
+                        <h2 className="text-xl md:text-2xl font-semibold text-green-400 font-display">Submit Daily Run</h2>
                         <label htmlFor="hs-name" className="sr-only">Your name</label>
                         <input
                             id="hs-name"
@@ -478,17 +504,6 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                             required
                             className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-display tracking-widest"
                         />
-                        <label htmlFor="hs-email" className="sr-only">Email (optional)</label>
-                        <input
-                            id="hs-email"
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="EMAIL (optional - to update score)"
-                            aria-describedby="hs-email-help"
-                            className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-sans text-sm"
-                        />
-                        <p id="hs-email-help" className="text-xs text-gray-400 font-sans">Email lets you update your score if you beat it later</p>
                         <label htmlFor="hs-station" className="sr-only">Station code (optional)</label>
                         <input
                             id="hs-station"
@@ -496,34 +511,34 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                             value={station}
                             onChange={(e) => setStation(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
                             placeholder="STATION CODE (optional, 2-4 chars)"
+                            minLength={2}
+                            maxLength={4}
+                            pattern="[A-Z0-9]{2,4}"
                             aria-describedby="hs-station-help"
                             className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-display tracking-widest text-sm"
                         />
                         <p id="hs-station-help" className="text-xs text-gray-400 font-sans">Share a code with mates to get your own crew leaderboard</p>
-                        <button type="submit" className="w-full bg-green-600 hover:bg-green-500 border-2 border-green-400 text-white font-bold py-2 px-4 rounded transition font-display tracking-wider">
-                            Submit Score
+                        <p className="text-xs text-gray-400 font-sans">Your name, station code, score, and run summary are public within a 90-day retention window. No email is collected.</p>
+                        <button type="submit" disabled={submitting} className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-60 border-2 border-green-400 text-white font-bold py-2 px-4 rounded transition font-display tracking-wider">
+                            {submitting ? 'Uploading…' : 'Submit Score'}
                         </button>
                     </form>
                 )}
-                {submitted && (
-                    <p role="status" className="text-lg text-green-400 text-center animate-fadeIn">Score Submitted!</p>
+                {submission && (
+                    <p role="status" className={`text-lg text-center animate-fadeIn ${
+                      submission.status === 'uploaded' ? 'text-green-400' : submission.status === 'queued-offline' ? 'text-yellow-300' : 'text-red-400'
+                    }`}>{submission.message}</p>
                 )}
-                {!isHighScore && (
-                    <p className="text-lg text-gray-400 text-center">Good work, Officer.</p>
+                {shiftMode === 'free' && (
+                    <p className="text-lg text-gray-400 text-center">Free Patrol scores stay on this device and never enter the Daily board.</p>
+                )}
+                {shiftMode === 'daily' && !submissionEligible && (
+                    <p className="text-lg text-yellow-300 text-center">Offline Daily run. Community submission is unavailable for this shift.</p>
                 )}
             </div>
 
-            {onQuickRestart && (
-                <button ref={playAgainRef} onClick={onQuickRestart} className="w-full bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider animate-button-pulse-glow">
-                    Run It Back
-                </button>
-            )}
-            <button ref={onQuickRestart ? undefined : playAgainRef} onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-2 px-4 rounded text-base md:text-lg transition font-display tracking-wider">
-                Main Menu
-            </button>
-            
             <hr className="border-gray-700" />
-            <Leaderboard scores={leaderboard} />
+            <Leaderboard scores={leaderboard} refreshKey={leaderboardRefreshKey} onDeleteMine={onDeleteMyScores} />
         </div>
       </div>
 

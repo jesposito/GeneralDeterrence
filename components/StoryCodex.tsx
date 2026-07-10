@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { getCodex } from '../utils/codex';
+import { useGamepadNavigation } from './useGamepadNavigation';
 
 // The Story Codex: every saved-life story collected, one per completed shift-day.
 // Same dialog shell/trap pattern as ControlsSettings.
@@ -7,6 +8,7 @@ import { getCodex } from '../utils/codex';
 const StoryCodex: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const panelRef = useRef<HTMLDivElement>(null);
     const codex = useMemo(() => getCodex().slice().reverse(), []);
+    useGamepadNavigation(panelRef, { onBack: onClose });
 
     useEffect(() => {
         const prev = document.activeElement as HTMLElement | null;

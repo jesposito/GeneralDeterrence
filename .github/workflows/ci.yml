@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 jobs:
   build:
@@ -12,9 +13,51 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+      - name: Test server
+        working-directory: server
+        run: npm test
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Browser and performance gates
+        env:
+          ALLOWED_ORIGINS: http://127.0.0.1:4173
+          BASE_URL: http://127.0.0.1:4173
+          DATA_DIR: ${{ runner.temp }}/general-deterrence-ci
+          DIST_DIR: ${{ github.workspace }}/dist
+          PORT: 4173
+          WRITE_RATE_LIMIT: 100
+        run: |
+          set -euo pipefail
+          server_log="$RUNNER_TEMP/general-deterrence-server.log"
+          node server/index.js >"$server_log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$BASE_URL/api/health" >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat "$server_log"
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent --show-error "$BASE_URL/api/health"
+
+          BROWSER=chromium npm run e2e:mobile
+          BROWSER=firefox PWA=0 npm run e2e:mobile
+          BROWSER=webkit PWA=0 npm run e2e:mobile
+          DPR=2 npm run perf:mobile
+          DPR=3 npm run perf:mobile
+      - name: Build production container
+        run: docker build -t general-deterrence-ci .

@@ -5,7 +5,9 @@ import QuickTimeEvent from './mini-games/QuickTimeEvent';
 import PrecisionSlider from './mini-games/PrecisionSlider';
 import SituationalJudgement from './mini-games/SituationalJudgement';
 
-const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType, difficulty }) => {
+type MiniGameModalProps = MiniGameProps & { paused?: boolean; scenarioIndex?: number };
+
+const MiniGameModal: React.FC<MiniGameModalProps> = ({ onComplete, ridsType, difficulty, paused = false, scenarioIndex, challengeAssist = false }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
   // gd-0wi.23: dialog semantics + focus management. This modal is complete-to-close (no
@@ -17,7 +19,7 @@ const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType, difficul
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
       const focusables = panelRef.current?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
       );
       if (!focusables || focusables.length === 0) { e.preventDefault(); return; }
       const first = focusables[0];
@@ -32,28 +34,28 @@ const MiniGameModal: React.FC<MiniGameProps> = ({ onComplete, ridsType, difficul
   const renderMiniGame = () => {
     switch (ridsType) {
       case 'Impairment':
-        return <QuickTimeEvent onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} />;
+        return <QuickTimeEvent onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} paused={paused} challengeAssist={challengeAssist} />;
       case 'Speed':
-        return <PrecisionSlider onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} />;
+        return <PrecisionSlider onComplete={onComplete} ridsType={ridsType} difficulty={difficulty} paused={paused} challengeAssist={challengeAssist} />;
       case 'Restraints':
       case 'Distractions':
-        return <SituationalJudgement onComplete={onComplete} ridsType={ridsType} />;
+        return <SituationalJudgement onComplete={onComplete} ridsType={ridsType} paused={paused} scenarioIndex={scenarioIndex} />;
       default:
         return null;
     }
   };
 
   const titles: Record<RIDSType, string> = {
-      Impairment: "Breath Screening Test",
+      Impairment: "Alcohol Breath Screening",
       Speed: "Speed Enforcement",
       Restraints: "Driver Intervention",
       Distractions: "Driver Intervention",
   }
 
   return (
-    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20 animate-fadeIn">
-      <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="minigame-title" className="bg-gray-900 p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-pink-500 shadow-lg shadow-pink-500/50 focus:outline-none">
-        <h2 id="minigame-title" className="text-3xl font-bold text-yellow-400 mb-6 font-display text-glow-yellow">{titles[ridsType]}</h2>
+    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-start justify-center z-20 animate-fadeIn overflow-y-auto p-2 sm:p-4" data-testid="minigame-shell">
+      <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="minigame-title" className="bg-gray-900 p-4 sm:p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-pink-500 shadow-lg shadow-pink-500/50 focus:outline-none my-auto">
+        <h2 id="minigame-title" className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-3 sm:mb-6 font-display text-glow-yellow">{titles[ridsType]}</h2>
         {renderMiniGame()}
       </div>
     </div>

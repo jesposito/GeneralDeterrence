@@ -29,15 +29,16 @@ const MuteToggle: React.FC = () => {
     <button
       type="button"
       aria-pressed={muted}
-      aria-label="Mute sound effects"
+      aria-label={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+      data-testid="mute-toggle"
       onClick={toggle}
       onContextMenu={(e) => e.preventDefault()}
       style={{
-        marginTop: 'env(safe-area-inset-top)',
-        marginRight: 'env(safe-area-inset-right)',
+        top: 'max(0.5rem, env(safe-area-inset-top))',
+        right: 'max(0.5rem, env(safe-area-inset-right))',
         touchAction: 'manipulation',
       }}
-      className="fixed top-2 right-2 w-12 h-12 z-50 rounded-full bg-black/60 border-2 border-cyan-500/50 text-white text-xl flex items-center justify-center shadow-lg select-none transition-colors hover:bg-cyan-900/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+      className="fixed top-2 right-2 w-11 h-11 z-50 rounded-full bg-black/75 border-2 border-cyan-500/60 text-white text-xl flex items-center justify-center shadow-lg select-none transition-colors hover:bg-cyan-900/60 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
     >
       <span aria-hidden="true">{muted ? '\u{1F507}' : '\u{1F50A}'}</span>
     </button>

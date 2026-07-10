@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as audio from '../utils/audio';
 
 type ControlAction = 'forward' | 'backward' | 'left' | 'right' | 'boost';
@@ -11,6 +11,30 @@ interface TouchControlsProps {
   onColleagueCall: () => void;
   isSirenActive?: boolean;
 }
+
+const touchCapableNow = () => typeof window !== 'undefined' && (
+  navigator.maxTouchPoints > 0 || window.matchMedia('(any-pointer: coarse)').matches
+);
+
+/** Covers phones, convertibles, and hybrid laptops whose primary pointer is still a mouse. */
+export const useTouchCapability = () => {
+  const [capable, setCapable] = useState(touchCapableNow);
+  useEffect(() => {
+    const query = window.matchMedia('(any-pointer: coarse)');
+    const update = () => setCapable(touchCapableNow());
+    const actualTouch = (event: PointerEvent) => { if (event.pointerType === 'touch') setCapable(true); };
+    update();
+    if (typeof query.addEventListener === 'function') query.addEventListener('change', update);
+    else query.addListener(update);
+    window.addEventListener('pointerdown', actualTouch, { passive: true });
+    return () => {
+      if (typeof query.removeEventListener === 'function') query.removeEventListener('change', update);
+      else query.removeListener(update);
+      window.removeEventListener('pointerdown', actualTouch);
+    };
+  }, []);
+  return capable;
+};
 
 const JOYSTICK_BASE = 128;
 const JOYSTICK_KNOB = 56;

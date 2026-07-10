@@ -29,21 +29,23 @@ let engineGain: GainNode | null = null;
 function getCtx(): AudioContext | null {
   if (ctx) return ctx;
   if (typeof window === 'undefined') return null;
-  const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+  const Ctor = window.AudioContext
+    || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctor) return null;
   try {
-    ctx = new Ctor();
-    masterGain = ctx.createGain();
+    const context = new Ctor();
+    ctx = context;
+    masterGain = context.createGain();
     masterGain.gain.value = 0.5;
     // Master limiter — cheap insurance against transient stacking / clipping when many
     // synth voices overlap. masterGain -> compressor -> destination.
-    const limiter = ctx.createDynamicsCompressor();
+    const limiter = context.createDynamicsCompressor();
     limiter.threshold.value = -6;
     limiter.ratio.value = 4;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.25;
-    masterGain.connect(limiter).connect(ctx.destination);
-    return ctx;
+    masterGain.connect(limiter).connect(context.destination);
+    return context;
   } catch {
     return null;
   }

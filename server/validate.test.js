@@ -1,59 +1,109 @@
 import { describe, it, expect } from 'vitest';
 import validate from './validate.js';
 
-const { validateSubmission, MAX_SCORE } = validate;
+const {
+  validateRunRequest,
+  validateEditTokenRequest,
+  validateSubmission,
+  validateClientError,
+  MIN_ELAPSED_MS,
+  MAX_ELAPSED_MS,
+} = validate;
 
-describe('validateSubmission', () => {
-  it('accepts and normalizes a valid submission', () => {
-    const r = validateSubmission({ name: '  Ana  ', score: 1200 });
-    expect(r.ok).toBe(true);
-    expect(r.value).toEqual({ name: 'Ana', score: 1200, email: null, station: null, attempts: null });
-  });
+const validBreakdown = {
+  enforcementScore: 100,
+  deterrenceScore: 200,
+  finalDeterrenceBonus: -50,
+  livesSavedBonus: 1250,
+  livesLostPenalty: 2500,
+  finalScore: -1000,
+  livesSaved: 1,
+  livesLost: 1,
+  offencesPrevented: 3,
+  overtime: false,
+  challengeAssist: false,
+  coverageRatio: 0.4,
+  presenceGrade: 'C',
+};
+const validSubmission = {
+  token: 't'.repeat(43),
+  name: '  Ana  ',
+  station: 'tawa',
+  elapsedMs: 90_000,
+  breakdown: validBreakdown,
+};
 
-  it('rejects missing / non-string / empty / overlong names', () => {
-    expect(validateSubmission({ score: 1 }).ok).toBe(false);
-    expect(validateSubmission({ name: 42, score: 1 }).ok).toBe(false);
-    expect(validateSubmission({ name: '   ', score: 1 }).ok).toBe(false);
-    expect(validateSubmission({ name: 'x'.repeat(25), score: 1 }).ok).toBe(false);
-  });
-
-  it('rejects NaN / Infinity / float / negative / over-cap / non-number scores', () => {
-    for (const s of [NaN, Infinity, -Infinity, 1.5, -1, MAX_SCORE + 1, '5', {}, null, undefined]) {
-      expect(validateSubmission({ name: 'A', score: s }).ok).toBe(false);
-    }
-  });
-
-  it('accepts boundary scores 0 and MAX_SCORE', () => {
-    expect(validateSubmission({ name: 'A', score: 0 }).ok).toBe(true);
-    expect(validateSubmission({ name: 'A', score: MAX_SCORE }).ok).toBe(true);
-  });
-
-  it('rejects malformed email, accepts and lowercases a valid one', () => {
-    expect(validateSubmission({ name: 'A', score: 1, email: 'nope' }).ok).toBe(false);
-    expect(validateSubmission({ name: 'A', score: 1, email: 'x'.repeat(250) + '@a.com' }).ok).toBe(false);
-    const r = validateSubmission({ name: 'A', score: 1, email: 'Officer@Police.NZ' });
-    expect(r.ok).toBe(true);
-    expect(r.value.email).toBe('officer@police.nz');
-  });
-
-  it('never returns a client-supplied timestamp', () => {
-    const r = validateSubmission({ name: 'A', score: 1, timestamp: 0, extra: 'ignored' });
-    expect(r.value).not.toHaveProperty('timestamp');
-    expect(r.value).not.toHaveProperty('extra');
+describe('validateRunRequest', () => {
+  it('requires a bound mode and random edit token', () => {
+    expect(validateRunRequest({ mode: 'daily', editToken: 'e'.repeat(32) }).value)
+      .toEqual({ mode: 'daily', editToken: 'e'.repeat(32) });
+    expect(validateRunRequest({ mode: 'ranked', editToken: 'e'.repeat(32) }).ok).toBe(false);
+    expect(validateRunRequest({ mode: 'free', editToken: 'short' }).ok).toBe(false);
   });
 });
 
-describe('station codes', () => {
-  it('accepts and uppercases a valid station code', () => {
-    const r = validateSubmission({ name: 'Ana', score: 1, station: 'tawa' });
-    expect(r.ok).toBe(true);
-    expect(r.value.station).toBe('TAWA');
+describe('validateEditTokenRequest', () => {
+  it('accepts only a valid edit token', () => {
+    expect(validateEditTokenRequest({ editToken: 'e'.repeat(32) }).value)
+      .toEqual({ editToken: 'e'.repeat(32) });
+    expect(validateEditTokenRequest({ editToken: 'short' }).ok).toBe(false);
+    expect(validateEditTokenRequest({ editToken: 'e'.repeat(32), email: 'x@example.test' }).ok).toBe(false);
+  });
+});
+
+describe('validateSubmission', () => {
+  it('accepts and normalizes a complete run payload', () => {
+    const result = validateSubmission(validSubmission);
+    expect(result.ok).toBe(true);
+    expect(result.value.name).toBe('Ana');
+    expect(result.value.station).toBe('TAWA');
+    expect(result.value.breakdown).toEqual(validBreakdown);
   });
 
-  it('treats empty station as null and rejects bad codes', () => {
-    expect(validateSubmission({ name: 'Ana', score: 1, station: '' }).value.station).toBe(null);
-    expect(validateSubmission({ name: 'Ana', score: 1, station: 'X' }).ok).toBe(false);
-    expect(validateSubmission({ name: 'Ana', score: 1, station: 'TOOLONG' }).ok).toBe(false);
-    expect(validateSubmission({ name: 'Ana', score: 1, station: 'a b' }).ok).toBe(false);
+  it('rejects missing tokens, names, email, and implausible elapsed time', () => {
+    expect(validateSubmission({ ...validSubmission, token: 'short' }).ok).toBe(false);
+    expect(validateSubmission({ ...validSubmission, name: ' ' }).ok).toBe(false);
+    expect(validateSubmission({ ...validSubmission, name: 'Ana\u202e123' }).error).toMatch(/control/i);
+    expect(validateSubmission({ ...validSubmission, email: 'officer@example.test' }).error).toMatch(/email/i);
+    expect(validateSubmission({ ...validSubmission, elapsedMs: MIN_ELAPSED_MS - 1 }).ok).toBe(false);
+    expect(validateSubmission({ ...validSubmission, elapsedMs: MAX_ELAPSED_MS + 1 }).ok).toBe(false);
+  });
+
+  it('rejects inconsistent score, grade, and life totals', () => {
+    expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, finalScore: 99 } }).error).toMatch(/score/i);
+    expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, presenceGrade: 'S' } }).error).toMatch(/grade/i);
+    expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, livesLostPenalty: 0 } }).error).toMatch(/lost/i);
+    expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, livesSavedBonus: 5000 } }).error).toMatch(/saved/i);
+    expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, challengeAssist: 'yes' } }).error).toMatch(/assist/i);
+  });
+
+  it('sums the independently rounded score components exactly', () => {
+    // Source values such as 200.4 and -49.6 can make a rounded raw total differ by one.
+    // The wire contract is the sum of the independently rounded, exposed components.
+    expect(validateSubmission(validSubmission).ok).toBe(true);
+    expect(validateSubmission({
+      ...validSubmission,
+      breakdown: { ...validBreakdown, finalScore: validBreakdown.finalScore + 1 },
+    }).error).toMatch(/score/i);
+  });
+
+  it('drops unneeded breakdown fields and rejects malformed stations', () => {
+    const result = validateSubmission({
+      ...validSubmission,
+      station: '',
+      breakdown: { ...validBreakdown, patrolPath: [{ x: 1, y: 2 }] },
+    });
+    expect(result.value.station).toBe(null);
+    expect(result.value.breakdown).not.toHaveProperty('patrolPath');
+    expect(validateSubmission({ ...validSubmission, station: 'TOOLONG' }).ok).toBe(false);
+  });
+});
+
+describe('validateClientError', () => {
+  it('accepts only capped message and screen strings', () => {
+    expect(validateClientError({ message: 'render failed', screen: 'Playing' }).ok).toBe(true);
+    expect(validateClientError({ message: 'x', screen: 'Playing', email: 'x@y.z' }).ok).toBe(false);
+    expect(validateClientError({ message: 'x'.repeat(501), screen: 'Playing' }).ok).toBe(false);
+    expect(validateClientError({ message: 'x', screen: '' }).ok).toBe(false);
   });
 });

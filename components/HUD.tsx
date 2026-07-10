@@ -3,6 +3,7 @@ import { Player, Civilian, District, DistrictName, DispatchedCall, MinimapMode, 
 import Minimap from './Minimap';
 import * as CONSTANTS from '../constants';
 import Compass from './Compass';
+import { offscreenIndicatorPosition, type ViewTransform } from './hudGeometry';
 
 interface DistrictMetersProps {
     districts: District[];
@@ -58,44 +59,20 @@ interface DispatchedCallUIProps {
 }
 
 const DispatchedCallUI: React.FC<DispatchedCallUIProps> = ({ call }) => (
-    <div className="bg-pink-900/80 border-2 border-pink-500 p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
-        <p className="text-pink-300 font-bold text-sm font-display tracking-wider">URGENT CALL</p>
-        <p className="text-lg text-white">High-Risk Offender</p>
-        <p className="text-3xl font-bold text-yellow-300 font-display">{Math.ceil(call.timeLeft)}s</p>
+    <div data-testid="hud-dispatch" className="hud-dispatch bg-pink-900/90 border-2 border-pink-500 p-2 sm:p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
+        <p className="text-pink-300 font-bold text-xs sm:text-sm font-display tracking-wider">URGENT CALL</p>
+        <p className="text-sm sm:text-lg text-white">High-Risk Offender</p>
+        <p className="text-xl sm:text-3xl font-bold text-yellow-300 font-display">{Math.ceil(call.timeLeft)}s</p>
     </div>
 );
 
 const OffscreenIndicator: React.FC<{
     targetPos: { x: number, y: number },
-    camera: { x: number, y: number },
-    viewport: { width: number, height: number },
+    viewTransform: ViewTransform,
     color: string,
-}> = ({ targetPos, camera, viewport, color }) => {
-    const targetScreenX = targetPos.x - camera.x;
-    const targetScreenY = targetPos.y - camera.y;
-
-    const isOffScreen = targetScreenX < 0 || targetScreenX > viewport.width ||
-                        targetScreenY < 0 || targetScreenY > viewport.height;
-
-    if (!isOffScreen) {
-        return null;
-    }
-
-    const screenCenterX = viewport.width / 2;
-    const screenCenterY = viewport.height / 2;
-
-    const angle = Math.atan2(targetScreenY - screenCenterY, targetScreenX - screenCenterX);
-    const degrees = angle * (180 / Math.PI) + 90;
-
-    const padding = 30;
-    const boundX = viewport.width - padding;
-    const boundY = viewport.height - padding;
-
-    let x = screenCenterX + Math.cos(angle) * (viewport.width / 2);
-    let y = screenCenterY + Math.sin(angle) * (viewport.height / 2);
-
-    x = Math.max(padding, Math.min(x, boundX));
-    y = Math.max(padding, Math.min(y, boundY));
+}> = ({ targetPos, viewTransform, color }) => {
+    const position = offscreenIndicatorPosition(targetPos, viewTransform);
+    if (!position) return null;
 
     return (
         // Decorative for AT: the aria-live region announces life-at-risk onset; a rotating
@@ -104,9 +81,9 @@ const OffscreenIndicator: React.FC<{
             aria-hidden="true"
             className={`absolute text-4xl animate-pulse pointer-events-none ${color}`}
             style={{
-                left: `${x}px`,
-                top: `${y}px`,
-                transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+                transform: `translate(-50%, -50%) rotate(${position.degrees}deg)`,
                 zIndex: 100,
                 textShadow: '0 0 10px currentColor'
             }}
@@ -205,7 +182,7 @@ const StationaryCountdownTimer: React.FC<{ countdown: NonNullable<StationaryCoun
     const strokeColor = isNeglect ? 'stroke-red-500' : 'stroke-cyan-400';
 
     return (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none animate-fadeIn z-30">
+        <div className="hud-stationary absolute bottom-28 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none animate-fadeIn z-30">
             <p className={`font-display text-lg tracking-widest font-bold ${textColor} ${isNeglect ? 'animate-neglect-pulse' : ''}`} style={{ textShadow: '0 0 8px currentColor' }}>
                 {label}
             </p>
@@ -256,7 +233,6 @@ interface HUDProps {
   playerDistrict: DistrictName;
   livesLost: number;
   dispatchedCall: DispatchedCall | null;
-  camera: { x: number; y: number };
   minimapMode: MinimapMode;
   colleagueCalls: number;
   gameMessage: string | null;
@@ -266,14 +242,17 @@ interface HUDProps {
   stationaryCountdown: StationaryCountdown;
   shouldFlashColleagueAssist: boolean;
   hudTick: number;
-  viewport: { width: number; height: number };
+  viewTransform: ViewTransform;
   offencesPrevented: number;
+  projectedScore: number;
+  lifeAtRiskSeconds: number | null;
+  onPause: () => void;
   /** Arcade combo: active multiplier (1 = inactive) + fraction of the window remaining. */
   comboMult: number;
   comboFrac: number;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewport, offencesPrevented, comboMult, comboFrac }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewTransform, offencesPrevented, projectedScore, lifeAtRiskSeconds, onPause, comboMult, comboFrac }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -337,20 +316,32 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       {isVigilanceBonusActive && <div className="vigilance-border"></div>}
       
       {livesAtRiskCars.map(car => (
-          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} camera={camera} viewport={viewport} color="text-red-500" />
+          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} viewTransform={viewTransform} color="text-red-500" />
       ))}
       {dispatchedCall && (
-           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} camera={camera} viewport={viewport} color="text-yellow-400" />
+           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} viewTransform={viewTransform} color="text-yellow-400" />
       )}
 
       <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} />
 
+      <button
+        type="button"
+        onClick={onPause}
+        aria-label="Pause game"
+        data-testid="pause-button"
+        className="hud-pause pointer-events-auto absolute top-2 w-11 h-11 z-50 rounded-full bg-black/75 border-2 border-cyan-500/60 text-white text-xl flex items-center justify-center shadow-lg select-none hover:bg-cyan-900/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
+        style={{ top: 'max(0.5rem, env(safe-area-inset-top))', right: 'calc(3.75rem + env(safe-area-inset-right))', touchAction: 'manipulation' }}
+      >
+        <span aria-hidden="true">Ⅱ</span>
+      </button>
 
-      <div className="w-full flex justify-between items-start">
+
+      <div className="hud-top-row w-full flex justify-between items-start">
         <div className="flex flex-col space-y-2 md:space-y-3">
-            <div data-testid="hud-score" className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
+            <div data-testid="hud-score" className="hud-score bg-black/80 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
                 <div className="text-xs md:text-sm font-semibold text-cyan-400 tracking-wider text-glow-cyan">SCORE</div>
                 <div className={`text-2xl md:text-3xl font-bold text-glow-yellow ${scorePop ? 'animate-score-pop' : ''}`}>{scoreDisplay.toLocaleString()}</div>
+                <div className="text-[10px] md:text-xs text-gray-300 font-sans">Projected <span className="font-bold text-yellow-200">{projectedScore.toLocaleString()}</span></div>
                 <div className="flex justify-between items-center text-center mt-1">
                     {/* The teaching stat: offences that never happened because deterrence held. */}
                     <div>
@@ -360,6 +351,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     <div>
                         <div className="text-[10px] md:text-xs font-semibold text-yellow-300 text-glow-yellow">RISK</div>
                         <div className={`text-xl md:text-2xl font-bold ${livesAtRiskCount > 0 ? 'text-yellow-400 animate-pulse' : 'text-white'}`}>{livesAtRiskCount}</div>
+                        {lifeAtRiskSeconds !== null && <div className="text-[10px] text-yellow-200 font-sans">{Math.max(0, Math.ceil(lifeAtRiskSeconds))}s</div>}
                     </div>
                     <div>
                         <div className="text-[10px] md:text-xs font-semibold text-pink-400 text-glow-pink">LOST</div>
@@ -377,15 +369,15 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     </div>
                 </div>
             )}
-            <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
+            <div data-testid="hud-districts" className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
                 <DistrictMeters districts={districts} playerDistrict={playerDistrict} isVigilanceBonusActive={isVigilanceBonusActive} presenceBoostRate={presenceBoostRate} />
             </div>
         </div>
 
-        <div className="flex-grow flex flex-col justify-start items-center space-y-2 pt-2">
+        <div className="hud-center-alerts flex-grow flex flex-col justify-start items-center space-y-2 pt-2">
             {/* Compact meters for touch players (gd-0wi.17/.21): the bottom cluster is hidden on
                 coarse pointers to leave room for the on-screen controls, so surface key state here. */}
-            <div className="hidden [@media(pointer:coarse)]:flex items-center gap-2 bg-black/90 px-3 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10">
+            <div data-testid="hud-compact" className="hud-compact-strip hidden [@media(any-pointer:coarse)]:flex [@media(max-height:500px)]:flex items-center gap-2 bg-black/90 px-3 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10">
                 {/* District deterrence dots: landscape phones hide the full meter panel
                     (max-height:500px), losing the core teaching UI — keep a glanceable version here. */}
                 <div
@@ -429,8 +421,8 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
             {dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}
         </div>
         
-        <div className="flex flex-col items-end space-y-2 md:space-y-3">
-          <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50 [@media(max-height:500px)]:p-1">
+        <div className="hud-right-stack flex flex-col items-end space-y-2 md:space-y-3">
+          <div data-testid="hud-timer" className="bg-black/80 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50 [@media(max-height:500px)]:p-1">
             <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
             <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
           </div>
@@ -447,10 +439,10 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       </div>
 
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-col items-center">
-        <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50 [@media(pointer:coarse)]:hidden">
+        <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50 [@media(any-pointer:coarse)]:hidden">
              <VigilanceMeter vigilance={player.vigilance} isGaining={vigilanceGained} />
         </div>
-        <div className="flex flex-col items-center [@media(pointer:coarse)]:hidden">
+        <div className="flex flex-col items-center [@media(any-pointer:coarse)]:hidden">
             <div className="flex items-end space-x-4 bg-black/50 px-4 pt-2 pb-1 rounded-t-lg border-x-2 border-t-2 border-purple-500/50">
                 <div className={`bg-black/70 p-2 rounded-lg shadow-lg flex flex-col items-center border-2 ${shouldFlashColleagueAssist ? 'border-red-400 animate-urgent-pulse' : 'border-yellow-500/50'}`}>
                     <span className="text-xs font-bold text-yellow-400 text-glow-yellow">ASSIST</span>
@@ -491,7 +483,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
         // key is the message text (not Date.now()) so the fade animation plays once per
         // distinct message instead of restarting every render (which read as a flicker).
         // Top-centre, out of the driving lane: dead-centre placement sat right on the patrol car.
-        <div key={gameMessage} aria-hidden="true" className="absolute top-24 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-lg md:text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-4 md:px-6 py-2 md:py-3 rounded-lg text-yellow-300 animate-fade-in-out z-40">
+        <div key={gameMessage} aria-hidden="true" className="hud-game-message absolute top-24 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-lg md:text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-4 md:px-6 py-2 md:py-3 rounded-lg text-yellow-300 animate-fade-in-out z-40">
             {gameMessage}
         </div>
        )}
@@ -499,7 +491,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       {isNeglectOfDutyActive && (
         // Below the toast band, clear of the patrol car (was floating just above centre).
         // aria-hidden: the live region announces neglect; this h2 would orphan into the AT outline.
-        <div aria-hidden="true" className="absolute top-36 md:top-44 left-1/2 -translate-x-1/2 text-center z-40">
+        <div aria-hidden="true" className="hud-neglect absolute top-36 md:top-44 left-1/2 -translate-x-1/2 text-center z-40">
             <h2 className="text-3xl md:text-5xl font-bold animate-neglect-pulse font-display tracking-widest">NEGLECT OF DUTY</h2>
             <p className="text-base md:text-xl text-red-400">Deterrence Falling Rapidly</p>
         </div>

@@ -9,10 +9,13 @@ import { DISTRICT_DEFINITIONS } from './mapData';
 export const gameUrl = (): string =>
     typeof window !== 'undefined' ? window.location.origin : '';
 
-/** Daily shift number — days since 2026-01-01 (shared by everyone on the same date). */
-export function shiftNumber(date = new Date()): number {
-    const base = new Date(2026, 0, 1).getTime();
-    return Math.max(1, Math.floor((date.getTime() - base) / 86_400_000) + 1);
+/** Daily shift number — calendar days since 2026-01-01. */
+export function shiftNumber(competitionDay?: string): number {
+    const base = Date.parse('2026-01-01T00:00:00.000Z');
+    const target = competitionDay && /^\d{4}-\d{2}-\d{2}$/.test(competitionDay)
+        ? Date.parse(`${competitionDay}T00:00:00.000Z`)
+        : Date.now();
+    return Math.max(1, Math.floor((target - base) / 86_400_000) + 1);
 }
 
 export function districtGlyphs(patrolPath: { x: number; y: number }[]): string {
@@ -41,11 +44,12 @@ export interface ShareContext {
     storyLine?: string;      // one saved-life story, if any
     percentile?: number | null;
     streak?: number;
+    competitionDay?: string;
 }
 
 export function buildShareText(b: FinalScoreBreakdown, ctx: ShareContext): string {
     const header = ctx.mode === 'daily'
-        ? `General Deterrence #${shiftNumber()} 🚔 Grade ${b.presenceGrade}`
+        ? `General Deterrence #${shiftNumber(ctx.competitionDay)} 🚔 Grade ${b.presenceGrade}`
         : `General Deterrence Free Patrol 🚔 Grade ${b.presenceGrade}`;
     const statBits = [
         `${b.offencesPrevented} prevented`,
@@ -61,7 +65,7 @@ export function buildShareText(b: FinalScoreBreakdown, ctx: ShareContext): strin
         statBits.join(' · '),
     ];
     if (ctx.storyLine) lines.push(`Saved tonight: ${ctx.storyLine}`);
-    lines.push(`Cops you can see stop crashes you never hear about. ${gameUrl()}`);
+    lines.push(`Visible patrols can help prevent harm before it happens. ${gameUrl()}`);
     return lines.join('\n');
 }
 
@@ -107,7 +111,7 @@ export async function buildShareCard(b: FinalScoreBreakdown, ctx: ShareContext):
     g.fillText('GENERAL DETERRENCE', CARD_W / 2, 130);
     g.fillStyle = '#f472b6';
     g.font = '42px Rajdhani, sans-serif';
-    g.fillText(ctx.mode === 'daily' ? `Daily Shift #${shiftNumber()}` : 'Free Patrol', CARD_W / 2, 195);
+    g.fillText(ctx.mode === 'daily' ? `Daily Shift #${shiftNumber(ctx.competitionDay)}` : 'Free Patrol', CARD_W / 2, 195);
 
     // Grade badge
     const gradeColor: Record<string, string> = { S: '#fde047', A: '#4ade80', B: '#facc15', C: '#f87171' };
@@ -151,7 +155,7 @@ export async function buildShareCard(b: FinalScoreBreakdown, ctx: ShareContext):
 
     g.fillStyle = '#9ca3af';
     g.font = '40px Rajdhani, sans-serif';
-    g.fillText('Cops you can see stop crashes you never hear about.', CARD_W / 2, 1230);
+    g.fillText('Visible patrols can help prevent harm before it happens.', CARD_W / 2, 1230);
     g.fillStyle = '#22d3ee';
     g.font = 'bold 44px Rajdhani, sans-serif';
     g.fillText(gameUrl().replace(/^https?:\/\//, ''), CARD_W / 2, 1295);

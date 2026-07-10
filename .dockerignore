@@ -1,7 +1,15 @@
 node_modules
+**/node_modules
 dist
 .git
+.beads
+.claude
+.gstack
+.perles
+.recall
+.serena
 .gitignore
 *.md
 .env*
 data
+**/data

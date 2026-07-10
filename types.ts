@@ -32,7 +32,7 @@ export type VehicleType = 'car' | 'ute' | 'truck' | 'bus' | 'bike' | 'camper';
 
 export interface Civilian extends Vehicle {
   ridsType: RIDSType | null;
-  /** The once-per-shift interdiction car: an Enforce on it uncovers a major crime. */
+  /** The once-per-shift interdiction car: a full investigation uncovers a major crime. */
   specialCrime?: { crime: string; reveal: string; detail: string; missed: string };
   /** Yesterday's daily #1, patrolling tonight's map as a friendly unit. Never an offender. */
   isChampion?: boolean;
@@ -50,6 +50,7 @@ export interface Civilian extends Vehicle {
   lastBlobSpawnTime: number;
   deterrenceBlobsRemaining: number;
   isLifeAtRisk: boolean;
+  /** Active response window remaining, in simulation seconds. */
   lifeAtRiskTimer: number;
   roadType?: RoadType;
   isBraking?: boolean;
@@ -63,7 +64,7 @@ export interface Civilian extends Vehicle {
 export interface EnforcementAction {
   pos: { x: number; y: number };
   ridsType: RIDSType;
-  actionType: 'Enforce' | 'Warn';
+  actionType: 'Investigate' | 'Standard';
 }
 
 export interface ColleagueCallAction {
@@ -94,13 +95,14 @@ export interface FinalScoreBreakdown {
   coverageRatio: number;
   /** Grade derived from coverageRatio: S ≥0.9, A ≥0.7, B ≥0.45, else C. */
   presenceGrade: 'S' | 'A' | 'B' | 'C';
+  /** Whether the explicit untimed decision-challenge assist was used for this shift. */
+  challengeAssist: boolean;
 }
 
 export interface LeaderboardEntry {
   id?: number;
   name: string;
   score: number;
-  email?: string;
   timestamp?: number;
   station?: string | null;
   kudos?: number;
@@ -112,6 +114,12 @@ export interface MiniGameProps {
   onComplete: (success: boolean) => void;
   ridsType: RIDSType;
   difficulty?: number; // 0 (shift start) .. 1 (shift end) — scales enforcement mini-game challenge
+  /** Freezes interaction and active-time timers while the game is paused/hidden. */
+  paused?: boolean;
+  /** Seeded daily scenario selector; random/free shifts may omit it. */
+  scenarioIndex?: number;
+  /** Explicit player-selected untimed decision alternative. */
+  challengeAssist?: boolean;
 }
 
 export type DriverProfile = 'Repeat Offender' | 'Young Driver' | 'Tired Driver';
