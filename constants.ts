@@ -220,7 +220,7 @@ export const MINIMAP_HEIGHT = 200;
 export const MINIMAP_VIEW_RANGE = 1200; // World units visible from the center of the minimap
 
 // Bound mobile fill-rate while retaining enough backing pixels for crisp HUD-independent art.
-export const MAX_RENDER_DPR = 1.5;
+export const MAX_RENDER_DPR = 1.25;
 export const MAX_CANVAS_PIXELS = 5_000_000;
 
 // Per-second rates for delta-time based game loop.

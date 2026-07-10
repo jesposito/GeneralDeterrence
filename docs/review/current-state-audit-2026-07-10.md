@@ -38,20 +38,21 @@ assistive technology rather than code inspection and emulation.
 | Node 24 container build | PASS: typecheck, both test suites, frontend build, and native SQLite dependency build |
 | Chromium responsive matrix | PASS: 568x320, 667x375, 844x390, 932x430, 390x844, 320x568, and 1280x720 |
 | Firefox compatibility matrix | PASS: short landscape and 1280x720 desktop |
+| WebKit compatibility matrix | PASS in PR CI: short landscape and 1280x720 desktop |
 | Browser assertions | PASS: painted canvas, contained/non-overlapping HUD and controls, orientation pause, pause/settings/restart, complete Daily submission/deletion flow, and zero console errors |
 | PWA offline reload | PASS under active service-worker control |
-| DPR 2, 4x CPU, 844x390 | PASS: avg 28.71 ms, p95 33.4 ms, 1.4% over 33 ms |
-| DPR 3, 4x CPU, 844x390 | PASS: avg 28.64 ms, p95 33.4 ms, 2.0% over 33 ms |
+| DPR 2, 4x CPU, 844x390 | PASS: avg 23.69 ms, p95 33.4 ms, 0.2% over 33 ms |
+| DPR 3, 4x CPU, 844x390 | PASS: avg 23.81 ms, p95 33.4 ms, 0.7% over 33 ms |
 | Container/Compose smoke | PASS: schema-v5 health, static shell, unverified-board header, mounted-volume ownership, sub-second graceful shutdown, and Compose config |
 
 The performance pass is close to the 33.6 ms p95 budget. The renderer caps backing DPR at
-1.5 and backing pixels at five million, including downscaling below DPR 1 on 4K viewports.
+1.25 and backing pixels at five million, including downscaling below DPR 1 on 4K viewports.
 Real-device thermal and battery behavior remains part of `gd-rdq`.
 
 The Firefox short-landscape and desktop compatibility matrix also passes locally. The exact
 WebKit revision downloaded, but this host lacks required OS libraries and unattended sudo
-was unavailable; CI installs those libraries with `--with-deps`. Browser emulation still is
-not evidence for physical Safari/iOS behavior.
+was unavailable; the PR CI matrix installs those libraries with `--with-deps` and passes.
+Browser emulation still is not evidence for physical Safari/iOS behavior.
 
 ## Remediation completed
 
