@@ -38,6 +38,18 @@ const overlaps = (a, b) => Boolean(a && b
   && a.y < b.y + b.height && b.y < a.y + a.height);
 const contained = (box, viewport) => Boolean(box && box.x >= -1 && box.y >= -1
   && box.x + box.width <= viewport.width + 1 && box.y + box.height <= viewport.height + 1);
+const preserveEmulatedViewport = (page) => page.addInitScript(() => {
+  // Firefox honors requestFullscreen in headless mode and replaces the emulated viewport
+  // with the host screen. Responsive assertions need to retain the requested device size.
+  Object.defineProperty(Element.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: () => Promise.resolve(),
+  });
+  Object.defineProperty(Element.prototype, 'webkitRequestFullscreen', {
+    configurable: true,
+    value: () => Promise.resolve(),
+  });
+});
 
 let failures = 0;
 const fail = (message) => { failures++; console.error(`  x ${message}`); };
@@ -57,6 +69,7 @@ for (const device of RUN_MATRIX ? MATRIX : []) {
   }
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
+  await preserveEmulatedViewport(page);
   const errors = [];
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   page.on('pageerror', (error) => errors.push(String(error)));
@@ -133,9 +146,18 @@ for (const device of RUN_MATRIX ? MATRIX : []) {
         : fail('district deterrence status is hidden');
 
       let hudFailure = false;
+      const viewportMetrics = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        clientWidth: document.documentElement.clientWidth,
+        clientHeight: document.documentElement.clientHeight,
+      }));
       for (const [name, box] of Object.entries(hud)) {
         if (!box) continue;
-        if (!contained(box, device.viewport)) { hudFailure = true; fail(`${name} extends outside viewport`); }
+        if (!contained(box, device.viewport)) {
+          hudFailure = true;
+          fail(`${name} extends outside viewport: box=${JSON.stringify(box)} expected=${JSON.stringify(device.viewport)} actual=${JSON.stringify(viewportMetrics)}`);
+        }
       }
       const independentPairs = [
         ['mute', 'timer'], ['pause', 'timer'], ['mute', 'pause'],
