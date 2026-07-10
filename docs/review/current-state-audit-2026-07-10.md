@@ -63,7 +63,7 @@ Browser emulation still is not evidence for physical Safari/iOS behavior.
 | Time model | Shift progression uses a pause-aware simulation clock with bounded substeps; hidden, portrait-blocked, paused, and modal states do not consume the shift or challenge timers |
 | Deterrence lesson | Risk probability is bounded and no longer rises under Full Coverage; weakest-district coverage affects prevention and scoring; projected score and risk countdown are visible |
 | Enforcement loop | RIDS selects the nearest forward-cone target with a cooldown; Standard enforcement and Investigate are distinct; combos reward successful investigation rather than fast disposal |
-| Driving | Civilian collisions create bounce/time/vigilance stakes without adding a damage subsystem |
+| Driving | Traffic remains visual and targetable without obstructing the arcade patrol path |
 | Mini-games | Challenges pause correctly, support gamepad navigation, teach the observed violation, show the correct answer/outcome, and offer an explicit untimed assist independent of reduced-motion preference |
 | Responsive UI | Dedicated short-landscape and portrait behavior, reserved HUD zones, compact district status, reachable scrollable dialogs, text containment, touch-safe controls, and orientation pause |
 | Input | Keyboard, touch analog input, gamepad analog/boost, focus navigation, pause, restart, and modal back/activation paths are separated and tested |

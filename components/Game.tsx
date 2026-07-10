@@ -45,7 +45,6 @@ const reducedMotion = () => !!REDUCED_MOTION_MQ?.matches;
 
 const PATROL_PATH_SAMPLE_RATE = 30; // Record player position every 30 frames
 const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
-const COLLISION_CHECK_RADIUS_SQ = (CONSTANTS.CAR_RADIUS * 2) ** 2;
 const HUD_UPDATE_INTERVAL_MS = 100;
 const MAX_SIMULATION_STEP_SECONDS = 0.05;
 const MAX_SIMULATION_STEPS_PER_FRAME = 10;
@@ -290,7 +289,6 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const lastSpawnCheckTime = useRef(0);
   const nextCarChatterAtRef = useRef(8000); // simulation ms; pauses with the shift
   const lastRidsCheckAtRef = useRef(-Infinity);
-  const lastCivilianCollisionAtRef = useRef(-Infinity);
   const trafficInitializedRef = useRef(false);
   const [challengeAssist] = useState(loadChallengeAssist);
   const [gameplayRng] = useState<Rng>(() => mapSeed ? mulberry32((mapSeed ^ 0x7f4a7c15) >>> 0) : Math.random);
@@ -1066,7 +1064,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         }
     };
 
-    const handleCollisionsAndInteractions = (now: number, dt: number) => {
+    const handleRoadBoundaryCollision = (now: number) => {
         const player = playerRef.current;
         const roadInfo = findClosestPointOnRoad(player.pos);
         if (roadInfo && roadInfo.dist > CONSTANTS.ROAD_WIDTH / 2) {
@@ -1086,44 +1084,6 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 sparksRef.current.push(...Array.from({ length: CONSTANTS.SPARK_COUNT }, (_, i) => ({ id: now + i + Math.random(), pos: sparkPos, vel: { x: (Math.random() - 0.5) * 4 - normalX * 2, y: (Math.random() - 0.5) * 4 - normalY * 2 }, spawnTime: now })));
             }
         }
-
-        if (player.speed < 1 || now - lastCivilianCollisionAtRef.current < CONSTANTS.CIVILIAN_COLLISION_COOLDOWN_SECONDS * 1000) return;
-        const collisionDistanceSq = CONSTANTS.CIVILIAN_COLLISION_DISTANCE ** 2;
-        const civilian = civiliansRef.current.find(car => !car.isChampion && getDistanceSq(player.pos, car.pos) < collisionDistanceSq);
-        if (!civilian) return;
-
-        let normalX = player.pos.x - civilian.pos.x;
-        let normalY = player.pos.y - civilian.pos.y;
-        const distance = Math.hypot(normalX, normalY);
-        if (distance > 0.001) {
-            normalX /= distance;
-            normalY /= distance;
-        } else {
-            const heading = getRads(player.angle - 90);
-            normalX = -Math.cos(heading);
-            normalY = -Math.sin(heading);
-        }
-        const overlap = CONSTANTS.CIVILIAN_COLLISION_DISTANCE - distance;
-        player.pos.x += normalX * Math.max(0, overlap);
-        player.pos.y += normalY * Math.max(0, overlap);
-        const impact = player.vel.x * normalX + player.vel.y * normalY;
-        if (impact < 0) {
-            player.vel.x -= 1.25 * impact * normalX;
-            player.vel.y -= 1.25 * impact * normalY;
-        }
-        player.vel.x *= 0.45;
-        player.vel.y *= 0.45;
-        player.speed *= 0.45;
-        civilian.speed *= 0.6;
-        player.vigilance = Math.max(0, player.vigilance - CONSTANTS.CIVILIAN_COLLISION_VIGILANCE_PENALTY);
-        spendShiftTime(CONSTANTS.CIVILIAN_COLLISION_TIME_PENALTY_SECONDS);
-        lastCivilianCollisionAtRef.current = now;
-        cameraRef.current.shake = Math.max(cameraRef.current.shake, 8);
-        audio.thud();
-        buzz(BUZZ.fail);
-        setGameMessage(`TRAFFIC COLLISION  -${CONSTANTS.CIVILIAN_COLLISION_TIME_PENALTY_SECONDS}s`);
-        if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
-        gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1800);
     };
 
     const updateCiviliansAndSpawners = (now: number, dt: number, elapsedDt: number) => {
@@ -1679,7 +1639,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             updateVigilance(clock.spent);
             updateCiviliansAndSpawners(stepNow, clock.spent, clock.spent);
             updateDeterrenceAndNeglect(stepNow, clock.spent);
-            handleCollisionsAndInteractions(stepNow, clock.spent);
+            handleRoadBoundaryCollision(stepNow);
             updatePathfinding(stepNow);
             updateParticlesAndEffects(stepNow, clock.spent);
             updateCamera(stepNow, clock.spent);

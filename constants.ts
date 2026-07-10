@@ -162,12 +162,6 @@ export const DETERRENCE_MULTIPLIER_MIN = 1.0;
 export const DETERRENCE_MULTIPLIER_MAX = 1.5;
 export const FLOATING_SCORE_TEXT_LIFESPAN = 2000; // ms
 
-// Traffic collisions should matter without adding a damage model.
-export const CIVILIAN_COLLISION_DISTANCE = 42;
-export const CIVILIAN_COLLISION_COOLDOWN_SECONDS = 1;
-export const CIVILIAN_COLLISION_TIME_PENALTY_SECONDS = 1;
-export const CIVILIAN_COLLISION_VIGILANCE_PENALTY = 12;
-
 // Vigilance Bonus System
 export const DETERRENCE_VIGILANCE_THRESHOLD = 85; // % deterrence needed in all districts
 export const VIGILANCE_BONUS_MULTIPLIER = 2.0;
