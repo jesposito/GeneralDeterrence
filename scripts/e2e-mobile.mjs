@@ -227,6 +227,10 @@ if (BROWSER === 'chromium' && process.env.FULL_FLOW !== '0') {
     await start.evaluate((button) => { button.scrollIntoView({ block: 'center' }); button.click(); });
     await page.getByRole('heading', { name: /shift over/i }).waitFor({ state: 'visible', timeout: 110000 });
     ok('complete shift reaches the debrief');
+    const debriefStories = page.getByTestId('debrief-stories').getByRole('listitem');
+    (await debriefStories.count()) >= 3
+      ? ok('debrief shows several ripple-effect stories')
+      : fail('debrief shows fewer than three ripple-effect stories');
 
     await page.getByLabel('Your name').fill('E2E Patrol');
     await page.getByLabel(/Station code/).fill('E2E');

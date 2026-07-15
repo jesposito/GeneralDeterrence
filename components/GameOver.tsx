@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LeaderboardEntry, FinalScoreBreakdown, EnforcementAction, ColleagueCallAction } from '../types';
 import Leaderboard from './Leaderboard';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS } from '../utils/mapData';
-import { generateSavedLifeStories, pickDebrief, pickRealShiftLine } from '../utils/stories';
+import { debriefStoryCount, generateSavedLifeStories, pickDebrief, pickRealShiftLine } from '../utils/stories';
 import { collectStory } from '../utils/codex';
 import ShareResult from './ShareResult';
 import * as CONSTANTS from '../constants';
@@ -346,12 +346,18 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   useEffect(() => { if (submission?.status === 'uploaded' || submission?.status === 'queued-offline') playAgainRef.current?.focus(); }, [submission]);
 
   const personal = getPersonalStats(scoreBreakdown, shiftMode, competitionDay, competitionKey);
-  // Where are they now? One line per saved life (cap 4 shown), seeded off the score so
-  // re-renders show the same stories.
+  const safetyOutcomes = Math.max(0, scoreBreakdown.livesSaved) + Math.max(0, scoreBreakdown.offencesPrevented);
   const stories = useMemo(
-      () => generateSavedLifeStories(Math.min(4, scoreBreakdown.livesSaved), scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919),
+      () => generateSavedLifeStories(
+        debriefStoryCount(scoreBreakdown.livesSaved, scoreBreakdown.offencesPrevented),
+        scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919 + scoreBreakdown.offencesPrevented * 104729,
+      ),
       [scoreBreakdown],
   );
+  const outcomeSummary = [
+    scoreBreakdown.livesSaved > 0 ? `${scoreBreakdown.livesSaved} direct ${scoreBreakdown.livesSaved === 1 ? 'life' : 'lives'} saved` : '',
+    scoreBreakdown.offencesPrevented > 0 ? `${scoreBreakdown.offencesPrevented} ${scoreBreakdown.offencesPrevented === 1 ? 'offence' : 'offences'} prevented` : '',
+  ].filter(Boolean).join(' · ');
   const debrief = useMemo(() => pickDebrief(scoreBreakdown), [scoreBreakdown]);
   const realLine = useMemo(() => pickRealShiftLine(scoreBreakdown.finalScore), [scoreBreakdown]);
   // Story codex: collect the first story of the day (idempotent inside collectStory).
@@ -387,6 +393,22 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
           {scoreBreakdown.offencesPrevented} {scoreBreakdown.offencesPrevented === 1 ? 'OFFENCE' : 'OFFENCES'} NEVER HAPPENED. Your visible presence prevented them.
         </p>
       )}
+      <section data-testid="debrief-stories" className="w-full max-w-6xl mb-4 rounded-lg border-2 border-green-500/50 bg-black/50 p-3 md:p-5 text-left" aria-labelledby="stories-heading">
+        <h2 id="stories-heading" className="text-base md:text-xl font-display text-green-400 tracking-widest mb-1">WHERE ARE THEY NOW? THE RIPPLE EFFECT</h2>
+        <p className="text-xs md:text-sm text-green-100/80 font-sans mb-3">
+          {outcomeSummary
+            ? `${outcomeSummary}. The scoreboard counts events; this is what their ripple can mean.`
+            : 'No safety outcome registered this shift. These are the ordinary futures the next visible patrol can protect.'}
+        </p>
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+          {stories.map((story, index) => (
+            <li key={index} className="text-sm md:text-base text-gray-200 font-sans leading-snug border-l-2 border-green-500/40 pl-3">{story.story}</li>
+          ))}
+        </ul>
+        {safetyOutcomes > stories.length && (
+          <p className="text-xs md:text-sm text-gray-400 font-sans mt-2">...and {safetyOutcomes - stories.length} more {safetyOutcomes - stories.length === 1 ? 'outcome' : 'outcomes'} kept rippling beyond this report.</p>
+        )}
+      </section>
       <p className="text-sm md:text-base font-display mb-2">
         {personal.isNewBest
           ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest !== null ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
@@ -435,21 +457,6 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
             {scoreBreakdown.interdiction.outcome === 'busted' ? `THE BIG ONE: ${scoreBreakdown.interdiction.crime.toUpperCase()}` : 'THE ONE THAT DROVE ON'}
           </h2>
           <p className="text-sm md:text-lg text-gray-200 font-sans leading-snug">{scoreBreakdown.interdiction.detail}</p>
-        </div>
-      )}
-
-      {/* Where are they now? The point of the job, front and centre. */}
-      {stories.length > 0 && (
-        <div className="w-full max-w-6xl mb-4 rounded-lg border-2 border-green-500/50 bg-black/50 p-3 md:p-5 text-left">
-          <h2 className="text-base md:text-xl font-display text-green-400 tracking-widest mb-3">LIVES SAVED: WHERE ARE THEY NOW?</h2>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
-            {stories.map((s, i) => (
-              <li key={i} className="text-sm md:text-base text-gray-200 font-sans leading-snug border-l-2 border-green-500/40 pl-3">{s.story}</li>
-            ))}
-          </ul>
-          {scoreBreakdown.livesSaved > stories.length && (
-            <p className="text-xs md:text-sm text-gray-400 font-sans mt-2">…and {scoreBreakdown.livesSaved - stories.length} more {scoreBreakdown.livesSaved - stories.length === 1 ? 'driver' : 'drivers'} went home safe.</p>
-          )}
         </div>
       )}
 

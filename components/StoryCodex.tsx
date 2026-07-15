@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { getCodex } from '../utils/codex';
 import { useGamepadNavigation } from './useGamepadNavigation';
 
-// The Story Codex: every saved-life story collected, one per completed shift-day.
+// The Story Codex: one debrief ripple story collected per completed shift-day.
 // Same dialog shell/trap pattern as ControlsSettings.
 
 const StoryCodex: React.FC<{ onClose: () => void }> = ({ onClose }) => {
@@ -33,7 +33,7 @@ const StoryCodex: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <h2 id="codex-title" className="text-2xl font-bold text-green-400 mb-1 font-display text-center">Story Codex</h2>
                 <p className="text-xs text-gray-400 mb-4 font-sans text-center">One story collected per shift-day. {codex.length} so far.</p>
                 {codex.length === 0 ? (
-                    <p className="text-gray-300 font-sans text-center py-6">No stories yet. Finish a shift with a life saved to collect your first.</p>
+                    <p className="text-gray-300 font-sans text-center py-6">No stories yet. Finish a shift to collect your first.</p>
                 ) : (
                     <ul className="space-y-2">
                         {codex.map((e, i) => (

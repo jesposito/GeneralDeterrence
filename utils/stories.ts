@@ -1,8 +1,7 @@
 import { mulberry32, pick, type Rng } from './rng';
 
-// "Where are they now?" — one line per life saved on the results screen. A mix of
-// mundane, funny and genuinely moving, because that's the actual point of the job:
-// the person you stopped goes on to have an ordinary life they'd otherwise have lost.
+// "Where are they now?" stories for the results screen. A mix of mundane, funny and
+// genuinely moving futures makes the public-safety outcome feel human.
 
 const NAMES = [
     'Bob', 'Aroha', 'Tama', 'Sione', 'Mere', 'Gary', 'Priya', 'Wiremu', 'Jess', 'Hemi',
@@ -54,6 +53,42 @@ const MUNDANE = [
     '{name} made it home for the school pickup and got the big run-and-hug.',
     '{name} watched the kids do a haka at assembly and pretended not to cry. Failed.',
     '{name} spent Sunday at the beach. Got sunburnt in July somehow. Classic.',
+    "{name} baked cheese scones for smoko and saved the warmest one for a mate.",
+    "{name} filled a paper bag with feijoas and left it by the gate for neighbours.",
+    "{name} caught the early ferry and found a window seat beside the sparkling harbour.",
+    "{name} planted a kōwhai out back and spotted its first tūī before breakfast.",
+    "{name} returned the borrowed trailer washed, swept, and carrying a thank-you box of biscuits.",
+    "{name} made pikelets for the kids and let everyone choose their own jam.",
+    "{name} stopped at the lookout for five quiet minutes while the clouds cleared.",
+    "{name} brought spare mandarins to work and the lunchroom smelled like winter sunshine.",
+    "{name} found their favourite old mug at the op shop for two dollars.",
+    "{name} packed tomorrow's lunch before bed and felt unusually organised all morning.",
+    "{name} split the last cheese roll at the fundraiser with the person behind them.",
+    "{name} walked the dog along the awa and learned three neighbours' names.",
+    "{name} baked ANZAC biscuits and delivered half while they were still warm.",
+    "{name} topped up the bird bath and hosted a very splashy waxeye convention.",
+    "{name} picked up windblown wrappers at the reserve before the rain arrived.",
+    "{name} lent a dry jumper to a shivering parent at junior rugby.",
+    "{name} carried extra chairs to the whānau lunch and stayed to stack them afterward.",
+    "{name} lifted their first kūmara from the garden and rang the whole family.",
+    "{name} waited while six ducklings crossed the road in one determined line.",
+    "{name} washed the sea salt off the car after a breezy coast run.",
+    "{name} left the porch light on and a bowl of soup for the late flatmate.",
+    "{name} posted the birthday card early enough to arrive before the birthday.",
+    "{name} took homemade pumpkin soup to a crook mate and stayed for a yarn.",
+    "{name} bought local mānuka honey and remembered exactly where they put it.",
+    "{name} helped guide an adventurous lamb back through the correct farm gate.",
+    "{name} traded a bucket of lemons over the fence for fresh plum jam.",
+    "{name} thanked the bus driver, then heard three other passengers do the same.",
+    "{name} remembered the reusable shopping bags before reaching the supermarket carpark.",
+    "{name} chose hokey pokey, sat in the sun, and shared the last spoonful.",
+    "{name} repaired a torn school bag and added a bright fern patch.",
+    "{name} found a dry bench at the station and made room for someone else.",
+    "{name} welcomed the new neighbours with baking and the useful rubbish-day schedule.",
+    "{name} checked the rain gauge after breakfast and reported the total to nobody in particular.",
+    "{name} walked the waterfront with a takeaway flat white and nowhere urgent to be.",
+    "{name} joined the community planting morning and learned how to settle a flax properly.",
+    "{name} tucked a spare wool blanket into the boot before the next cold snap.",
 ];
 
 const FUNNY = [
@@ -100,6 +135,42 @@ const FUNNY = [
     '{name} built a flying fox for the grandkids. Council came to inspect it. Council had a go.',
     "{name} found Shrek the sheep's spiritual successor in their back paddock. The wool jersey fits four people.",
     '{name} does the tuatara voice for the sanctuary school tours. Kids believe the tuatara talks. Adults do too.',
+    "{name} founded a competitive feijoa chutney league. The trophy is a gold-painted jar lid.",
+    "{name} installed a road cone as a letterbox. Couriers now use it as a regional landmark.",
+    "{name} maintains a spreadsheet ranking service-station pies. The methodology is secret; the crumbs are public.",
+    "{name} built such a large bach deck that the bach is now technically the deck's shed.",
+    "{name} mastered flat-white foam art, provided nobody minds New Zealand missing Stewart Island.",
+    "{name} assembled an emergency smoko kit: thermos, gingernuts, and backup gingernuts.",
+    "{name} named the robotic mower Sir Ed. It immediately summited the compost heap.",
+    "{name} entered a lolly cake in a baking show. Judges requested a structural engineering report.",
+    "{name} found a shortcut through Hamilton that added two hours and three excellent bakeries.",
+    "{name} became the family weather service. Every forecast says bring a jacket, just in case.",
+    "{name} can reverse a boat trailer perfectly, but only when absolutely nobody is watching.",
+    "{name} replaced the biscuit tin's sewing supplies with actual biscuits. Parliament remains unaware.",
+    "{name} planted one courgette and now supplies most of the lower North Island.",
+    "{name} won a radio call-in by identifying the mystery sound as a chilly-bin lid.",
+    "{name} got lost in Te Papa and emerged an authority on colossal squid etiquette.",
+    "{name} taught a smart speaker to pronounce Whangārei. It now politely corrects visiting cousins.",
+    "{name} built a sandcastle Beehive. Its coalition collapsed at the first incoming tide.",
+    "{name} makes sculptures from Wellington's broken umbrellas. The wind keeps demanding royalties.",
+    "{name} memorised every Tauranga roundabout and still exits confidently toward the wrong suburb.",
+    "{name} wore shorts through a Dunedin winter and has declined all requests for comment.",
+    "{name} chaired a neighbourhood summit on refrigerating tomato sauce. The communiqué resolved nothing.",
+    "{name} developed a scoring system for one-lane-bridge thank-you waves. Standards are exacting.",
+    "{name} timed one quick Bunnings job. The stopwatch retired after lunch.",
+    "{name} entered an inflatable spa pool in the town raft race. Steering was largely theoretical.",
+    "{name} catalogued the garage freezer. The oldest parcel is labelled possibly hoki.",
+    "{name} lost a beach gazebo to the wind and gained new friends two picnic spots over.",
+    "{name} keeps a backup Edmonds cookbook in the glovebox. The first one knows what it did.",
+    "{name} started an annual best-letterbox award and was disqualified for excessive personal investment.",
+    "{name} accidentally booked the community hall for karaoke. It is now a fiercely defended tradition.",
+    "{name} devised backyard cricket rules so detailed that Duckworth-Lewis looks refreshingly casual.",
+    "{name} holds the family record for refreshing the rain radar without changing the weather.",
+    "{name} converted a retired chilly bin into a mobile beach library with excellent insulation.",
+    "{name} joined a commuter-train quiet carriage and somehow left with six new cousins.",
+    "{name} created seven-layer Kiwi dip. All seven layers are onion dip, for structural reasons.",
+    "{name} built a windproof umbrella by leaving it permanently closed. Results remain flawless.",
+    "{name} launched a podcast reviewing public toilets from Cape Reinga to Bluff. Season two is somehow confirmed.",
 ];
 
 const AMAZING = [
@@ -137,11 +208,55 @@ const AMAZING = [
     '{name} donated bone marrow to a stranger in Invercargill. They meet every year at the halfway point. It is a pie shop.',
     '{name} became the DOC ranger who carried a sick kākāpō chick four hours down a mountain inside their jacket.',
     '{name} started the men\'s shed that quietly saved a dozen blokes\' lives. They built the town\'s best playground while they were at it.',
+    "{name} started a neighbourhood garden, and every spring the kūmara bed brings three generations together.",
+    "{name} volunteers at the local library, helping shy readers discover the books they love.",
+    "{name} restored a neglected walking track, then shared the first sunrise there with the whole whānau.",
+    "{name} learned te reo Māori and now greets every new neighbour with confidence and warmth.",
+    "{name} runs a free after-school homework table, always with Milo and spare pencils.",
+    "{name} planted a roadside wildflower strip that became the town's favourite place for wedding photos.",
+    "{name} organised beach clean-ups, and the local tamariki now lead them without being asked.",
+    "{name} joined the volunteer coast watch and found a circle of lifelong mates.",
+    "{name} fixed up old bikes so local kids could ride to school together.",
+    "{name} reopened the community hall kitchen, where Friday soup nights now welcome everyone.",
+    "{name} taught their mokopuna to grow tomatoes, save seeds, and always share the first harvest.",
+    "{name} started a repair café, keeping broken kettles, lamps, and friendships going a little longer.",
+    "{name} helped restore the local wetland, where pūkeko chicks appeared the following spring.",
+    "{name} coached a girls' football team that still meets for fish and chips after every season.",
+    "{name} became the dependable driver for kaumātua heading to markets, hui, and Sunday lunch.",
+    "{name} turned an empty section into a pocket park with benches made by local apprentices.",
+    "{name} learned to bake rēwena bread and delivers a warm loaf whenever someone moves in.",
+    "{name} set up a winter coat rail at the dairy, no questions asked.",
+    "{name} started a tiny native nursery, giving every school leaver a tree for their future garden.",
+    "{name} brought neighbours together for Matariki, sharing kai, stories, and hopes for the year ahead.",
+    "{name} mentors young tradies, teaching patience, pride, and how to leave every site tidy.",
+    "{name} founded a weekend walking group where nobody gets left behind on the hills.",
+    "{name} rebuilt the school garden beds, and lunchtime now comes with peas picked straight from the vine.",
+    "{name} started a community choir that sounds imperfect, joyful, and unmistakably like home.",
+    "{name} keeps a thermos ready for cold mornings at the kids' Saturday sport.",
+    "{name} helped the marae install rain tanks, then celebrated with kai under a clear evening sky.",
+    "{name} became the neighbour everyone trusts with spare keys, seedlings, and a quiet cup of tea.",
+    "{name} organised a tool library, making weekend projects affordable across the whole street.",
+    "{name} turned their garage into a free art space for rainy school holidays.",
+    "{name} began delivering library books to rural readers, always staying long enough for a proper kōrero.",
+    "{name} taught water confidence at the community pool, cheering loudest for every nervous first lap.",
+    "{name} started an orchard beside the rugby club, with fruit free for anyone passing.",
+    "{name} coordinated a walking school bus, filling winter mornings with chatter, beanies, and safe crossings.",
+    "{name} learned traditional weaving and now passes the practice on during relaxed Sunday afternoons.",
+    "{name} brought an old community piano back to life, and the station waiting room became warmer.",
+    "{name} hosts a monthly shared lunch where newcomers leave knowing at least two neighbours by name.",
 ];
+
+export const STORY_TEMPLATE_COUNT = MUNDANE.length + FUNNY.length + AMAZING.length;
 
 export interface SavedLifeStory {
     name: string;
     story: string;
+}
+
+/** Always show several stories; add a fourth when the run produced enough outcomes. */
+export function debriefStoryCount(livesSaved: number, offencesPrevented: number): number {
+    const outcomes = Math.max(0, livesSaved) + Math.max(0, offencesPrevented);
+    return Math.min(4, Math.max(3, outcomes));
 }
 
 /**
@@ -158,7 +273,7 @@ export function generateSavedLifeStories(count: number, seed: number): SavedLife
         usedNames.add(name);
         const roll = rng();
         const pool = roll < 0.4 ? MUNDANE : roll < 0.75 ? FUNNY : AMAZING;
-        stories.push({ name, story: pick(rng, pool).replace('{name}', name) });
+        stories.push({ name, story: pick(rng, pool).replaceAll('{name}', name) });
     }
     return stories;
 }

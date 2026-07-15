@@ -1,4 +1,4 @@
-// Story Codex: collect one "where are they now?" story per completed shift-day.
+// Story Codex: collect one debrief ripple story per completed shift-day.
 // Pure localStorage; the collection payoff for streaks.
 
 export interface CodexEntry {

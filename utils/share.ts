@@ -41,7 +41,7 @@ export function districtGlyphs(patrolPath: { x: number; y: number }[]): string {
 
 export interface ShareContext {
     mode: 'daily' | 'free' | 'operations';
-    storyLine?: string;      // one saved-life story, if any
+    storyLine?: string;      // one debrief ripple story, if any
     percentile?: number | null;
     streak?: number;
     competitionDay?: string;
@@ -64,7 +64,7 @@ export function buildShareText(b: FinalScoreBreakdown, ctx: ShareContext): strin
         districtGlyphs(b.patrolPath),
         statBits.join(' · '),
     ];
-    if (ctx.storyLine) lines.push(`Saved tonight: ${ctx.storyLine}`);
+    if (ctx.storyLine) lines.push(`Ripple effect: ${ctx.storyLine}`);
     lines.push(`Visible patrols can help prevent harm before it happens. ${gameUrl()}`);
     return lines.join('\n');
 }
@@ -148,7 +148,7 @@ export async function buildShareCard(b: FinalScoreBreakdown, ctx: ShareContext):
     if (ctx.storyLine) {
         g.fillStyle = '#86efac';
         g.font = 'italic 44px Rajdhani, sans-serif';
-        const wrapped = wrapText(g, `“Saved tonight: ${ctx.storyLine}”`, CARD_W - 160);
+        const wrapped = wrapText(g, `“Ripple effect: ${ctx.storyLine}”`, CARD_W - 160);
         let y = 950;
         for (const line of wrapped.slice(0, 4)) { g.fillText(line, CARD_W / 2, y); y += 58; }
     }
