@@ -348,6 +348,8 @@ scripts/migration-validator/.claude-tasks/
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
+*.db-shm
+*.db-wal
 .beads-credential-key
 .gstack/
 .serena/
