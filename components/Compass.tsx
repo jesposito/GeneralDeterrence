@@ -5,10 +5,10 @@ interface CompassProps {
   player: Player;
   civilians: Civilian[];
   dispatchedCall: DispatchedCall | null;
+  showRidsMarkers?: boolean;
 }
 
-const Compass: React.FC<CompassProps> = ({ player, civilians, dispatchedCall }) => {
-  const offenders = civilians.filter(c => c.ridsType);
+const Compass: React.FC<CompassProps> = ({ player, civilians, dispatchedCall, showRidsMarkers = false }) => {
   const playerAngleRad = (player.angle - 90) * (Math.PI / 180); // Game angle to math angle
 
   const renderMarker = (target: { pos: {x: number, y: number}, id: number | string }, type: 'rids' | 'lar' | 'dispatch') => {
@@ -63,8 +63,10 @@ const Compass: React.FC<CompassProps> = ({ player, civilians, dispatchedCall }) 
     );
   };
   
-  const lifeAtRiskCars = offenders.filter(c => c.isLifeAtRisk);
-  const regularOffenders = offenders.filter(c => !c.isLifeAtRisk && c.id !== dispatchedCall?.targetVehicleId);
+  const lifeAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
+  const regularOffenders = showRidsMarkers
+    ? civilians.filter(c => c.ridsType && !c.isLifeAtRisk && c.id !== dispatchedCall?.targetVehicleId)
+    : [];
 
   return (
     <div data-testid="hud-compass" className="hud-compass absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 w-[min(250px,44vw)] h-8 bg-black/80 rounded-full border-2 border-cyan-500/50 flex items-center justify-center font-display text-cyan-300 text-glow-cyan overflow-hidden">

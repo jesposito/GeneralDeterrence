@@ -41,11 +41,11 @@ export const getRads = (degrees: number): number => {
   return degrees * (Math.PI / 180);
 };
 
-export const findClosestPointOnRoad = (point: { x: number, y: number }): { point: { x: number, y: number }, dist: number, angle: number } | null => {
+export const findClosestPointOnRoad = (point: { x: number, y: number }): { point: { x: number, y: number }, dist: number, angle: number, segmentId: string } | null => {
   ensureCaches();
   // Track the closest projection with scalars + squared distance (one alloc + one sqrt at the
   // end, instead of a point object + sqrt per segment).
-  let bestX = 0, bestY = 0, minDistSq = Infinity, roadAngle = 0, found = false;
+  let bestX = 0, bestY = 0, minDistSq = Infinity, roadAngle = 0, segmentId = '', found = false;
   const { x, y } = point;
 
   for (const segment of ROAD_SEGMENTS) {
@@ -73,13 +73,14 @@ export const findClosestPointOnRoad = (point: { x: number, y: number }): { point
       minDistSq = distSq;
       bestX = px; bestY = py;
       roadAngle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+      segmentId = segment.id;
       found = true;
     }
   }
 
   if (!found) return null;
 
-  return { point: { x: bestX, y: bestY }, dist: Math.sqrt(minDistSq), angle: roadAngle };
+  return { point: { x: bestX, y: bestY }, dist: Math.sqrt(minDistSq), angle: roadAngle, segmentId };
 };
 
 export const findClosestNode = (point: { x: number; y: number }): { node: RoadNode; dist: number } | null => {

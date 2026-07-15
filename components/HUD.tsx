@@ -4,6 +4,7 @@ import Minimap from './Minimap';
 import * as CONSTANTS from '../constants';
 import Compass from './Compass';
 import { offscreenIndicatorPosition, type ViewTransform } from './hudGeometry';
+import type { CoverageTier, ShiftPhaseInfo } from '../utils/patrol';
 
 interface DistrictMetersProps {
     districts: District[];
@@ -59,10 +60,15 @@ interface DispatchedCallUIProps {
 }
 
 const DispatchedCallUI: React.FC<DispatchedCallUIProps> = ({ call }) => (
-    <div data-testid="hud-dispatch" className="hud-dispatch bg-pink-900/90 border-2 border-pink-500 p-2 sm:p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
+    <div data-testid="hud-dispatch" className="hud-dispatch max-w-full bg-pink-900/90 border-2 border-pink-500 p-2 sm:p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
         <p className="text-pink-300 font-bold text-xs sm:text-sm font-display tracking-wider">URGENT CALL</p>
-        <p className="text-sm sm:text-lg text-white">High-Risk Offender</p>
+        <p className="text-sm sm:text-lg text-white">Colleague ETA</p>
         <p className="text-xl sm:text-3xl font-bold text-yellow-300 font-display">{Math.ceil(call.timeLeft)}s</p>
+        {call.targetTimeLeft !== undefined && (
+          <p className={`text-xs font-sans ${call.timeLeft < call.targetTimeLeft ? 'text-green-300' : 'text-red-300'}`}>
+            {call.timeLeft < call.targetTimeLeft ? `Due ${Math.ceil(call.targetTimeLeft)}s · response on time` : `Due ${Math.ceil(call.targetTimeLeft)}s · intercept personally`}
+          </p>
+        )}
     </div>
 );
 
@@ -250,14 +256,26 @@ interface HUDProps {
   /** Arcade combo: active multiplier (1 = inactive) + fraction of the window remaining. */
   comboMult: number;
   comboFrac: number;
+  showRidsMarkers: boolean;
+  roadVisitedAt: Record<string, number>;
+  elapsedSeconds: number;
+  presenceChain: number;
+  coverageTier: CoverageTier;
+  shiftPhase: ShiftPhaseInfo;
+  earnedOvertimeSeconds: number;
+  investigationsRemaining: number;
+  pbDelta: number | null;
+  pbNextTarget: { atSeconds: number; score: number } | null;
+  radioActive: boolean;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewTransform, offencesPrevented, projectedScore, lifeAtRiskSeconds, onPause, comboMult, comboFrac }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewTransform, offencesPrevented, projectedScore, lifeAtRiskSeconds, onPause, comboMult, comboFrac, showRidsMarkers, roadVisitedAt, elapsedSeconds, presenceChain, coverageTier, shiftPhase, earnedOvertimeSeconds, investigationsRemaining, pbDelta, pbNextTarget, radioActive }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
   const livesAtRiskCount = livesAtRiskCars.length;
+  const weakestDistrict = districts.reduce((weakest, district) => district.deterrence < weakest.deterrence ? district : weakest, districts[0]);
 
   const [scoreDisplay, setScoreDisplay] = useState(score);
   const [scorePop, setScorePop] = useState(false);
@@ -322,7 +340,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
            <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} viewTransform={viewTransform} color="text-yellow-400" />
       )}
 
-      <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} />
+      <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} showRidsMarkers={showRidsMarkers} />
 
       <button
         type="button"
@@ -336,12 +354,15 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       </button>
 
 
-      <div className="hud-top-row w-full flex justify-between items-start">
-        <div className="flex flex-col space-y-2 md:space-y-3">
-            <div data-testid="hud-score" className="hud-score bg-black/80 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
+      <div className="hud-top-row w-full flex justify-between items-start gap-1 sm:gap-2">
+        <div className="flex shrink-0 flex-col space-y-2 md:space-y-3">
+            <div data-testid="hud-score" className="hud-score bg-black/80 p-2 md:p-3 rounded-lg shadow-lg w-32 sm:w-40 md:w-52 border-2 border-pink-500/50">
                 <div className="text-xs md:text-sm font-semibold text-cyan-400 tracking-wider text-glow-cyan">SCORE</div>
                 <div className={`text-2xl md:text-3xl font-bold text-glow-yellow ${scorePop ? 'animate-score-pop' : ''}`}>{scoreDisplay.toLocaleString()}</div>
                 <div className="text-[10px] md:text-xs text-gray-300 font-sans">Projected <span className="font-bold text-yellow-200">{projectedScore.toLocaleString()}</span></div>
+                {pbDelta !== null && <div className={`text-[10px] md:text-xs font-sans ${pbDelta >= 0 ? 'text-green-300' : 'text-red-300'}`}>PB pace {pbDelta >= 0 ? '+' : ''}{pbDelta.toLocaleString()}</div>}
+                {pbNextTarget && <div className="text-[10px] md:text-xs text-cyan-200 font-sans">Next {pbNextTarget.score.toLocaleString()} at {pbNextTarget.atSeconds}s</div>}
+                <div className="text-[10px] md:text-xs text-pink-200 font-sans mt-0.5">Deep investigations <span className="font-bold">{investigationsRemaining}</span></div>
                 <div className="flex justify-between items-center text-center mt-1">
                     {/* The teaching stat: offences that never happened because deterrence held. */}
                     <div>
@@ -369,15 +390,22 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     </div>
                 </div>
             )}
-            <div data-testid="hud-districts" className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
+            <div data-testid="hud-districts" className={`bg-black/70 p-2 rounded-lg shadow-lg w-32 sm:w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
                 <DistrictMeters districts={districts} playerDistrict={playerDistrict} isVigilanceBonusActive={isVigilanceBonusActive} presenceBoostRate={presenceBoostRate} />
             </div>
         </div>
 
-        <div className="hud-center-alerts flex-grow flex flex-col justify-start items-center space-y-2 pt-2">
+        <div className="hud-center-alerts min-w-0 flex-1 flex flex-col justify-start items-center space-y-2 px-1 pt-12">
+            <div className={`${radioActive ? 'invisible' : ''} hidden sm:block w-full max-w-[30rem] bg-black/85 border-2 border-cyan-500/60 px-3 py-1.5 rounded-lg text-center`}>
+                <p className="text-sm md:text-base text-cyan-300 font-bold tracking-wider">{shiftPhase.label}</p>
+                <p className="text-[10px] md:text-xs text-gray-200 font-sans [@media(max-height:500px)]:hidden">{shiftPhase.objective}</p>
+                <p className="text-[10px] md:text-xs text-yellow-200 font-sans">{coverageTier.label}{coverageTier.scoreMultiplier > 1 ? ` · ×${coverageTier.scoreMultiplier.toFixed(2)}` : ''}{presenceChain > 1 ? ` · Presence chain ${presenceChain}` : ''}</p>
+                {weakestDistrict && <p className={`text-[10px] md:text-xs font-sans [@media(max-height:500px)]:hidden ${weakestDistrict.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 'text-red-300' : 'text-gray-300'}`}>Weakest: {weakestDistrict.name} {Math.round(weakestDistrict.deterrence)}%</p>}
+            </div>
             {/* Compact meters for touch players (gd-0wi.17/.21): the bottom cluster is hidden on
                 coarse pointers to leave room for the on-screen controls, so surface key state here. */}
-            <div data-testid="hud-compact" className="hud-compact-strip hidden [@media(any-pointer:coarse)]:flex [@media(max-height:500px)]:flex items-center gap-2 bg-black/90 px-3 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10">
+            <div data-testid="hud-compact" className={`${radioActive ? 'invisible' : ''} hud-compact-strip hidden [@media(any-pointer:coarse)]:flex [@media(max-height:500px)]:flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-black/90 px-2 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10`}>
+                <span className="sm:hidden font-bold text-cyan-300">{shiftPhase.label}</span>
                 {/* District deterrence dots: landscape phones hide the full meter panel
                     (max-height:500px), losing the core teaching UI — keep a glanceable version here. */}
                 <div
@@ -412,27 +440,30 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     <span className="text-yellow-300 font-bold" aria-label={`${colleagueCalls} colleague assists available`}>{colleagueCalls}</span>
                 </div>
             </div>
-            {isVigilanceBonusActive && (
-                <div className="bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
-                    {/* "Vigilance Bonus" collided with the purple personal Vigilance meter — it's a district-coverage bonus. */}
-                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">FULL COVERAGE ×2</p>
+            {coverageTier.scoreMultiplier > 1 && (
+                <div className="max-w-full bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
+                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">{coverageTier.label} ×{coverageTier.scoreMultiplier.toFixed(2)}</p>
                 </div>
             )}
-            {dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}
+            {!radioActive && dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}
         </div>
         
-        <div className="hud-right-stack flex flex-col items-end space-y-2 md:space-y-3">
+        <div className="hud-right-stack shrink-0 flex flex-col items-end space-y-2 md:space-y-3">
           <div data-testid="hud-timer" className="bg-black/80 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50 [@media(max-height:500px)]:p-1">
             <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
             <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
+            <div className="text-[10px] md:text-xs text-green-300 font-sans">Overtime bank {earnedOvertimeSeconds}s</div>
           </div>
-          <div data-testid="hud-minimap" className="w-36 h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
+          <div data-testid="hud-minimap" className="w-24 h-24 sm:w-36 sm:h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
              <Minimap
                 player={player} 
                 civilians={civilians} 
                 districts={districts}
                 dispatchedCall={dispatchedCall}
                 mode={minimapMode}
+                showRidsMarkers={showRidsMarkers}
+                roadVisitedAt={roadVisitedAt}
+                elapsedSeconds={elapsedSeconds}
              />
           </div>
         </div>

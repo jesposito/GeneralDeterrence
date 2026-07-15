@@ -9,6 +9,7 @@
   /* iOS Safari address-bar fix: 100vh fallback + 100dvh override on supporting browsers (iOS 15.4+) */
   .app-vh { height: 100vh; height: 100dvh; }
   .app-min-vh { min-height: 100vh; min-height: 100dvh; }
+
   .font-display {
     font-family: 'Orbitron', sans-serif;
   }
@@ -435,6 +436,21 @@
     margin-right: 6.5rem;
   }
 
+  /* Radio updates temporarily replace the centre status panel instead of competing
+     with it. The centre lane is offset because the right HUD reserves control space. */
+  .dispatch-radio-region {
+    left: calc(50% - 3.25rem) !important;
+    width: min(30rem, 80vw);
+  }
+  .dispatch-radio-banner {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 5.5rem;
+    max-width: 100% !important;
+    align-content: center;
+    background-color: rgb(0 0 0 / 0.97) !important;
+  }
+
   @media (any-pointer: coarse), (max-height: 500px) {
     .hud-compact-strip {
       display: flex !important;
@@ -446,6 +462,19 @@
     }
     .hud-center-alerts {
       padding-top: 5rem;
+    }
+    .dispatch-radio-region {
+      right: 13.5rem;
+      left: 11rem !important;
+      width: auto;
+      transform: none !important;
+    }
+  }
+
+  @media (min-width: 768px) and (max-height: 500px) {
+    .dispatch-radio-region {
+      right: 14.5rem;
+      left: 14rem !important;
     }
   }
 
@@ -515,6 +544,39 @@
       padding: 0.25rem 0.5rem !important;
       font-size: 0.75rem !important;
       line-height: 1.15;
+    }
+  }
+
+  /* 568x320-class phones have only a narrow lane between the score and timer.
+     Keep the navigation/compact HUD in that lane and clear the action grid. */
+  @media (max-width: 600px) and (max-height: 360px) {
+    .hud-compass,
+    .hud-compact-strip {
+      left: calc(50% - 1.5rem) !important;
+      max-width: 12.5rem !important;
+    }
+    .hud-compact-strip {
+      white-space: normal;
+    }
+    .hud-compact-strip > span:first-child {
+      width: 100%;
+      overflow: hidden;
+      text-align: center;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hud-right-stack [data-testid="hud-minimap"] {
+      width: 4rem !important;
+      height: 4rem !important;
+    }
+    .dispatch-radio-region {
+      right: auto;
+      left: 10rem !important;
+      width: 12.5rem;
+      transform: none !important;
+    }
+    .dispatch-radio-banner {
+      min-height: 4.5rem;
     }
   }
 

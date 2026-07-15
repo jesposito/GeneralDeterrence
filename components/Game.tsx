@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Player, Civilian, RIDSType, VehicleType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown } from '../types';
+import { Player, Civilian, RIDSType, VehicleType, DeterrenceBlob as DeterrenceBlobType, CollectionEffect as CollectionEffectType, District, DistrictName, FinalScoreBreakdown, SparkParticle, SkidMark, MinimapMode, EnforcementAction, ColleagueCallAction, FloatingScoreText as FloatingScoreTextType, TireSmokeParticle, Explosion as ExplosionType, PatrolPost, StationaryCountdown, DispatchedCall, PatrolSample } from '../types';
 import { currentWeatherRef, weatherRadioLine } from '../utils/weather';
 import { advanceShiftClock, buildOffenderSchedule, computeLifeAtRiskChance, planSimulationSteps, slotAt } from '../utils/schedule';
 import { mulberry32, type Rng } from '../utils/rng';
@@ -21,18 +21,47 @@ import { drawGame, getCanvasRenderScale, CameraState, RenderState } from '../uti
 import { pickRadioChatter, pickCarChatter, pickStandardActionReaction, pickInvestigateReaction, pickInterdiction, pickBriefingFact } from '../utils/stories';
 import * as audio from '../utils/audio';
 import { loadChallengeAssist } from '../utils/preferences';
+import {
+  createRoadFreshnessState,
+  getCoverageTier,
+  getEarnedOvertimeSeconds,
+  getShiftPhase,
+  roadRepeatEntryRatio,
+  visitRoadSegment,
+  type CoverageTier,
+  type ShiftPhaseInfo,
+} from '../utils/patrol';
+import type { OperationDefinition, OperationModifiers } from '../utils/operations';
+import { replayScoreAt, sampleReplayRoute, type PersonalBestReplay } from '../utils/replay';
+import { getPatrolLoadout, type PatrolLoadout } from '../utils/loadouts';
+import { getPresenceGrade } from '../shared/presenceGrade.js';
 
 interface GameProps {
   onGameOver: (scoreBreakdown: FinalScoreBreakdown) => void;
   onRestart: () => void;
   onMainMenu: () => void;
-  /** PB run's patrol path for this exact map (daily): rendered as a faded ghost. */
-  ghostPath?: { x: number; y: number }[] | null;
   /** Yesterday's daily #1: patrols tonight's map as a friendly named unit. */
   championName?: string | null;
   /** The map seed: drives the fairness schedule (offender rolls) + seeded player spawn. */
   mapSeed?: number;
+  operation?: OperationDefinition | null;
+  pbReplay?: PersonalBestReplay | null;
+  loadout?: PatrolLoadout;
 }
+
+const NEUTRAL_OPERATION: OperationModifiers = {
+  presenceAuraMultiplier: 1,
+  presenceRateMultiplier: 1,
+  trafficMultiplier: 1,
+  maxSimultaneousLifeAtRisk: 1,
+  ruralDeterrenceMultiplier: 1,
+  priorityDistrict: null,
+  priorityRids: null,
+  patrolPostMultiplier: 1,
+  energyRechargeMultiplier: 1,
+  standardScoreMultiplier: 1,
+  investigateScoreMultiplier: 1,
+};
 
 type LocalGameState = 'Starting' | 'Playing' | 'RidsChoice' | 'MiniGame' | 'Referral';
 
@@ -48,6 +77,7 @@ const PATHFINDING_INTERVAL = 1000; // ms, how often to recalculate GPS path
 const HUD_UPDATE_INTERVAL_MS = 100;
 const MAX_SIMULATION_STEP_SECONDS = 0.05;
 const MAX_SIMULATION_STEPS_PER_FRAME = 10;
+const ROAD_FRESHNESS_SAMPLE_MS = 750;
 
 // Haptic vocabulary — one consistent language (gd-ml5): short tap = success,
 // heavy triple = failure, long build = the big bust, steady triple = overtime.
@@ -82,12 +112,25 @@ function pickVehicleType(district: DistrictName, rng: Rng): VehicleType {
     return 'car';
 }
 
+function observedEvidence(car: Civilian): string {
+    const vehicle = car.vehicleType === 'bike' ? 'motorcycle' : car.vehicleType ?? 'vehicle';
+    switch (car.ridsType) {
+      case 'Impairment': return `${vehicle} is drifting across its lane and correcting late`;
+      case 'Speed': return `${vehicle} is moving substantially faster than surrounding traffic`;
+      case 'Distractions': return `${vehicle} shows screen glow, uneven speed, and delayed braking`;
+      case 'Restraints': return `${vehicle} has an occupant without a visible restraint line`;
+      default: return `${vehicle} has no confirmed safety evidence`;
+    }
+}
+
 const RidsChoiceModal: React.FC<{
     onInvestigate: () => void;
     onStandard: () => void;
     selection: 'standard' | 'investigate';
     paused?: boolean;
-}> = ({ onInvestigate, onStandard, selection, paused = false }) => {
+    evidence: string;
+    investigationsRemaining: number;
+}> = ({ onInvestigate, onStandard, selection, paused = false, evidence, investigationsRemaining }) => {
     // Every investigation runs a mini-game and costs shift time.
     // "Instant, Variable Reward" copy predated the gd-0wi.10 retool).
     const investigateLabel = `Mini-Game, −${CONSTANTS.ENFORCE_TIME_COST_SECONDS}s Shift, High Reward`;
@@ -137,12 +180,13 @@ const RidsChoiceModal: React.FC<{
         return () => cancelAnimationFrame(raf);
     }, [paused, selection]);
     return (
-    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-start justify-center z-20 animate-fadeIn overflow-y-auto p-2 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title" aria-describedby="rids-choice-desc">
-        <div ref={dialogRef} tabIndex={-1} className="bg-gray-900 my-auto p-4 sm:p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50 focus:outline-none">
+    <div className="absolute inset-0 bg-black/35 flex items-end sm:items-center justify-center z-20 animate-fadeIn overflow-y-auto p-2 sm:p-4 pointer-events-none" role="dialog" aria-modal="true" aria-labelledby="rids-choice-title" aria-describedby="rids-choice-desc">
+        <div ref={dialogRef} tabIndex={-1} className="bg-gray-900/95 p-4 sm:p-6 rounded-lg shadow-2xl w-full max-w-lg text-center border-4 border-yellow-500 shadow-lg shadow-yellow-500/50 focus:outline-none pointer-events-auto">
             <h2 id="rids-choice-title" className="text-3xl font-bold text-yellow-400 mb-2 font-display text-glow-yellow">Driver Intervention</h2>
             <p className="text-lg text-gray-300 mb-1 font-sans">Choose your action.</p>
             {/* WCAG 2.2.1: the time limit is stated, and changing selection extends it. */}
             <p id="rids-choice-desc" className="text-xs text-gray-400 mb-3 font-sans">No decision in 5 seconds uses standard enforcement. Changing your selection restarts the timer.</p>
+            <p className="text-sm text-left text-cyan-100 bg-cyan-950/60 border border-cyan-600 rounded p-2 mb-3 font-sans"><span className="font-bold text-cyan-300">OBSERVED:</span> {evidence}</p>
             {/* Decision timer bar — auto-resolves to the standard action at zero. */}
             <div className="w-full h-1 bg-gray-700 rounded mb-6 overflow-hidden" aria-hidden="true">
                 <div ref={timerBarRef} className="h-full bg-yellow-400" style={{ width: '100%' }} />
@@ -156,9 +200,10 @@ const RidsChoiceModal: React.FC<{
                 </button>
                 <button
                     onClick={onInvestigate}
-                    className={`flex-1 bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white ${selection === 'investigate' ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
+                    disabled={investigationsRemaining <= 0}
+                    className={`flex-1 bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-xl transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white disabled:opacity-40 disabled:cursor-not-allowed ${selection === 'investigate' && investigationsRemaining > 0 ? 'ring-4 ring-yellow-400 shadow-[0_0_20px_theme("colors.yellow.400")]' : ''}`}
                 >
-                    Investigate <br/><span className="text-sm font-sans font-normal">({investigateLabel})</span>
+                    Investigate <br/><span className="text-sm font-sans font-normal">({investigateLabel} · {investigationsRemaining} left)</span>
                 </button>
             </div>
             <p className="text-sm text-gray-400 mt-6 font-sans">Use <span className="font-bold text-white">←</span> / <span className="font-bold text-white">→</span> or <span className="font-bold text-white">A</span> / <span className="font-bold text-white">D</span> to select, <span className="font-bold text-white">ENTER</span> / <span className="font-bold text-white">SPACE</span> to confirm.</p>
@@ -168,35 +213,40 @@ const RidsChoiceModal: React.FC<{
 
 
 // Referral follow-up (the wired-in MatchingGame): same dialog semantics/trap as MiniGameModal.
-const ReferralModal: React.FC<{ onComplete: (success: boolean) => void; paused?: boolean; scenarioIndex?: number }> = ({ onComplete, paused, scenarioIndex }) => {
+const ReferralModal: React.FC<{ onComplete: (success: boolean) => void; paused?: boolean; scenarioIndex?: number; challengeAssist?: boolean }> = ({ onComplete, paused, scenarioIndex, challengeAssist }) => {
     const panelRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         const prev = document.activeElement as HTMLElement | null;
         panelRef.current?.focus();
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Tab') return;
-            const focusables = panelRef.current?.querySelectorAll<HTMLElement>('button');
+            const panel = panelRef.current;
+            const focusables = panel?.querySelectorAll<HTMLElement>('button:not(:disabled)');
             if (!focusables || focusables.length === 0) { e.preventDefault(); return; }
             const first = focusables[0];
             const last = focusables[focusables.length - 1];
-            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            if (!panel?.contains(document.activeElement)) {
+                e.preventDefault();
+                (e.shiftKey ? last : first).focus();
+            } else if (e.shiftKey && (document.activeElement === first || document.activeElement === panel)) { e.preventDefault(); last.focus(); }
             else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
         };
         document.addEventListener('keydown', onKey);
         return () => { document.removeEventListener('keydown', onKey); prev?.focus?.(); };
     }, []);
     return (
-        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-start justify-center z-20 animate-fadeIn overflow-y-auto p-2 sm:p-4" data-testid="referral-shell">
-            <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="referral-title" className="bg-gray-900 my-auto p-4 sm:p-8 rounded-lg shadow-2xl w-full max-w-md text-center border-4 border-green-500 shadow-lg shadow-green-500/50 focus:outline-none">
+        <div className="absolute inset-0 bg-black/35 flex items-start justify-center z-20 animate-fadeIn overflow-y-auto p-2 sm:p-4" data-testid="referral-shell">
+            <div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="referral-title" className="my-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain bg-gray-900/95 p-4 sm:p-6 rounded-lg shadow-2xl w-full max-w-lg text-center border-4 border-green-500 shadow-lg shadow-green-500/50 focus:outline-none">
                 <h2 id="referral-title" className="text-3xl font-bold text-green-400 mb-2 font-display">Referral Opportunity</h2>
                 <p className="text-sm text-gray-400 mb-4 font-sans">Bonus: +{CONSTANTS.REFERRAL_BONUS} for this exercise's partner match. No penalty for a miss.</p>
-                <MatchingGame onComplete={onComplete} ridsType="Restraints" paused={paused} scenarioIndex={scenarioIndex} />
+                <MatchingGame onComplete={onComplete} ridsType="Restraints" paused={paused} scenarioIndex={scenarioIndex} challengeAssist={challengeAssist} />
             </div>
         </div>
     );
 };
 
-const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPath, championName, mapSeed = 0 }) => {
+const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, championName, mapSeed = 0, operation = null, pbReplay = null, loadout = getPatrolLoadout('balanced') }) => {
+  const operationModifiers = operation?.modifiers ?? NEUTRAL_OPERATION;
   // State for UI and major game phases
   const [gameState, setGameState] = useState<LocalGameState>('Starting');
   const [countdownText, setCountdownText] = useState<string>('3');
@@ -234,6 +284,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   // (timer default, keyboard confirm, button click, mini-game completion) so a race
   // can never fire two outcomes for one stop.
   const ridsPhaseRef = useRef<'idle' | 'choice' | 'minigame'>('idle');
+  const activeRidsRef = useRef<{ car: Civilian; ridsType: RIDSType } | null>(null);
   const gameStateRef = useRef<LocalGameState>('Starting');
   const bindingsRef = useRef<Bindings>(loadBindings()); // configurable key bindings (defaults = classic controls)
   const lastHudUpdateRef = useRef<number>(0);
@@ -256,8 +307,9 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   // The invisible win, made countable: offenders the spawner never created because
   // deterrence was high. THE teaching number for a game about general deterrence.
   const offencesPreventedRef = useRef(0);
-  // Seconds with every district ≥50% — the Presence Grade input (S/A/B/C on GameOver).
-  const fullCoverageSecondsRef = useRef(0);
+  const coverageQualityIntegralRef = useRef(0);
+  const securedCoverageSecondsRef = useRef(0);
+  const coverageTierRef = useRef<CoverageTier>(getCoverageTier(districtsRef.current.map(d => d.deterrence)));
   const districtZoneRef = useRef<Record<string, 'hotspot' | 'mid' | 'secured'>>({});
   const coverageQualityRef = useRef(50);
   const isVigilanceBonusActiveRef = useRef(false);
@@ -273,8 +325,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const lastBeepedSecondRef = useRef<number>(11);
   const patrolStartedRef = useRef(false);
   const isBrakingRef = useRef(false);
-  const colleagueCallsRef = useRef(CONSTANTS.MAX_COLLEAGUE_CALLS);
+  const colleagueCallsRef = useRef(Math.max(0, CONSTANTS.MAX_COLLEAGUE_CALLS + loadout.modifiers.colleagueDelta));
+  const investigationsRemainingRef = useRef(Math.max(1, CONSTANTS.MAX_DEEP_INVESTIGATIONS + loadout.modifiers.investigationDelta));
+  const dispatchedCallRef = useRef<DispatchedCall | null>(null);
   const presenceBoostRateRef = useRef(0);
+  const roadFreshnessRef = useRef(createRoadFreshnessState());
+  const roadFreshnessMultiplierRef = useRef(1);
+  const lastRoadFreshnessSampleRef = useRef(-Infinity);
+  const bestPresenceChainRef = useRef(0);
+  const patrolSamplesByDistrictRef = useRef<Record<DistrictName, number>>({
+    'Karori North': 0, 'Karori West': 0, 'Karori Central': 0, 'Karori East': 0, Karori: 0,
+  });
+  const currentPhaseRef = useRef<ShiftPhaseInfo>(getShiftPhase(0, CONSTANTS.SHIFT_DURATION));
+  const earnedOvertimeSecondsRef = useRef(0);
   
   // Refs for tracking game logic timers and state
   const keysPressed = useRef<{ [key: string]: boolean }>({});
@@ -296,8 +359,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   // The once-per-shift interdiction car + its outcome for the end screen.
   const interdictionAssignedRef = useRef(false);
   const interdictionResultRef = useRef<FinalScoreBreakdown['interdiction']>(null);
-  // OVERTIME: hold FULL COVERAGE at the whistle → +30s, once. Gates extended scoring
-  // behind mastery of the core teaching mechanic (leaderboard chasers must hold coverage).
+  // Overtime is banked once from cumulative time with at least three secured districts.
   const overtimeUsedRef = useRef(false);
   // Fairness schedule (gd-zz7.16): per-ordinal offender rolls from the map seed.
   const [offenderSchedule] = useState(() => buildOffenderSchedule(mapSeed));
@@ -310,12 +372,10 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const slamAtRef = useRef(0);
   const [showSlam, setShowSlam] = useState(false);
   const lastWhooshAtRef = useRef(0);
-  // PB ghost: replays ghostPath at the same cadence it was recorded (one sample per
-  // PATROL_PATH_SAMPLE_RATE frames ≈ 0.5s), lerped between samples.
-  const ghostElapsedRef = useRef(0);
   const ghostPosRef = useRef<{ x: number; y: number; angle: number } | null>(null);
   // Queued dispatch lines: weather intro first (if any), then the champion intro.
   const pendingRadioRef = useRef<string[]>([
+      ...(operation ? [`${operation.name}: ${operation.briefing}`] : []),
       ...(weatherRadioLine(currentWeatherRef.current) ? [weatherRadioLine(currentWeatherRef.current)!] : []),
       ...(championName ? [`Insp. ${championName} is out with you tonight. Yesterday's top patrol.`] : []),
   ]);
@@ -336,9 +396,14 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const sirenStartTimeRef = useRef<number | null>(null);
   
   const patrolPathRef = useRef<{x: number, y: number}[]>([]);
+  const patrolTimelineRef = useRef<PatrolSample[]>([]);
+  const scoreSplitsRef = useRef<FinalScoreBreakdown['scoreSplits']>([]);
+  const nextScoreSplitRef = useRef(30);
   const enforcementActionsRef = useRef<EnforcementAction[]>([]);
   const colleagueCallActionsRef = useRef<ColleagueCallAction[]>([]);
   const patrolPathFrameCounter = useRef(0);
+  const interventionStatsRef = useRef({ scans: 0, accurateScans: 0, falseScans: 0, standard: 0, investigate: 0, modalSeconds: 0 });
+  const offendersSpawnedRef = useRef(0);
   
   const isNeglectOfDutyActiveRef = useRef(false);
   const stationaryStartTime = useRef<number | null>(null);
@@ -392,6 +457,30 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     const clock = advanceShiftClock(timeLeftRef.current, elapsedShiftSecondsRef.current, seconds);
     timeLeftRef.current = clock.timeLeft;
     elapsedShiftSecondsRef.current = clock.elapsed;
+  }, []);
+
+  const closeActiveIntervention = useCallback(() => {
+    ridsPhaseRef.current = 'idle';
+    activeRidsRef.current = null;
+    setActiveRids(null);
+    setTargetedCarId(null);
+    setGameState('Playing');
+  }, []);
+
+  const closeInterventionForVehicle = useCallback((vehicleId: number): boolean => {
+    if (activeRidsRef.current?.car.id !== vehicleId) return false;
+    closeActiveIntervention();
+    return true;
+  }, [closeActiveIntervention]);
+
+  const recordDispatchOutcome = useCallback((call: DispatchedCall, result: ColleagueCallAction['result'], pos = call.pos) => {
+    colleagueCallActionsRef.current.push({
+      pos: { ...pos },
+      targetVehicleId: call.targetVehicleId,
+      atSeconds: elapsedShiftSecondsRef.current,
+      result,
+    });
+    dispatchedCallRef.current = null;
   }, []);
 
   // Track pad presence so the frame loop doesn't call getGamepads() (which allocates)
@@ -452,12 +541,11 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     return () => cancelAnimationFrame(raf);
   }, [briefingFact, gameState, isGameplayPaused, playRadio]);
 
-  // Engine drone lifecycle: start when patrol begins, stop on every other state
-  // (RidsChoice, MiniGame, GameOver) AND on component unmount. Visibility/blur
-  // also stops it via clearHeldInputs above. Also reset the time-pressure tick
-  // tracker so a fresh shift gets the full 10-tick + final-zap sequence.
+  // Keep the patrol soundscape running through compact intervention overlays. The vehicle
+  // coasts and the world slows, but a stop no longer turns the 90-second shift into dead time.
   useEffect(() => {
-    if (gameState === 'Playing' && !isGameplayPaused) {
+    const patrolActive = gameState !== 'Starting';
+    if (patrolActive && !isGameplayPaused) {
       audio.engineStart();
       audio.setEngineLevel(0);
       audio.musicStart();
@@ -560,6 +648,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
 
   const handleColleagueCall = useCallback(() => {
     if (colleagueCallsRef.current <= 0 || gameStateRef.current !== 'Playing' || isGameplayPausedRef.current) return;
+    if (dispatchedCallRef.current?.active) {
+        setGameMessage('COLLEAGUE ALREADY EN ROUTE');
+        if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+        gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1800);
+        return;
+    }
 
     const lifeAtRiskCars = civiliansRef.current.filter(c => c.isLifeAtRisk);
 
@@ -576,19 +670,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
 
     if (targetCar) {
         colleagueCallsRef.current--;
-        setGameMessage('COLLEAGUE DISPATCHED TO HIGH-RISK EVENT');
+        const distance = getDistance(playerRef.current.pos, targetCar.pos);
+        const stagedFromPost = patrolPostsRef.current.some(post => getDistanceSq(post.pos, targetCar!.pos) < CONSTANTS.PATROL_POST_RADIUS ** 2);
+        const eta = Math.max(CONSTANTS.COLLEAGUE_DISPATCH_MIN_SECONDS, distance / CONSTANTS.COLLEAGUE_DISPATCH_SPEED) * (stagedFromPost ? 0.7 : 1);
+        dispatchedCallRef.current = {
+            id: simulationTimeRef.current + targetCar.id,
+            pos: { ...targetCar.pos },
+            targetVehicleId: targetCar.id,
+            timeLeft: eta,
+            active: true,
+            targetTimeLeft: targetCar.lifeAtRiskTimer,
+        };
+        setGameMessage(`COLLEAGUE EN ROUTE · ETA ${Math.ceil(eta)}s`);
         gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 3000);
-
-        scoreRef.current.livesSaved++;
-        scoreRef.current.colleagueSaves++; // colleague saves pay half — attending yourself stays the best play
-        const targetDistrict = getDistrictForPoint(targetCar.pos);
-        if (targetDistrict) {
-            const district = districtsRef.current.find(d => d.id === targetDistrict);
-            if (district) district.deterrence = Math.min(100, district.deterrence + CONSTANTS.COLLEAGUE_DETERRENCE_BOOST);
-        }
-
-        colleagueCallActionsRef.current.push({ pos: { ...targetCar.pos }, targetVehicleId: targetCar.id });
-        civiliansRef.current = civiliansRef.current.filter(c => c.id !== targetCar!.id);
         
     } else {
         setGameMessage('NO HIGH-PRIORITY TARGETS AVAILABLE');
@@ -643,33 +737,29 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     const player = playerRef.current;
     const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (player.vigilance / 100);
     const baseRadius = player.isSirenActive ? CONSTANTS.PLAYER_SIREN_AURA_RADIUS : CONSTANTS.PLAYER_AURA_RADIUS;
-    const checkRadius = baseRadius + currentVigilanceBonus;
+    const checkRadius = (baseRadius + currentVigilanceBonus) * operationModifiers.presenceAuraMultiplier * loadout.modifiers.scanRadius;
+    interventionStatsRef.current.scans++;
     const nearbyCar = findNearestInCone(
       player.pos,
       player.angle,
-      civiliansRef.current.filter(c => c.ridsType),
+      civiliansRef.current.filter(c => !c.isChampion),
       checkRadius,
       CONSTANTS.RIDS_TARGET_HALF_ANGLE_DEGREES,
     );
-    if (nearbyCar) {
+    if (nearbyCar?.ridsType) {
+        interventionStatsRef.current.accurateScans++;
         ridsPhaseRef.current = 'choice'; // arm the one-shot resolution guard
         setActiveRids({ car: nearbyCar, ridsType: nearbyCar.ridsType! });
         setTargetedCarId(nearbyCar.id);
         setGameMessage('TARGET LOCKED');
         audio.beep();
         setRidsChoiceSelection('standard');
+        activeRidsRef.current = { car: nearbyCar, ridsType: nearbyCar.ridsType! };
         setGameState('RidsChoice');
         if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
         gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1200);
-    } else {
-        const anyCarNearby = !!findNearestInCone(
-          player.pos,
-          player.angle,
-          civiliansRef.current.filter(c => !c.isChampion),
-          checkRadius,
-          CONSTANTS.RIDS_TARGET_HALF_ANGLE_DEGREES,
-        );
-        if (anyCarNearby) {
+    } else if (nearbyCar) {
+            interventionStatsRef.current.falseScans++;
             // Feedback for a wasted check (was a silent -3s time penalty).
             spendShiftTime(CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK);
             audio.thud();
@@ -678,7 +768,6 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             setGameMessage(`NO VIOLATION  -${CONSTANTS.RIDS_TIME_PENALTY_INCORRECT_CHECK}s`);
             if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
             gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 1500);
-        }
     }
   }, [spendShiftTime]);
   
@@ -733,12 +822,18 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   useEffect(() => {
     if (!trafficInitializedRef.current) {
       trafficInitializedRef.current = true;
-      const initialCarCount = Math.min(CONSTANTS.MAX_CIVILIAN_CARS, 40);
+      const initialCarCount = Math.min(CONSTANTS.MAX_CIVILIAN_CARS, Math.round(40 * operationModifiers.trafficMultiplier));
       for (let i = 0; i < initialCarCount; i++) {
           const newCar = createCivilian();
           if (newCar) civiliansRef.current.push(newCar);
       }
       patrolPathRef.current = [{ ...playerRef.current.pos }];
+      patrolTimelineRef.current = [{
+        ...playerRef.current.pos,
+        atSeconds: 0,
+        score: 0,
+        district: getDistrictForPoint(playerRef.current.pos),
+      }];
       cameraPosRef.current = { ...playerRef.current.pos };
       lastPlayerDistrictRef.current = getDistrictForPoint(playerRef.current.pos);
     }
@@ -757,6 +852,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     const updatePlayerMovement = (now: number, dt: number, elapsedDt: number) => {
         const dtScale = 60 * dt; // Scale from per-frame@60fps to per-dt
         const player = playerRef.current;
+        const controlsEnabled = gameStateRef.current === 'Playing';
 
         // Gamepad (Standard mapping) — additive + inert without hardware, so it can't affect the
         // keyboard/touch paths. Left stick -> analog drive; RB/RT -> boost; A/B/X (edge) ->
@@ -797,18 +893,20 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         const ts = touchStateRef.current;
         const b = bindingsRef.current;
         // Read both refs directly ({...kp, ...ts} allocated a merged object per frame).
-        const bound = (action: keyof Bindings) => b[action].some(key => kp[key] || ts[key]);
-        const moveForward = bound('forward') || ts['forward'];
-        const moveBackward = bound('backward') || ts['backward'];
-        const turnLeft = bound('left') || ts['left'];
-        const turnRight = bound('right') || ts['right'];
-        const isTryingToBoost = bound('boost') || ts['boost'] || gamepadBoostRef.current;
+        const bound = (action: keyof Bindings) => controlsEnabled && b[action].some(key => kp[key] || ts[key]);
+        const moveForward = bound('forward');
+        const moveBackward = bound('backward');
+        const turnLeft = bound('left');
+        const turnRight = bound('right');
+        const isTryingToBoost = bound('boost') || (controlsEnabled && gamepadBoostRef.current);
         
         // Boost works with any movement intent — keyboard forward OR joystick deflection (touch driving
         // is omnidirectional, so gating on 'forward' silently broke boost in most headings).
         const padAnalog = gamepadAnalogInputRef.current;
         const touchAnalog = analogInputRef.current;
-        const activeAnalog = Math.hypot(padAnalog.x, padAnalog.y) > 0.05 ? padAnalog : touchAnalog;
+        const activeAnalog = controlsEnabled
+            ? (Math.hypot(padAnalog.x, padAnalog.y) > 0.05 ? padAnalog : touchAnalog)
+            : { x: 0, y: 0 };
         const hasMoveIntent = moveForward || Math.hypot(activeAnalog.x, activeAnalog.y) > 0.05;
         player.isBoosting = isTryingToBoost && player.boostCharge >= CONSTANTS.PLAYER_BOOST_DRAIN_RATE && hasMoveIntent && !player.isSirenActive;
 
@@ -825,7 +923,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 audio.sirenStop();
             }
         } else {
-            player.boostCharge = Math.min(CONSTANTS.PLAYER_BOOST_MAX_CHARGE, player.boostCharge + CONSTANTS.DT_BOOST_RECHARGE_PER_SEC * elapsedDt);
+            player.boostCharge = Math.min(CONSTANTS.PLAYER_BOOST_MAX_CHARGE, player.boostCharge + CONSTANTS.DT_BOOST_RECHARGE_PER_SEC * operationModifiers.energyRechargeMultiplier * loadout.modifiers.energyRecharge * elapsedDt);
         }
         const currentSpeed = Math.sqrt(player.vel.x ** 2 + player.vel.y ** 2);
         player.speed = currentSpeed;
@@ -910,10 +1008,17 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         player.pos.x += player.vel.x * dtScale;
         player.pos.y += player.vel.y * dtScale;
         
-        // Track patrol path (every ~0.5s)
+        // Track a compact, timestamped patrol replay (every ~0.5s).
         patrolPathFrameCounter.current += CONSTANTS.FRAMES_PER_SECOND * elapsedDt;
         if (patrolPathFrameCounter.current >= PATROL_PATH_SAMPLE_RATE) {
             patrolPathRef.current.push({ x: player.pos.x, y: player.pos.y });
+            const district = getDistrictForPoint(player.pos);
+            const liveScore = Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence)
+                + ((scoreRef.current.livesSaved - scoreRef.current.colleagueSaves) * CONSTANTS.LIVES_SAVED_SCORE_BONUS)
+                + (scoreRef.current.colleagueSaves * CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS)
+                - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY);
+            patrolTimelineRef.current.push({ x: player.pos.x, y: player.pos.y, atSeconds: elapsedShiftSecondsRef.current, score: liveScore, district });
+            patrolSamplesByDistrictRef.current[district]++;
             patrolPathFrameCounter.current = 0;
         }
     };
@@ -943,6 +1048,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         const playerDistrictId = getDistrictForPoint(player.pos);
         presenceBoostRateRef.current = 0;
 
+        if (now - lastRoadFreshnessSampleRef.current >= ROAD_FRESHNESS_SAMPLE_MS) {
+            lastRoadFreshnessSampleRef.current = now;
+            const road = findClosestPointOnRoad(player.pos);
+            if (road && road.dist <= CONSTANTS.ROAD_WIDTH) {
+                const visit = visitRoadSegment(roadFreshnessRef.current, road.segmentId, elapsedShiftSecondsRef.current);
+                roadFreshnessRef.current = visit.state;
+                roadFreshnessMultiplierRef.current = visit.multiplier;
+                bestPresenceChainRef.current = Math.max(bestPresenceChainRef.current, visit.state.chain);
+            } else {
+                roadFreshnessMultiplierRef.current = 0.25;
+            }
+        }
+
         // Boost + age + compact in one in-place pass (the trailing .filter() was the last
         // per-frame array realloc in the loop).
         retainInPlace(patrolPostsRef.current, (post: PatrolPost) => {
@@ -953,7 +1071,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 // ~+0.01%/s (decay 0.42 vs boost 0.43) — physically patrolling barely moved the
                 // meter. Presence must be the #1 meter-mover for the teaching goal to hold.
                 const sizeModifier = Math.min(2.5, Math.max(1.0, 1000000 / (district.bounds.width * district.bounds.height)));
-                const postBoost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * CONSTANTS.PATROL_POST_PRESENCE_MULTIPLIER * dt;
+                const ruralMultiplier = district.id === 'Karori North' ? operationModifiers.ruralDeterrenceMultiplier : 1;
+                const postBoost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * CONSTANTS.PATROL_POST_PRESENCE_MULTIPLIER * operationModifiers.patrolPostMultiplier * loadout.modifiers.patrolPost * operationModifiers.presenceRateMultiplier * loadout.modifiers.presenceRate * ruralMultiplier * dt;
                 district.deterrence = Math.min(100, district.deterrence + postBoost);
             }
             post.remainingTime -= 60 * dt; // Decrement frame counter by scaled amount
@@ -967,18 +1086,25 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             
             if (district.id === playerDistrictId) {
                 const sizeModifier = Math.min(2.5, Math.max(1.0, 1000000 / (district.bounds.width * district.bounds.height))); // floor: see patrol-post note above
-                let boost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * dt;
-                if (player.isSirenActive) boost += CONSTANTS.DT_SIREN_BOOST_PER_SEC * dt;
+                const ruralMultiplier = district.id === 'Karori North' ? operationModifiers.ruralDeterrenceMultiplier : 1;
+                let boost = CONSTANTS.DT_PRESENCE_BOOST_PER_SEC * sizeModifier * roadFreshnessMultiplierRef.current;
+                if (player.isSirenActive) boost += CONSTANTS.DT_SIREN_BOOST_PER_SEC;
+                boost *= operationModifiers.presenceRateMultiplier * loadout.modifiers.presenceRate * ruralMultiplier * dt;
                 district.deterrence = Math.min(100, district.deterrence + boost);
                 presenceBoostRateRef.current = dt > 0 ? boost / dt : 0; // dt=0 during hit-stop → 0/0 NaN
             }
         });
 
         coverageQualityRef.current = computeCoverageQuality(districtsRef.current);
-        isVigilanceBonusActiveRef.current = districtsRef.current.every(d => d.deterrence >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD);
+        coverageQualityIntegralRef.current += coverageQualityRef.current * dt;
+        coverageTierRef.current = getCoverageTier(districtsRef.current.map(d => d.deterrence), CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD);
+        isVigilanceBonusActiveRef.current = coverageTierRef.current.securedDistricts >= districtsRef.current.length;
+        if (coverageTierRef.current.securedDistricts >= 3) securedCoverageSecondsRef.current += dt;
+        if (!overtimeUsedRef.current) {
+            earnedOvertimeSecondsRef.current = getEarnedOvertimeSeconds(securedCoverageSecondsRef.current);
+        }
 
         // Presence Grade input: time with EVERY district ≥50%.
-        if (districtsRef.current.every(d => d.deterrence >= 50)) fullCoverageSecondsRef.current += dt;
 
         // District stingers: crossing 85 (secured) / 33 (hotspot) had zero fanfare, hiding the
         // teaching thresholds. Hysteresis (leave secured <80, leave hotspot ≥38) stops flapping.
@@ -1004,7 +1130,26 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         }
 
         const deterrenceMultiplier = CONSTANTS.DETERRENCE_MULTIPLIER_MIN + (coverageQualityRef.current / 100) * (CONSTANTS.DETERRENCE_MULTIPLIER_MAX - CONSTANTS.DETERRENCE_MULTIPLIER_MIN);
-        scoreRef.current.deterrence += (coverageQualityRef.current / 100) * CONSTANTS.DETERRENCE_SCORE_RATE * dt * (isVigilanceBonusActiveRef.current ? CONSTANTS.VIGILANCE_BONUS_MULTIPLIER : 1) * deterrenceMultiplier;
+        scoreRef.current.deterrence += (coverageQualityRef.current / 100) * CONSTANTS.DETERRENCE_SCORE_RATE * dt * coverageTierRef.current.scoreMultiplier * deterrenceMultiplier;
+
+        const phase = getShiftPhase(elapsedShiftSecondsRef.current, CONSTANTS.SHIFT_DURATION, overtimeUsedRef.current);
+        if (phase.id !== currentPhaseRef.current.id) {
+            currentPhaseRef.current = phase;
+            playRadio(`${phase.label}: ${phase.objective}.`);
+        }
+
+        if (elapsedShiftSecondsRef.current >= nextScoreSplitRef.current) {
+            const liveScore = Math.round(scoreRef.current.enforcement + scoreRef.current.deterrence)
+                + ((scoreRef.current.livesSaved - scoreRef.current.colleagueSaves) * CONSTANTS.LIVES_SAVED_SCORE_BONUS)
+                + (scoreRef.current.colleagueSaves * CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS)
+                - (scoreRef.current.livesLost * CONSTANTS.LIVES_LOST_PENALTY);
+            scoreSplitsRef.current.push({
+                atSeconds: nextScoreSplitRef.current,
+                score: liveScore,
+                coverageQuality: coverageQualityRef.current,
+            });
+            nextScoreSplitRef.current += 30;
+        }
 
         const isPlayerStationary = player.speed < 0.1;
         const currentDistrict = districtsRef.current.find(d => d.id === playerDistrictId);
@@ -1092,6 +1237,37 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         const player = playerRef.current;
         const isSirenActive = player.isSirenActive;
         const playerForwardVec = { x: Math.cos(getRads(player.angle - 90)), y: Math.sin(getRads(player.angle - 90)) };
+
+        const dispatch = dispatchedCallRef.current;
+        if (dispatch?.active) {
+            const target = civiliansRef.current.find(c => c.id === dispatch.targetVehicleId && c.isLifeAtRisk);
+            if (!target) {
+                recordDispatchOutcome(dispatch, 'failure');
+            } else {
+                dispatch.pos.x = target.pos.x;
+                dispatch.pos.y = target.pos.y;
+                dispatch.timeLeft -= elapsedDt;
+                dispatch.targetTimeLeft = target.lifeAtRiskTimer;
+                if (dispatch.timeLeft <= 0) {
+                    scoreRef.current.livesSaved++;
+                    scoreRef.current.colleagueSaves++;
+                    const district = districtsRef.current.find(d => d.id === target.district);
+                    if (district) {
+                        const ruralMultiplier = district.id === 'Karori North' ? operationModifiers.ruralDeterrenceMultiplier : 1;
+                        district.deterrence = Math.min(100, district.deterrence + CONSTANTS.COLLEAGUE_DETERRENCE_BOOST * ruralMultiplier);
+                    }
+                    civiliansRef.current = civiliansRef.current.filter(c => c.id !== target.id);
+                    closeInterventionForVehicle(target.id);
+                    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { ...target.pos }, text: `COLLEAGUE SAVE +${CONSTANTS.COLLEAGUE_SAVE_SCORE_BONUS}`, spawnTime: now });
+                    setGameMessage('COLLEAGUE ARRIVED · LIFE SAVED');
+                    if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
+                    gameMessageTimerRef.current = window.setTimeout(() => setGameMessage(null), 2200);
+                    recordDispatchOutcome(dispatch, 'success', target.pos);
+                    audio.zap();
+                    buzz(BUZZ.success);
+                }
+            }
+        }
         
         // Mid-shift dispatch chatter every ~25-40s. Queued intros (weather, champion) go first.
         if (nextRadioAtRef.current > 0 && now >= nextRadioAtRef.current) {
@@ -1111,25 +1287,28 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
 
         if (now - lastSpawnCheckTime.current > CONSTANTS.RIDS_SPAWN_INTERVAL) {
             lastSpawnCheckTime.current += CONSTANTS.RIDS_SPAWN_INTERVAL;
-            if (civiliansRef.current.filter(c => !c.isChampion).length < CONSTANTS.MAX_CIVILIAN_CARS) {
+            const trafficCap = Math.min(CONSTANTS.MAX_CIVILIAN_CARS, Math.round(40 * operationModifiers.trafficMultiplier));
+            if (civiliansRef.current.filter(c => !c.isChampion).length < trafficCap) {
                 const carsByDistrict = civiliansRef.current.reduce((acc, c) => {
                     if (c.isChampion) return acc;
                     acc[c.district] = (acc[c.district] || 0) + 1; return acc;
                 }, {} as Record<DistrictName, number>);
                 for (const districtName in CONSTANTS.CIVILIAN_TARGET_DENSITY) {
                     const name = districtName as DistrictName;
-                    if ((carsByDistrict[name] || 0) < CONSTANTS.CIVILIAN_TARGET_DENSITY[name]) {
+                    const districtTarget = Math.max(1, Math.round(CONSTANTS.CIVILIAN_TARGET_DENSITY[name] * operationModifiers.trafficMultiplier));
+                    if ((carsByDistrict[name] || 0) < districtTarget) {
                         spawnCivilian(name); break;
                     }
                 }
             }
             const currentOffenders = civiliansRef.current.filter(c => c.ridsType).length;
             const coverageModifier = 1 - (coverageQualityRef.current / 100);
-            // Climax ramp: as the shift ends keep offender pressure up even at high deterrence — the
-            // count was purely deterrence-driven, so a strong shift self-suppressed to nothing.
-            const shiftProgress = Math.min(1, elapsedShiftSecondsRef.current / CONSTANTS.SHIFT_DURATION);
-            const dynamicTarget = Math.ceil(CONSTANTS.TARGET_OFFENDER_COUNT * Math.max(coverageModifier, shiftProgress * 0.75));
-            const targetOffenders = Math.max(CONSTANTS.MIN_TARGET_OFFENDER_COUNT, dynamicTarget);
+            const phasePressure = currentPhaseRef.current.id === 'establish' ? 0.35 : currentPhaseRef.current.id === 'respond' ? 0.75 : 1;
+            const dynamicTarget = Math.ceil(CONSTANTS.TARGET_OFFENDER_COUNT * coverageModifier * phasePressure);
+            // The final act guarantees a fair shot at the seeded priority car, but otherwise
+            // successful deterrence remains causal and visibly suppresses ordinary offending.
+            const priorityFloor = elapsedShiftSecondsRef.current >= 60 && !interdictionAssignedRef.current ? 2 : 0;
+            const targetOffenders = Math.max(CONSTANTS.MIN_TARGET_OFFENDER_COUNT, priorityFloor, dynamicTarget);
             // Offences Prevented: the gap between the zero-deterrence offender population and
             // the deterrence-suppressed one, integrated over time (each suppressed "slot" turns
             // over roughly every OFFENCE_PREVENTED_TURNOVER_SECONDS). Float one flag per whole
@@ -1148,7 +1327,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 // weights, state-dependent LAR chance) — but two players making the same
                 // choices meet the same offenders.
                 const slot = slotAt(offenderSchedule, offenderOrdinalRef.current);
-                const weightedDistricts = districtsRef.current.map(d => ({ districtId: d.id, weight: (101 - d.deterrence) * (d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 4 : 1) }));
+                const weightedDistricts = districtsRef.current.map(d => ({
+                    districtId: d.id,
+                    weight: (101 - d.deterrence)
+                        * (d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 4 : 1)
+                        * (operationModifiers.priorityDistrict === d.id ? 2.5 : 1),
+                }));
                 const totalWeight = weightedDistricts.reduce((sum, wd) => sum + wd.weight, 0);
                 if (totalWeight > 0) {
                     let randomWeight = slot.uDistrict * totalWeight;
@@ -1167,8 +1351,10 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                         for (const [type, chance] of Object.entries(ridsChances)) {
                             cumulative += chance as number; if (rand < cumulative) { assignedRidsType = type as RIDSType; break; }
                         }
+                        if (operationModifiers.priorityRids && slot.uScenario < 0.45) assignedRidsType = operationModifiers.priorityRids;
                         if (assignedRidsType) {
                             carToOffend.ridsType = assignedRidsType;
+                            offendersSpawnedRef.current++;
                             // The interdiction car: the schedule fixes WHICH ordinal carries it and
                             // which crime — same big one for everyone on the daily.
                             if (!interdictionAssignedRef.current
@@ -1178,6 +1364,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                                 carToOffend.specialCrime = mapSeed
                                     ? interdictionAt(offenderSchedule.interdictionCrimeIndex)
                                     : pickInterdiction();
+                                interdictionResultRef.current = {
+                                    crime: carToOffend.specialCrime.crime,
+                                    detail: carToOffend.specialCrime.missed,
+                                    outcome: 'missed',
+                                };
+                                playRadio(`PRIORITY INTEL: ${observedEvidence(carToOffend)} in ${carToOffend.district}. Deep investigation required.`);
                             }
                             carToOffend.deterrenceBlobsRemaining = CONSTANTS.MAX_DETERRENCE_BLOBS_PER_OFFENDER;
                             carToOffend.lastBlobSpawnTime = now;
@@ -1186,13 +1378,6 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                                 speedTable[carToOffend.district] + (slot.uSpeed - 0.5) * CONSTANTS.CIVILIAN_SPEED_VARIATION
                             ) * VEHICLE_SPEED_MULT[carToOffend.vehicleType ?? 'car'] * currentWeatherRef.current.civilianSpeed;
 
-                            // Bikes offend by speeding more often than not (the vehicle IS the offence profile).
-                            if (carToOffend.vehicleType === 'bike' && assignedRidsType !== 'Impairment' && slot.uType < 0.5) {
-                                carToOffend.ridsType = 'Speed';
-                                carToOffend.baseSpeed = (
-                                    CONSTANTS.CIVILIAN_SPEEDING_SPEED[carToOffend.district] + (slot.uSpeed - 0.5) * CONSTANTS.CIVILIAN_SPEED_VARIATION
-                                ) * VEHICLE_SPEED_MULT.bike * currentWeatherRef.current.civilianSpeed;
-                            }
                             const lifeAtRiskChance = computeLifeAtRiskChance(
                                 CONSTANTS.LIFE_AT_RISK_DISTRICT_MODIFIER[carToOffend.district],
                                 currentWeatherRef.current.larChance,
@@ -1200,8 +1385,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                                 isNeglectOfDutyActiveRef.current,
                             );
 
-                            const larExists = civiliansRef.current.some(c => c.isLifeAtRisk);
-                            if (!larExists && slot.uLar < lifeAtRiskChance) {
+                            const larCount = civiliansRef.current.filter(c => c.isLifeAtRisk).length;
+                            if (elapsedShiftSecondsRef.current >= 25 && larCount < operationModifiers.maxSimultaneousLifeAtRisk && slot.uLar < lifeAtRiskChance) {
                                 carToOffend.isLifeAtRisk = true;
                                 let timer = CONSTANTS.LIFE_AT_RISK_TIMER_SECONDS;
                                 if (isNeglectOfDutyActiveRef.current) timer *= CONSTANTS.NEGLECT_OF_DUTY_LAR_TIMER_MULTIPLIER;
@@ -1221,6 +1406,9 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             if (c.isLifeAtRisk) {
                 c.lifeAtRiskTimer -= elapsedDt;
                 if (c.lifeAtRiskTimer <= 0) {
+                    const call = dispatchedCallRef.current;
+                    if (call?.targetVehicleId === c.id) recordDispatchOutcome(call, 'failure', c.pos);
+                    closeInterventionForVehicle(c.id);
                     scoreRef.current.livesLost++;
                     explosionsRef.current.push({ id: Math.random(), pos: c.pos, spawnTime: now });
                     audio.thud();
@@ -1283,6 +1471,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
 
             if (c.isYieldingToSiren) {
                 targetSpeed *= CONSTANTS.SIREN_YIELD_SLOWDOWN_FACTOR;
+            } else if (c.ridsType === 'Speed') {
+                targetSpeed *= CONSTANTS.RIDS_SPEED_BEHAVIOR_MULTIPLIER;
             } else if (c.ridsType === 'Distractions') {
                 c.speedFluctuationTimer = (c.speedFluctuationTimer || 0) - elapsedScale;
                 if (c.speedFluctuationTimer <= 0) {
@@ -1324,7 +1514,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 c.zone = currentDistrict === 'Karori North' ? 'Rural' : 'Suburban';
             }
             const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
-            const auraRadius = CONSTANTS.PLAYER_AURA_RADIUS + currentVigilanceBonus;
+            const baseAuraRadius = playerRef.current.isSirenActive ? CONSTANTS.PLAYER_SIREN_AURA_RADIUS : CONSTANTS.PLAYER_AURA_RADIUS;
+            const auraRadius = (baseAuraRadius + currentVigilanceBonus) * operationModifiers.presenceAuraMultiplier;
             if (c.ridsType && c.deterrenceBlobsRemaining > 0 && now - c.lastBlobSpawnTime > CONSTANTS.DETERRENCE_BLOB_SPAWN_INTERVAL && getDistanceSq(c.pos, playerRef.current.pos) < auraRadius ** 2) {
                 deterrenceBlobsRef.current.push({ id: Math.random(), pos: { ...c.pos }, vel: { x: 0, y: 0 }, value: CONSTANTS.DETERRENCE_BLOB_BASE_VALUE, spawnTime: now });
                 c.lastBlobSpawnTime += CONSTANTS.DETERRENCE_BLOB_SPAWN_INTERVAL;
@@ -1338,7 +1529,8 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
         const dtScale = 60 * dt;
         const playerPos = playerRef.current.pos;
         const currentVigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (playerRef.current.vigilance / 100);
-        const auraRadius = CONSTANTS.PLAYER_AURA_RADIUS + currentVigilanceBonus;
+        const baseAuraRadius = playerRef.current.isSirenActive ? CONSTANTS.PLAYER_SIREN_AURA_RADIUS : CONSTANTS.PLAYER_AURA_RADIUS;
+        const auraRadius = (baseAuraRadius + currentVigilanceBonus) * operationModifiers.presenceAuraMultiplier;
 
         retainInPlace(deterrenceBlobsRef.current, (blob: DeterrenceBlobType) => {
             if (now - blob.spawnTime > CONSTANTS.DETERRENCE_BLOB_LIFESPAN) return false;
@@ -1352,7 +1544,10 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             if (getDistanceSq(playerPos, blob.pos) < 25 ** 2) {
                 const playerDistrictId = getDistrictForPoint(playerPos);
                 const district = districtsRef.current.find(d => d.id === playerDistrictId);
-                if(district) district.deterrence = Math.min(100, district.deterrence + blob.value * 4);
+                if (district) {
+                    const ruralMultiplier = district.id === 'Karori North' ? operationModifiers.ruralDeterrenceMultiplier : 1;
+                    district.deterrence = Math.min(100, district.deterrence + blob.value * 4 * ruralMultiplier);
+                }
                 collectionEffectsRef.current.push({ id: Math.random(), pos: blob.pos, spawnTime: now });
                 audio.pickup();
                 return false;
@@ -1428,7 +1623,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const handleInvestigate = useCallback(() => {
     // The default timer and a user confirmation can race inside one frame.
     if (ridsPhaseRef.current !== 'choice') return;
+    const target = activeRidsRef.current?.car;
+    if (slamStartedRef.current || timeLeftRef.current <= 0 || !target || !civiliansRef.current.some(car => car.id === target.id)) {
+        closeActiveIntervention();
+        return;
+    }
+    if (investigationsRemainingRef.current <= 0) {
+        setRidsChoiceSelection('standard');
+        setGameMessage('NO DEEP INVESTIGATIONS REMAINING');
+        return;
+    }
     ridsPhaseRef.current = 'minigame';
+    investigationsRemainingRef.current--;
+    interventionStatsRef.current.investigate++;
     // A deeper investigation costs shift time and offers a higher reward.
     spendShiftTime(CONSTANTS.ENFORCE_TIME_COST_SECONDS);
     // Every investigation runs a mini-game (alcohol=breath test, Speed=slider,
@@ -1436,14 +1643,15 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     // concept mini-game reachable. Scoring, LAR and dispatch handling all live in
     // onMiniGameComplete. The standard enforcement action stays quick and lower reward.
     setGameState('MiniGame');
-  }, [spendShiftTime]);
+  }, [closeActiveIntervention, spendShiftTime]);
   
   // Shared resolution for a standard action or successful investigation: awards score
   // bonus), grows vigilance, floats the score/vigilance text, boosts district deterrence,
   // records the action, removes the offender, and credits a life saved.
-  const resolveIntervention = useCallback((car: Civilian, baseScore: number, deterrenceBoost: number, actionType: EnforcementAction['actionType'], shake: number) => {
+  const resolveIntervention = useCallback((car: Civilian, baseScore: number, deterrenceBoost: number, actionType: EnforcementAction['actionType'], shake: number): boolean => {
+    if (slamStartedRef.current || timeLeftRef.current <= 0 || !civiliansRef.current.some(candidate => candidate.id === car.id)) return false;
     let scoreToAdd = baseScore;
-    if (isVigilanceBonusActiveRef.current) scoreToAdd *= CONSTANTS.VIGILANCE_BONUS_MULTIPLIER;
+    scoreToAdd = Math.round(scoreToAdd * coverageTierRef.current.scoreMultiplier);
     const nowMs = simulationTimeRef.current;
     const combo = comboRef.current;
     // Reading/teaching time is paused, and standard actions cannot grow the investigation combo.
@@ -1464,13 +1672,16 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     playerRef.current.vigilance = Math.min(CONSTANTS.VIGILANCE_MAX, playerRef.current.vigilance + CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION);
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { ...car.pos }, text: `+${scoreToAdd}`, spawnTime: nowMs });
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: playerRef.current.pos.x, y: playerRef.current.pos.y - 60 }, text: `VIGILANCE +${CONSTANTS.VIGILANCE_GAIN_ON_INTERVENTION}`, spawnTime: nowMs });
-    // Float the TEACHING number too — the deterrence boost was invisible while points weren't.
-    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 40 }, text: `+${deterrenceBoost} DETERRENCE`, spawnTime: nowMs });
     const district = districtsRef.current.find(d => d.id === car.district);
-    if (district) district.deterrence = Math.min(100, district.deterrence + deterrenceBoost);
+    const effectiveDeterrenceBoost = deterrenceBoost * (district?.id === 'Karori North' ? operationModifiers.ruralDeterrenceMultiplier : 1);
+    // Float the TEACHING number too — the deterrence boost was invisible while points weren't.
+    floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 40 }, text: `+${Math.round(effectiveDeterrenceBoost)} DETERRENCE`, spawnTime: nowMs });
+    if (district) district.deterrence = Math.min(100, district.deterrence + effectiveDeterrenceBoost);
     buzz(BUZZ.success);
-    enforcementActionsRef.current.push({ pos: { ...car.pos }, ridsType: car.ridsType!, actionType });
+    enforcementActionsRef.current.push({ pos: { ...car.pos }, ridsType: car.ridsType!, actionType, atSeconds: elapsedShiftSecondsRef.current, scoreDelta: scoreToAdd });
     civiliansRef.current = civiliansRef.current.filter(c => c.id !== car.id);
+    const call = dispatchedCallRef.current;
+    if (call?.targetVehicleId === car.id) recordDispatchOutcome(call, 'failure', car.pos);
     if (shake) cameraRef.current.shake = shake;
     // The driver has opinions (very kiwi ones).
     floatingScoreTextsRef.current.push({ id: Math.random(), pos: { x: car.pos.x, y: car.pos.y - 70 }, text: actionType === 'Standard' ? pickStandardActionReaction() : pickInvestigateReaction(), spawnTime: nowMs, variant: 'speech' });
@@ -1499,17 +1710,22 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             audio.zap();
         }
     }
-  }, []);
+    return true;
+  }, [operationModifiers.ruralDeterrenceMultiplier, recordDispatchOutcome]);
 
   const handleStandard = useCallback(() => {
       if (ridsPhaseRef.current !== 'choice') return;
-      ridsPhaseRef.current = 'idle';
-      if (activeRids) {
-        // zap now plays inside resolveIntervention with the combo pitch ladder
-        resolveIntervention(activeRids.car, CONSTANTS.STANDARD_ACTION_SCORE_POINTS, CONSTANTS.STANDARD_ACTION_DETERRENCE_BOOST, 'Standard', 0);
+      const target = activeRidsRef.current?.car;
+      if (slamStartedRef.current || timeLeftRef.current <= 0 || !target || !civiliansRef.current.some(car => car.id === target.id)) {
+        closeActiveIntervention();
+        return;
       }
-      setActiveRids(null); setTargetedCarId(null); setGameState('Playing');
-  }, [activeRids, resolveIntervention]);
+      ridsPhaseRef.current = 'idle';
+      interventionStatsRef.current.standard++;
+      // zap now plays inside resolveIntervention with the combo pitch ladder
+      resolveIntervention(target, Math.round(CONSTANTS.STANDARD_ACTION_SCORE_POINTS * operationModifiers.standardScoreMultiplier), CONSTANTS.STANDARD_ACTION_DETERRENCE_BOOST, 'Standard', 0);
+      closeActiveIntervention();
+  }, [closeActiveIntervention, operationModifiers.standardScoreMultiplier, resolveIntervention]);
     
   // Keyboard controls for RIDS Choice modal
   useEffect(() => {
@@ -1572,12 +1788,14 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     
     if (timeLeftRef.current <= 0) {
         if (gameOverFiredRef.current) return;
-        // OVERTIME: full coverage at the final whistle earns +30s, once per shift.
-        if (!overtimeUsedRef.current && isVigilanceBonusActiveRef.current) {
+        const earnedOvertime = getEarnedOvertimeSeconds(securedCoverageSecondsRef.current);
+        // Overtime is earned from cumulative secured coverage, not a final-frame threshold.
+        if (!overtimeUsedRef.current && earnedOvertime > 0) {
             overtimeUsedRef.current = true;
-            timeLeftRef.current = CONSTANTS.OVERTIME_DURATION_SECONDS;
-            lastBeepedSecondRef.current = CONSTANTS.OVERTIME_DURATION_SECONDS + 1; // re-arm the final-10s tick sequence
-            playRadio('OVERTIME APPROVED. Full coverage held. 30 more seconds, make them count.');
+            earnedOvertimeSecondsRef.current = earnedOvertime;
+            timeLeftRef.current = earnedOvertime;
+            lastBeepedSecondRef.current = earnedOvertime + 1;
+            playRadio(`OVERTIME APPROVED. Secured coverage earned ${earnedOvertime} more seconds.`);
             audio.zap();
             buzz(BUZZ.overtime);
             hitStopUntilRef.current = presentationNow + 110;
@@ -1585,6 +1803,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             // SHIFT OVER slam: freeze the world for a beat with the stamp on screen, then
             // the results mount. The live region announces; GameOver's h1 takes focus after.
             slamStartedRef.current = true;
+            closeActiveIntervention();
             slamAtRef.current = presentationNow;
             hitStopUntilRef.current = presentationNow + CONSTANTS.SHIFT_END_SLAM_MS;
             setShowSlam(true);
@@ -1594,10 +1813,19 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             if (gameMessageTimerRef.current) clearTimeout(gameMessageTimerRef.current);
         } else if (presentationNow - slamAtRef.current >= CONSTANTS.SHIFT_END_SLAM_MS) {
             gameOverFiredRef.current = true;
-            const coverageRatio = Math.min(1, fullCoverageSecondsRef.current / Math.max(1, elapsedShiftSecondsRef.current));
+            const coverageRatio = Math.min(1, coverageQualityIntegralRef.current / Math.max(1, elapsedShiftSecondsRef.current * 100));
+            if (!scoreSplitsRef.current.length || scoreSplitsRef.current[scoreSplitsRef.current.length - 1].atSeconds < elapsedShiftSecondsRef.current) {
+                scoreSplitsRef.current.push({
+                    atSeconds: Math.round(elapsedShiftSecondsRef.current),
+                    score: computeScoreBreakdown(scoreRef.current, districtsRef.current).finalScore,
+                    coverageQuality: coverageQualityRef.current,
+                });
+            }
             const finalBreakdown: FinalScoreBreakdown = {
                 ...computeScoreBreakdown(scoreRef.current, districtsRef.current),
                 patrolPath: patrolPathRef.current,
+                patrolTimeline: patrolTimelineRef.current,
+                scoreSplits: scoreSplitsRef.current,
                 enforcementActions: enforcementActionsRef.current,
                 colleagueCallActions: colleagueCallActionsRef.current,
                 offencesPrevented: Math.floor(offencesPreventedRef.current),
@@ -1606,7 +1834,22 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 interdiction: interdictionResultRef.current,
                 overtime: overtimeUsedRef.current,
                 coverageRatio,
-                presenceGrade: coverageRatio >= 0.9 ? 'S' : coverageRatio >= 0.7 ? 'A' : coverageRatio >= 0.45 ? 'B' : 'C',
+                presenceGrade: getPresenceGrade(coverageRatio),
+                coverageQuality: coverageRatio * 100,
+                securedCoverageSeconds: securedCoverageSecondsRef.current,
+                earnedOvertimeSeconds: earnedOvertimeSecondsRef.current,
+                roadStats: {
+                    uniqueSegments: roadFreshnessRef.current.uniqueSegments,
+                    repeatRatio: roadRepeatEntryRatio(roadFreshnessRef.current),
+                    bestPresenceChain: bestPresenceChainRef.current,
+                },
+                interventionStats: interventionStatsRef.current,
+                potentialOffences: offendersSpawnedRef.current + Math.floor(offencesPreventedRef.current),
+                districtReport: districtsRef.current.map(district => ({
+                    id: district.id,
+                    finalDeterrence: district.deterrence,
+                    patrolSamples: patrolSamplesByDistrictRef.current[district.id],
+                })),
                 challengeAssist,
             };
             onGameOver(finalBreakdown);
@@ -1619,20 +1862,20 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     const rawDt = Math.max(0, (presentationNow - lastTimeRef.current) / 1000);
     let requestedDt = presentationNow < hitStopUntilRef.current ? 0 : rawDt;
     if (presentationNow < slowmoUntilRef.current) requestedDt *= CONSTANTS.SLOWMO_SCALE;
+    if (gameStateRef.current !== 'Playing') requestedDt *= challengeAssist ? 0 : 0.45;
     const stepPlan = planSimulationSteps(requestedDt, MAX_SIMULATION_STEP_SECONDS, MAX_SIMULATION_STEPS_PER_FRAME);
     lastTimeRef.current = presentationNow;
 
     const slamming = slamStartedRef.current && !gameOverFiredRef.current;
-    let advancedDt = 0;
-
     if (!slamming) {
         for (let i = 0; i < stepPlan.count; i++) {
+            const phaseBeforeStep = ridsPhaseRef.current;
             const clock = advanceShiftClock(timeLeftRef.current, elapsedShiftSecondsRef.current, stepPlan.step);
             if (clock.spent <= 0) break;
             timeLeftRef.current = clock.timeLeft;
             elapsedShiftSecondsRef.current = clock.elapsed;
+            if (gameStateRef.current !== 'Playing') interventionStatsRef.current.modalSeconds += clock.spent;
             simulationTimeRef.current += clock.spent * 1000;
-            advancedDt += clock.spent;
             const stepNow = simulationTimeRef.current;
 
             updatePlayerMovement(stepNow, clock.spent, clock.spent);
@@ -1644,28 +1887,16 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
             updateParticlesAndEffects(stepNow, clock.spent);
             updateCamera(stepNow, clock.spent);
 
-            if (ridsPhaseRef.current !== 'idle' || performance.now() < hitStopUntilRef.current) break;
+            if ((phaseBeforeStep === 'idle' && ridsPhaseRef.current !== 'idle') || performance.now() < hitStopUntilRef.current) break;
         }
     }
     const now = simulationTimeRef.current;
 
-    // Advance the PB ghost along its recorded path (0.5s per sample, lerped).
-    if (ghostPath && ghostPath.length > 1) {
-        ghostElapsedRef.current += advancedDt;
-        const f = ghostElapsedRef.current / (PATROL_PATH_SAMPLE_RATE / 60);
-        const i = Math.floor(f);
-        if (i < ghostPath.length - 1) {
-            const t = f - i;
-            const a = ghostPath[i], b = ghostPath[i + 1];
-            const gx = a.x + (b.x - a.x) * t;
-            const gy = a.y + (b.y - a.y) * t;
-            const ang = Math.atan2(b.y - a.y, b.x - a.x) * (180 / Math.PI) + 90;
-            if (ghostPosRef.current) { ghostPosRef.current.x = gx; ghostPosRef.current.y = gy; ghostPosRef.current.angle = ang; }
-            else ghostPosRef.current = { x: gx, y: gy, angle: ang };
-        } else {
-            ghostPosRef.current = null; // the PB run ended here
-        }
-    }
+    const ghostSample = pbReplay
+        ? sampleReplayRoute(pbReplay.route, elapsedShiftSecondsRef.current * 1000)
+        : null;
+    if (ghostSample && ghostPosRef.current) Object.assign(ghostPosRef.current, ghostSample);
+    else ghostPosRef.current = ghostSample;
 
     // Combo window expiry: soft cue, no live-region spam (a11y-lead guidance).
     if (comboRef.current.count > 1 && now > comboRef.current.expiresAt) {
@@ -1715,8 +1946,12 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                     pathfindingTargetId: pathfindingTargetIdRef.current,
                     targetedCarId: targetedCarId,
                     isBraking: isBrakingRef.current,
+                    playerAuraMultiplier: operationModifiers.presenceAuraMultiplier,
                     ghost: ghostPosRef.current,
                     championName: championName ?? null,
+                    showRidsMarkers: challengeAssist,
+                    ghostActions: pbReplay?.actions,
+                    ghostElapsedMs: elapsedShiftSecondsRef.current * 1000,
                 };
                 drawGame(ctx, cssWidth, cssHeight, cameraRef.current, renderState, now);
                 drawOk = true;
@@ -1742,7 +1977,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     // Time-pressure ticks: one short beep on each integer-second crossing in the
     // final 10 seconds, with rising pitch. Final-zero plays a zap. lastBeepedSecondRef
     // is reset to 11 on game-state → 'Playing' so each shift gets the full sequence.
-    if (gameState === 'Playing') {
+    if (gameState !== 'Starting') {
         const seconds = Math.ceil(timeLeftRef.current);
         if (seconds <= 10 && seconds > 0 && seconds !== lastBeepedSecondRef.current) {
             lastBeepedSecondRef.current = seconds;
@@ -1760,36 +1995,39 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     }
 
     gameLoopRef.current = requestAnimationFrame(gameLoop);
-  }, [onGameOver, spawnCivilian, segmentLookup, handleColleagueCall, gameState, targetedCarId]);
+  }, [closeActiveIntervention, closeInterventionForVehicle, gameState, handleColleagueCall, onGameOver, pbReplay, recordDispatchOutcome, segmentLookup, spawnCivilian, targetedCarId]);
 
   const onMiniGameComplete = useCallback((success: boolean) => {
     // One completion per mini-game (QTE's StrictMode double-invoke called this twice).
     if (ridsPhaseRef.current !== 'minigame') return;
+    const intervention = activeRidsRef.current;
+    if (slamStartedRef.current || timeLeftRef.current <= 0 || !intervention || !civiliansRef.current.some(car => car.id === intervention.car.id)) {
+      closeActiveIntervention();
+      return;
+    }
     ridsPhaseRef.current = 'idle';
     let goReferral = false;
-    if (activeRids) {
-      if (success) {
+    if (success) {
         // zap plays inside resolveIntervention (combo pitch ladder); savour the win in slow-mo
         slowmoUntilRef.current = performance.now() + CONSTANTS.SLOWMO_MS;
-        const district = districtsRef.current.find(d => d.id === activeRids.car.district);
-        const ruralBonus = district?.name.includes('Rural') ? CONSTANTS.RURAL_BONUS : 0;
-        resolveIntervention(activeRids.car, CONSTANTS.BASE_ENFORCEMENT_POINTS[activeRids.ridsType] + ruralBonus, CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Investigate', 10);
+        const ruralBonus = intervention.car.zone === 'Rural' ? CONSTANTS.RURAL_BONUS : 0;
+        const resolved = resolveIntervention(intervention.car, Math.round((CONSTANTS.BASE_ENFORCEMENT_POINTS[intervention.ridsType] + ruralBonus) * operationModifiers.investigateScoreMultiplier), CONSTANTS.ENFORCEMENT_DETERRENCE_BOOST, 'Investigate', 10);
         // Some alcohol/restraint investigations surface a partner-agency
         // referral follow-up (MatchingGame — built for this, previously unwired).
         // Fairness: the referral roll rides the offender's schedule slot.
-        const uReferral = activeRids.car.slotIndex !== undefined
-            ? slotAt(offenderSchedule, activeRids.car.slotIndex).uReferral
+        const uReferral = intervention.car.slotIndex !== undefined
+            ? slotAt(offenderSchedule, intervention.car.slotIndex).uReferral
             : Math.random();
-        referralScenarioRef.current = activeRids.car.slotIndex !== undefined
-            ? Math.floor(slotAt(offenderSchedule, activeRids.car.slotIndex).uScenario * 0x100000000)
+        referralScenarioRef.current = intervention.car.slotIndex !== undefined
+            ? Math.floor(slotAt(offenderSchedule, intervention.car.slotIndex).uScenario * 0x100000000)
             : undefined;
-        goReferral = (activeRids.ridsType === 'Impairment' || activeRids.ridsType === 'Restraints')
+        goReferral = resolved && (intervention.ridsType === 'Impairment' || intervention.ridsType === 'Restraints')
             && uReferral < CONSTANTS.REFERRAL_CHANCE;
-      } else {
+    } else {
         spendShiftTime(CONSTANTS.RIDS_TIME_PENALTY_MINIGAME_FAIL);
-      }
-      setActiveRids(null);
     }
+    activeRidsRef.current = null;
+    setActiveRids(null);
     setTargetedCarId(null);
     if (goReferral) {
         setGameMessage('REFERRAL OPPORTUNITY');
@@ -1799,9 +2037,13 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
     } else {
         setGameState('Playing');
     }
-  }, [activeRids, resolveIntervention, spendShiftTime]);
+  }, [closeActiveIntervention, offenderSchedule, operationModifiers.investigateScoreMultiplier, resolveIntervention, spendShiftTime]);
 
   const onReferralComplete = useCallback((success: boolean) => {
+    if (slamStartedRef.current || timeLeftRef.current <= 0) {
+      setGameState('Playing');
+      return;
+    }
     if (success) {
         audio.zap();
         scoreRef.current.enforcement += CONSTANTS.REFERRAL_BONUS;
@@ -1811,7 +2053,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   }, []);
 
   useEffect(() => {
-    if (gameState === 'Playing' && !isGameplayPaused) {
+    if (gameState !== 'Starting' && !isGameplayPaused) {
       lastTimeRef.current = 0; // Reset delta time on resume
       gameLoopRef.current = requestAnimationFrame(gameLoop);
     } else if (gameLoopRef.current) {
@@ -1837,6 +2079,9 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
   const shouldFlashColleagueAssist = activeLarCar 
       ? activeLarCar.lifeAtRiskTimer < CONSTANTS.COLLEAGUE_ASSIST_FLASH_THRESHOLD_SECONDS
       : false;
+  const elapsedShiftMs = elapsedShiftSecondsRef.current * 1000;
+  const pbScoreNow = pbReplay ? replayScoreAt(pbReplay.splits, elapsedShiftMs) : null;
+  const nextPbSplit = pbReplay?.splits.find(split => split.timeMs > elapsedShiftMs) ?? null;
   const activeScenarioIndex = activeRids?.car.slotIndex !== undefined
       ? Math.floor(slotAt(offenderSchedule, activeRids.car.slotIndex).uScenario * 0x100000000)
       : undefined;
@@ -1857,7 +2102,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
                 </h1>
                 {/* Passive education: one principle per shift while the countdown runs. */}
                 <p className="max-w-xl text-center text-sm md:text-base text-gray-300 font-sans mt-6 border-t border-cyan-500/30 pt-4">
-                    <span className="text-cyan-400 font-display tracking-wider">BRIEFING · </span>{briefingFact}
+                    <span className="text-cyan-400 font-display tracking-wider">{operation ? `${operation.name.toUpperCase()} · ` : 'BRIEFING · '}</span>{operation?.briefing ?? briefingFact}<span className="block text-yellow-200 mt-1">Unit: {loadout.name} · {loadout.description}</span>
                 </p>
             </div>
         )}
@@ -1866,7 +2111,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
           already in it is often skipped by screen readers); only the box is conditional. */}
       <div role="status" aria-live="polite" className="dispatch-radio-region absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
         {radioLine && (
-          <div className="dispatch-radio-banner max-w-[80vw] bg-black/85 border-2 border-yellow-500/60 rounded-lg px-4 py-2 text-yellow-200 font-sans text-sm md:text-base shadow-lg shadow-yellow-500/20 animate-fadeIn">
+          <div data-testid="dispatch-radio" className="dispatch-radio-banner max-w-[80vw] bg-black/85 border-2 border-yellow-500/60 rounded-lg px-4 py-2 text-yellow-200 font-sans text-sm md:text-base shadow-lg shadow-yellow-500/20 animate-fadeIn">
               <span aria-hidden="true">📻 </span><span className="font-display tracking-wide text-yellow-400">DISPATCH:</span> {radioLine}
           </div>
         )}
@@ -1900,7 +2145,7 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
       <HUD 
           score={totalScore} timeLeft={Math.ceil(timeLeftRef.current)} player={player} civilians={civiliansRef.current}
           districts={districtsRef.current} playerDistrict={playerDistrict} livesLost={scoreRef.current.livesLost}
-          dispatchedCall={null}
+          dispatchedCall={dispatchedCallRef.current}
           viewTransform={{ center: cameraPos, zoom: camera.zoom, viewport: viewportRef.current }}
           minimapMode={minimapMode} colleagueCalls={colleagueCallsRef.current} gameMessage={gameMessage}
           isVigilanceBonusActive={isVigilanceBonusActiveRef.current} isNeglectOfDutyActive={isNeglectOfDutyActiveRef.current} presenceBoostRate={presenceBoostRateRef.current}
@@ -1912,12 +2157,23 @@ const Game: React.FC<GameProps> = ({ onGameOver, onRestart, onMainMenu, ghostPat
           onPause={() => { if (!showSlam) setIsPaused(true); }}
           comboMult={comboRef.current.count > 1 ? comboRef.current.mult : 1}
           comboFrac={comboRef.current.count > 1 ? Math.max(0, (comboRef.current.expiresAt - simulationTimeRef.current) / CONSTANTS.COMBO_WINDOW_MS) : 0}
+          showRidsMarkers={challengeAssist}
+          roadVisitedAt={roadFreshnessRef.current.visitedAt}
+          elapsedSeconds={elapsedShiftSecondsRef.current}
+          presenceChain={roadFreshnessRef.current.chain}
+          coverageTier={coverageTierRef.current}
+          shiftPhase={currentPhaseRef.current}
+          earnedOvertimeSeconds={earnedOvertimeSecondsRef.current}
+          investigationsRemaining={investigationsRemainingRef.current}
+          pbDelta={pbScoreNow === null ? null : Math.round(totalScore - pbScoreNow)}
+          pbNextTarget={nextPbSplit ? { atSeconds: Math.round(nextPbSplit.timeMs / 1000), score: nextPbSplit.score } : null}
+          radioActive={Boolean(radioLine)}
           hudTick={hudTick} />
-      {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onInvestigate={handleInvestigate} onStandard={handleStandard} selection={ridsChoiceSelection} paused={isGameplayPaused} />}
+      {gameState === 'RidsChoice' && activeRids && <RidsChoiceModal onInvestigate={handleInvestigate} onStandard={handleStandard} selection={ridsChoiceSelection} paused={isGameplayPaused || challengeAssist} evidence={observedEvidence(activeRids.car)} investigationsRemaining={investigationsRemainingRef.current} />}
       {gameState === 'MiniGame' && activeRids && (
         <MiniGameModal onComplete={onMiniGameComplete} ridsType={activeRids.ridsType} difficulty={Math.min(1, elapsedShiftSecondsRef.current / CONSTANTS.SHIFT_DURATION)} paused={isGameplayPaused} scenarioIndex={activeScenarioIndex} challengeAssist={challengeAssist} />
       )}
-      {gameState === 'Referral' && <ReferralModal onComplete={onReferralComplete} paused={isGameplayPaused} scenarioIndex={referralScenarioRef.current} />}
+      {gameState === 'Referral' && <ReferralModal onComplete={onReferralComplete} paused={isGameplayPaused} scenarioIndex={referralScenarioRef.current} challengeAssist={challengeAssist} />}
        {isTouchDevice && gameState === 'Playing' && !isGameplayPaused && (
         <TouchControls
             onControlChange={handleControlChange}

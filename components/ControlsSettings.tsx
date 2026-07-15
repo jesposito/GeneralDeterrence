@@ -89,16 +89,17 @@ const ControlsSettings: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <label className="mb-3 flex items-center gap-3 rounded border border-gray-700 bg-black/30 p-2 text-left">
                     <input
                         type="checkbox"
+                        data-testid="guided-patrol-toggle"
                         checked={challengeAssist}
                         onChange={(event) => {
                             const enabled = event.target.checked;
                             setChallengeAssist(enabled);
                             saveChallengeAssist(enabled);
-                            setAnnounce(`Decision challenge assist ${enabled ? 'enabled' : 'disabled'} for the next shift.`);
+                            setAnnounce(`Guided patrol assist ${enabled ? 'enabled' : 'disabled'} for the next shift.`);
                         }}
                         className="h-5 w-5 accent-cyan-500"
                     />
-                    <span className="text-sm text-gray-200 font-sans">Untimed decision challenges</span>
+                    <span className="text-sm text-gray-200 font-sans">Guided patrol: explicit offender markers and untimed decisions</span>
                 </label>
                 <div role="status" aria-live="polite" className="sr-only">{announce}</div>
                 <ul className="space-y-1">

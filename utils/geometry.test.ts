@@ -14,6 +14,7 @@ describe('geometry', () => {
   it('findClosestPointOnRoad returns a finite clamped point', () => {
     const r = findClosestPointOnRoad({ x: 0, y: 0 });
     expect(r).not.toBeNull();
+    expect(r?.segmentId).toBeTruthy();
     expect(Number.isFinite(r!.dist)).toBe(true);
     expect(Number.isFinite(r!.point.x)).toBe(true);
     expect(Number.isFinite(r!.point.y)).toBe(true);

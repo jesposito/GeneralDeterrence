@@ -29,6 +29,9 @@ export const PLAYER_SIREN_DRAIN_RATE = 0.35; // per frame - Increased from 0.2
 export const PLAYER_SIREN_MAX_DURATION = 5000; // 5 seconds in ms
 export const PLAYER_BOOST_RECHARGE_RATE = 0.3; // per frame
 export const MAX_COLLEAGUE_CALLS = 3;
+export const MAX_DEEP_INVESTIGATIONS = 4;
+export const COLLEAGUE_DISPATCH_SPEED = 300; // world units per simulation second
+export const COLLEAGUE_DISPATCH_MIN_SECONDS = 3;
 export const SIREN_YIELD_RADIUS = 350;
 export const SIREN_YIELD_SLOWDOWN_FACTOR = 0.2;
 
@@ -112,6 +115,7 @@ export const RIDS_TIME_PENALTY_INCORRECT_CHECK = 3; // seconds
 export const RIDS_TIME_PENALTY_MINIGAME_FAIL = 3;
 export const RIDS_SCAN_COOLDOWN_SECONDS = 0.75;
 export const RIDS_TARGET_HALF_ANGLE_DEGREES = 60;
+export const RIDS_SPEED_BEHAVIOR_MULTIPLIER = 1.35;
 
 export const RIDS_SPAWN_CHANCE_BY_ROAD_TYPE: Record<RoadType, Record<RIDSType, number>> = {
     Motorway:   { Speed: 0.8, Distractions: 0.2, Impairment: 0, Restraints: 0 },
@@ -182,7 +186,7 @@ export const OFFENCE_PREVENTED_TURNOVER_SECONDS = 20; // ponytail:tune
 // Civilian Cars & Traffic Density
 export const MAX_CIVILIAN_CARS = 80; // More cars overall
 export const TARGET_OFFENDER_COUNT = 7; // Target number of RIDS offenders on the map, scaled by deterrence
-export const MIN_TARGET_OFFENDER_COUNT = 3; // Always have at least this many offenders
+export const MIN_TARGET_OFFENDER_COUNT = 1; // Strong coverage must visibly suppress offending
 export const CIVILIAN_TARGET_DENSITY: Record<DistrictName, number> = {
     'Karori North': 10,  // Sparse
     'Karori West': 20,   // Moderate

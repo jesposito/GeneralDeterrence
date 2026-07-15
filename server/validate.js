@@ -1,5 +1,11 @@
 // Dependency-free validation for the leaderboard trust boundary.
 
+const {
+  getLegacyPresenceGrade,
+  getPresenceGrade,
+  PRESENCE_GRADE_CONTRACT_VERSION,
+} = require('../shared/presenceGrade.js');
+
 const MIN_SCORE = -100000;
 const MAX_SCORE = 100000;
 const MAX_NAME = 24;
@@ -41,7 +47,7 @@ function validateEditTokenRequest(body) {
   return { ok: true, value: { editToken: body.editToken } };
 }
 
-function validateBreakdown(value) {
+function validateBreakdown(value, allowLegacyGrade = false) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { ok: false, error: 'Score breakdown is required' };
   }
@@ -72,10 +78,11 @@ function validateBreakdown(value) {
     return { ok: false, error: 'Invalid presenceGrade' };
   }
 
-  const expectedGrade = value.coverageRatio >= 0.9 ? 'S'
-    : value.coverageRatio >= 0.7 ? 'A'
-      : value.coverageRatio >= 0.45 ? 'B' : 'C';
-  if (value.presenceGrade !== expectedGrade) return { ok: false, error: 'Presence grade does not match coverage' };
+  const expectedGrade = getPresenceGrade(value.coverageRatio);
+  const legacyGrade = getLegacyPresenceGrade(value.coverageRatio);
+  if (value.presenceGrade !== expectedGrade && (!allowLegacyGrade || value.presenceGrade !== legacyGrade)) {
+    return { ok: false, error: 'Presence grade does not match coverage' };
+  }
   if (value.livesLostPenalty !== value.livesLost * 2500) {
     return { ok: false, error: 'Lives lost penalty does not match breakdown' };
   }
@@ -102,6 +109,9 @@ function validateSubmission(body) {
     return { ok: false, error: 'Invalid request body' };
   }
   if (Object.hasOwn(body, 'email')) return { ok: false, error: 'Email is not accepted' };
+  if (body.scoreVersion !== undefined && body.scoreVersion !== PRESENCE_GRADE_CONTRACT_VERSION) {
+    return { ok: false, error: 'Unsupported score contract version' };
+  }
   if (typeof body.token !== 'string' || !RUN_TOKEN_RE.test(body.token)) {
     return { ok: false, error: 'Valid run token is required' };
   }
@@ -125,7 +135,7 @@ function validateSubmission(body) {
     station = body.station.trim().toUpperCase();
   }
 
-  const breakdown = validateBreakdown(body.breakdown);
+  const breakdown = validateBreakdown(body.breakdown, body.scoreVersion === undefined);
   if (!breakdown.ok) return breakdown;
   return {
     ok: true,
@@ -161,4 +171,5 @@ module.exports = {
   DAY_RE,
   MIN_ELAPSED_MS,
   MAX_ELAPSED_MS,
+  PRESENCE_GRADE_CONTRACT_VERSION,
 };

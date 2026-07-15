@@ -6,14 +6,25 @@ import StoryCodex from './StoryCodex';
 import { getCodex } from '../utils/codex';
 import * as audio from '../utils/audio';
 import { useGamepadNavigation } from './useGamepadNavigation';
+import type { ShiftMode } from '../App';
+import type { OperationDefinition } from '../utils/operations';
+import type { CareerProgress } from '../utils/progression';
+import type { CampaignProgress } from '../utils/campaign';
+import type { PatrolLoadout, PatrolLoadoutId } from '../utils/loadouts';
 
 interface MainMenuProps {
-  onStartGame: (mode: 'daily' | 'free') => void;
+  onStartGame: (mode: ShiftMode) => void;
   leaderboard: LeaderboardEntry[];
   onDeleteMyScores: () => Promise<boolean>;
+  dailyOperation: OperationDefinition;
+  careerProgress: CareerProgress;
+  campaignProgress: CampaignProgress | null;
+  availableLoadouts: readonly PatrolLoadout[];
+  selectedLoadoutId: PatrolLoadoutId;
+  onLoadoutChange: (id: PatrolLoadoutId) => void;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard, onDeleteMyScores }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard, onDeleteMyScores, dailyOperation, careerProgress, campaignProgress, availableLoadouts, selectedLoadoutId, onLoadoutChange }) => {
   const [showControls, setShowControls] = useState(false);
   const [showCodex, setShowCodex] = useState(false);
   const codexCount = getCodex().length;
@@ -47,7 +58,14 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard, onDeleteM
             >
               Daily Shift
             </button>
-            <p className="text-xs text-gray-400 mt-1 font-sans">Today's map, same for everyone. New one at midnight.</p>
+            <p className="text-xs text-yellow-200 mt-1 font-sans">{dailyOperation.name}: {dailyOperation.briefing}</p>
+            <button
+              onClick={() => { audio.unlockAudio(); onStartGame('operations'); }}
+              className="mt-3 w-full bg-cyan-700 hover:bg-cyan-600 border-2 border-cyan-400 text-white font-bold py-2.5 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              {campaignProgress && !campaignProgress.complete ? `Continue Operations · ${campaignProgress.completedShifts}/5` : 'Operations Campaign'}
+            </button>
+            <p className="text-xs text-gray-400 mt-1 font-sans">Five linked shifts. Each Presence Grade changes what comes next.</p>
             <button
               onClick={() => { audio.unlockAudio(); onStartGame('free'); }}
               className="mt-3 w-full bg-transparent hover:bg-pink-900/40 border-2 border-pink-500/50 text-pink-300 font-bold py-2 px-4 rounded-lg text-sm md:text-base transition font-display tracking-wider focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
@@ -68,6 +86,29 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStartGame, leaderboard, onDeleteM
                 Stories{codexCount > 0 ? ` (${codexCount})` : ''}
               </button>
             </div>
+            <div className="mt-4 border-t border-gray-700 pt-3 text-left font-sans">
+              <p className="text-sm text-cyan-300 font-bold">{careerProgress.rank.name} · {careerProgress.totalPresenceGrades} shifts graded</p>
+              <p className="text-xs text-gray-400">{careerProgress.nextRank ? `${careerProgress.gradesUntilNextRank} more grades to ${careerProgress.nextRank.name}` : 'Career rank complete'} · Unlocks are horizontal and never alter Daily scoring.</p>
+            </div>
+            <fieldset className="mt-3 border-t border-gray-700 pt-3 text-left">
+              <legend className="text-xs text-gray-300 font-display tracking-wider">FREE / OPERATIONS UNIT</legend>
+              <div className="grid grid-cols-2 gap-1 mt-2" role="radiogroup">
+                {availableLoadouts.map(loadout => (
+                  <button
+                    key={loadout.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selectedLoadoutId === loadout.id}
+                    onClick={() => onLoadoutChange(loadout.id)}
+                    title={loadout.description}
+                    className={`px-2 py-2 border text-xs font-sans rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${selectedLoadoutId === loadout.id ? 'bg-cyan-700 border-cyan-300 text-white' : 'bg-gray-900 border-gray-600 text-gray-300 hover:border-cyan-500'}`}
+                  >
+                    {loadout.name}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1 font-sans">{availableLoadouts.find(loadout => loadout.id === selectedLoadoutId)?.description} Daily always uses General Duties.</p>
+            </fieldset>
           </div>
           <div className="bg-black/50 p-4 md:p-6 rounded-lg border-2 border-cyan-500/50 min-w-[280px]">
             <Leaderboard scores={leaderboard} onDeleteMine={onDeleteMyScores} />

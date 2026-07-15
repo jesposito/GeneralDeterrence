@@ -64,21 +64,18 @@ const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
             <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
                 <TutorialInfoCard title="1 · PATROL">
                     <ul className="space-y-1.5">
-                        <li>Be seen → <span className="text-white font-bold">DETERRENCE</span> rises. Leave → it decays.</li>
-                        <li>All districts ≥85% = <span className="text-yellow-300 font-bold">FULL COVERAGE ×2</span>.</li>
+                        <li>Cover a <span className="text-white font-bold">fresh road</span> → deterrence rises quickly. Repeat one loop → diminishing returns.</li>
+                        <li>Secure 3, 4, then all 5 districts for staged score multipliers and earned overtime.</li>
                         <li>Park briefly = <span className="text-cyan-300 font-bold">PATROL POST</span>. Idle where it's safe = <span className="text-red-400 font-bold">NEGLECT</span>.</li>
                         <li><span className="text-cyan-300 font-bold">PREVENTED</span> counts offences that never happened. <span className="text-cyan-200">That's the real score.</span></li>
                     </ul>
                 </TutorialInfoCard>
 
                 <TutorialInfoCard title="2 · SPOT & STOP">
-                    <p className="text-base sm:text-lg whitespace-nowrap">
-                        <span aria-hidden="true">⚠️</span> Restraints · <span aria-hidden="true">🥴</span> Impaired<br/>
-                        <span aria-hidden="true">📱</span> Distracted · <span aria-hidden="true">🔥</span> Speed
-                    </p>
+                    <p className="text-base sm:text-lg">Watch traffic behavior: lane drift, speed difference, screen glow, delayed braking, and visible restraint use.</p>
                     <ul className="space-y-1.5">
-                        <li>Near one? <span className="text-yellow-300 font-bold">RIDS CHECK</span>.</li>
-                        <li><span className="text-cyan-300 font-bold">Standard enforcement</span>: fast, small. <span className="text-pink-400 font-bold">Investigate</span>: mini-game, big, −6s.</li>
+                        <li>Line up the specific vehicle, then use <span className="text-yellow-300 font-bold">RIDS CHECK</span>. Guessing costs time.</li>
+                        <li><span className="text-cyan-300 font-bold">Standard</span>: reliable and fast. <span className="text-pink-400 font-bold">Investigate</span>: deeper reward, −6s, only four per shift.</li>
                         <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go, or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
                         <li>One car each shift hides something <em>much</em> bigger…</li>
                     </ul>

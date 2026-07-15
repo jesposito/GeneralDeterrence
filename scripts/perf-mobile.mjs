@@ -1,5 +1,5 @@
 // Frame-time measurement on emulated mid-tier mobile: iPhone-12-class viewport,
-// 4x CPU throttle, driving through traffic. Honest numbers, before/after fixes.
+// 4x CPU throttle, driving through a fixed Holiday Peak worst case.
 // Usage: node scripts/perf-mobile.mjs
 // BASE_URL, THROTTLE, SECONDS, DPR, and P95_BUDGET_MS are configurable.
 import { chromium, devices } from 'playwright';
@@ -29,6 +29,20 @@ try {
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
+
+  // Seed 1 on this day deterministically selects Holiday Peak (80 initial cars).
+  // Intercept only the run grant so the performance gate cannot change with the calendar.
+  await page.route('**/api/runs', (route) => route.fulfill({
+    status: 201,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      token: 'p'.repeat(43),
+      mode: 'daily',
+      day: '2026-07-15',
+      seed: 1,
+      attempt: 1,
+    }),
+  }));
 
   await page.goto(BASE_URL, { waitUntil: 'networkidle' });
   await page.getByRole('button', { name: /daily shift/i }).click({ force: true });
@@ -68,7 +82,7 @@ try {
   }, SECONDS);
 
   await page.keyboard.up('w');
-  console.log(`CPU throttle ${THROTTLE}x, viewport 844x390, DPR ${DPR}, ${SECONDS}s driving:`);
+  console.log(`Holiday Peak worst case, CPU throttle ${THROTTLE}x, viewport 844x390, DPR ${DPR}, ${SECONDS}s driving:`);
   console.log(JSON.stringify(stats, null, 1));
   console.log(stats.p95 <= 16.8 ? 'VERDICT: 60fps at p95' : stats.p95 <= 33.6 ? 'VERDICT: 30-60fps at p95' : 'VERDICT: below 30fps at p95');
   if (stats.p95 > P95_BUDGET_MS) {

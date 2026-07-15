@@ -40,7 +40,7 @@ export function districtGlyphs(patrolPath: { x: number; y: number }[]): string {
 }
 
 export interface ShareContext {
-    mode: 'daily' | 'free';
+    mode: 'daily' | 'free' | 'operations';
     storyLine?: string;      // one saved-life story, if any
     percentile?: number | null;
     streak?: number;
@@ -50,7 +50,7 @@ export interface ShareContext {
 export function buildShareText(b: FinalScoreBreakdown, ctx: ShareContext): string {
     const header = ctx.mode === 'daily'
         ? `General Deterrence #${shiftNumber(ctx.competitionDay)} 🚔 Grade ${b.presenceGrade}`
-        : `General Deterrence Free Patrol 🚔 Grade ${b.presenceGrade}`;
+        : `General Deterrence ${ctx.mode === 'operations' ? 'Operations' : 'Free Patrol'} 🚔 Grade ${b.presenceGrade}`;
     const statBits = [
         `${b.offencesPrevented} prevented`,
         `${b.livesSaved} ${b.livesSaved === 1 ? 'life' : 'lives'} saved`,
@@ -111,7 +111,7 @@ export async function buildShareCard(b: FinalScoreBreakdown, ctx: ShareContext):
     g.fillText('GENERAL DETERRENCE', CARD_W / 2, 130);
     g.fillStyle = '#f472b6';
     g.font = '42px Rajdhani, sans-serif';
-    g.fillText(ctx.mode === 'daily' ? `Daily Shift #${shiftNumber(ctx.competitionDay)}` : 'Free Patrol', CARD_W / 2, 195);
+    g.fillText(ctx.mode === 'daily' ? `Daily Shift #${shiftNumber(ctx.competitionDay)}` : ctx.mode === 'operations' ? 'Operations Campaign' : 'Free Patrol', CARD_W / 2, 195);
 
     // Grade badge
     const gradeColor: Record<string, string> = { S: '#fde047', A: '#4ade80', B: '#facc15', C: '#f87171' };

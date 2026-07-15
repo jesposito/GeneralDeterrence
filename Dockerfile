@@ -30,8 +30,10 @@ RUN apk add --no-cache su-exec \
  && npm ci --omit=dev \
  && apk del .build-deps
 
-# Server source
-COPY server/index.js server/validate.js ./
+# Preserve the source layout so the server and browser bundle consume the same
+# presence-grade contract.
+COPY server/index.js server/validate.js ./server/
+COPY shared/presenceGrade.js ./shared/
 
 # Built frontend from the builder stage
 COPY --from=builder /app/dist ./dist
@@ -55,4 +57,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
-CMD ["node", "index.js"]
+CMD ["node", "server/index.js"]

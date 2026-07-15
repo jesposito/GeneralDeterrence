@@ -59,7 +59,7 @@ const startRun = (app, mode = 'daily', editToken = 'e'.repeat(32)) =>
 
 const submit = (app, token, score = 100, elapsedMs = 90_000) =>
   request(app).post('/api/leaderboard').send({
-    token, name: 'Ana', station: 'tawa', elapsedMs, breakdown: breakdown(score),
+    scoreVersion: 2, token, name: 'Ana', station: 'tawa', elapsedMs, breakdown: breakdown(score),
   });
 
 describe('run-bound leaderboard API', () => {

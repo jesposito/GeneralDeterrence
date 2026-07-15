@@ -6,10 +6,9 @@ import {
 import { mulberry32, pick, range, type Rng } from './rng';
 import { rollWeather, currentWeatherRef, type Season } from './weather';
 
-// Procedural map generator. Builds a connected road network + district layout in a
-// canonical frame (motorway east, rural north — the shape of the original hand map),
-// then applies seeded flips for orientation variety. District IDs never change, so every
-// balance constant keyed by DistrictName keeps working; display names and geometry vary.
+// Procedural map generator. Selects a seeded road-network grammar, builds it in a
+// canonical frame, then applies seeded flips for orientation variety. District IDs never
+// change, so every balance constant keyed by DistrictName keeps working.
 
 const WORLD_W = 1280 * 3;
 const WORLD_H = 720 * 3;
@@ -18,6 +17,7 @@ export interface GeneratedMapMeta {
     seed: number;
     themeName: string;
     layoutName: string;
+    topologyName: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +259,217 @@ function buildCanonical(rng: Rng): Built {
     return { nodes, segments, districts };
 }
 
+interface TopologyTemplate {
+    key: string;
+    name: string;
+    nodes: readonly { id: string; x: number; y: number; jitter?: number }[];
+    segments: readonly (readonly [string, string, RoadType])[];
+    centreBounds: { x: number; y: number; width: number; height: number };
+    pocketBounds: { x: number; y: number; width: number; height: number };
+    northBoundary: number;
+}
+
+const COASTAL_SPINE: TopologyTemplate = {
+    key: 'coast',
+    name: 'Coastal Spine',
+    northBoundary: 680,
+    centreBounds: { x: 1320, y: 720, width: 1420, height: 780 },
+    pocketBounds: { x: 80, y: 1540, width: 760, height: 600 },
+    nodes: [
+        { id: 'm1', x: 3340, y: 120 }, { id: 'm2', x: 3370, y: 560 },
+        { id: 'm3', x: 3320, y: 1020 }, { id: 'm4', x: 3360, y: 1510 },
+        { id: 'm5', x: 3290, y: 2040 },
+        { id: 'r1', x: 260, y: 240 }, { id: 'r2', x: 780, y: 150 },
+        { id: 'r3', x: 1320, y: 390 }, { id: 'r4', x: 1930, y: 180 },
+        { id: 'r5', x: 2600, y: 380 }, { id: 'r6', x: 3030, y: 210 },
+        { id: 's1', x: 320, y: 820 }, { id: 's2', x: 930, y: 800 },
+        { id: 's3', x: 1220, y: 1120 }, { id: 's4', x: 360, y: 1360 },
+        { id: 's5', x: 980, y: 1450 },
+        { id: 'c1', x: 1460, y: 820 }, { id: 'c2', x: 2090, y: 800 },
+        { id: 'c3', x: 1510, y: 1260 }, { id: 'c4', x: 2160, y: 1270 },
+        { id: 'c5', x: 2610, y: 1040 },
+        { id: 'k1', x: 180, y: 1700 }, { id: 'k2', x: 230, y: 2050 },
+        { id: 'k3', x: 650, y: 2070 }, { id: 'k4', x: 720, y: 1690 },
+        { id: 'i1', x: 2050, y: 1740 }, { id: 'i2', x: 2650, y: 1830 },
+        { id: 'i3', x: 3070, y: 2020 },
+    ],
+    segments: [
+        ['m1', 'm2', 'Motorway'], ['m2', 'm3', 'Motorway'], ['m3', 'm4', 'Motorway'], ['m4', 'm5', 'Motorway'],
+        ['r1', 'r2', 'Rural'], ['r2', 'r3', 'Rural'], ['r3', 'r4', 'Rural'], ['r4', 'r5', 'Rural'],
+        ['r5', 'r6', 'Rural'], ['r6', 'm1', 'Rural'], ['r1', 's1', 'Rural'], ['r3', 'c1', 'Rural'],
+        ['s1', 's2', 'Suburban'], ['s2', 's3', 'Suburban'], ['s3', 's5', 'Suburban'],
+        ['s5', 's4', 'Suburban'], ['s4', 's1', 'Suburban'], ['s2', 's5', 'Suburban'],
+        ['s4', 'k1', 'Suburban'], ['k1', 'k2', 'Suburban'], ['k2', 'k3', 'Suburban'],
+        ['k3', 'k4', 'Suburban'], ['k4', 'k1', 'Suburban'],
+        ['s2', 'c1', 'Primary'], ['s3', 'c3', 'Primary'], ['c1', 'c2', 'Primary'],
+        ['c1', 'c3', 'Primary'], ['c2', 'c4', 'Primary'], ['c3', 'c4', 'Primary'],
+        ['c2', 'c5', 'Primary'], ['c4', 'c5', 'Primary'], ['c5', 'm3', 'Primary'],
+        ['c4', 'i1', 'Industrial'], ['i1', 'i2', 'Industrial'], ['i2', 'i3', 'Industrial'],
+        ['i3', 'm5', 'Industrial'], ['i2', 'm4', 'Industrial'],
+    ],
+};
+
+const TWIN_RIVERS: TopologyTemplate = {
+    key: 'river',
+    name: 'Twin Centres',
+    northBoundary: 650,
+    centreBounds: { x: 1040, y: 700, width: 1780, height: 820 },
+    pocketBounds: { x: 80, y: 1530, width: 760, height: 610 },
+    nodes: [
+        { id: 'm1', x: 3520, y: 110 }, { id: 'm2', x: 3500, y: 700 },
+        { id: 'm3', x: 3540, y: 1320 }, { id: 'm4', x: 3480, y: 2040 },
+        { id: 'r1', x: 240, y: 180 }, { id: 'r2', x: 850, y: 390 },
+        { id: 'r3', x: 1510, y: 170 }, { id: 'r4', x: 2290, y: 390 },
+        { id: 'r5', x: 3000, y: 190 },
+        { id: 's1', x: 280, y: 810 }, { id: 's2', x: 820, y: 820 },
+        { id: 's3', x: 300, y: 1370 }, { id: 's4', x: 860, y: 1450 },
+        { id: 'w1', x: 1190, y: 790 }, { id: 'w2', x: 1600, y: 800 },
+        { id: 'w3', x: 1200, y: 1260 }, { id: 'w4', x: 1600, y: 1270 },
+        { id: 'bw1', x: 1800, y: 800, jitter: 10 }, { id: 'be1', x: 2040, y: 800, jitter: 10 },
+        { id: 'bw2', x: 1800, y: 1040, jitter: 10 }, { id: 'be2', x: 2040, y: 1040, jitter: 10 },
+        { id: 'bw3', x: 1800, y: 1280, jitter: 10 }, { id: 'be3', x: 2040, y: 1280, jitter: 10 },
+        { id: 'e1', x: 2250, y: 790 }, { id: 'e2', x: 2700, y: 800 },
+        { id: 'e3', x: 2260, y: 1270 }, { id: 'e4', x: 2700, y: 1260 },
+        { id: 'k1', x: 180, y: 1700 }, { id: 'k2', x: 220, y: 2050 },
+        { id: 'k3', x: 650, y: 2060 }, { id: 'k4', x: 720, y: 1700 },
+        { id: 'i1', x: 2140, y: 1760 }, { id: 'i2', x: 2750, y: 1870 },
+        { id: 'i3', x: 3260, y: 2020 },
+    ],
+    segments: [
+        ['m1', 'm2', 'Motorway'], ['m2', 'm3', 'Motorway'], ['m3', 'm4', 'Motorway'],
+        ['r1', 'r2', 'Rural'], ['r2', 'r3', 'Rural'], ['r3', 'r4', 'Rural'], ['r4', 'r5', 'Rural'],
+        ['r5', 'm1', 'Rural'], ['r1', 's1', 'Rural'], ['r3', 'w2', 'Rural'],
+        ['s1', 's2', 'Suburban'], ['s2', 's4', 'Suburban'], ['s4', 's3', 'Suburban'],
+        ['s3', 's1', 'Suburban'], ['s2', 'w1', 'Primary'], ['s4', 'w3', 'Primary'],
+        ['w1', 'w2', 'Primary'], ['w1', 'w3', 'Primary'], ['w2', 'w4', 'Primary'], ['w3', 'w4', 'Primary'],
+        ['e1', 'e2', 'Primary'], ['e1', 'e3', 'Primary'], ['e2', 'e4', 'Primary'], ['e3', 'e4', 'Primary'],
+        ['w2', 'bw1', 'Primary'], ['bw1', 'be1', 'Primary'], ['be1', 'e1', 'Primary'],
+        ['w2', 'bw2', 'Primary'], ['bw2', 'be2', 'Primary'], ['be2', 'e1', 'Primary'],
+        ['w4', 'bw3', 'Primary'], ['bw3', 'be3', 'Primary'], ['be3', 'e3', 'Primary'],
+        ['e2', 'm2', 'Primary'], ['e4', 'm3', 'Primary'],
+        ['s3', 'k1', 'Suburban'], ['k1', 'k2', 'Suburban'], ['k2', 'k3', 'Suburban'],
+        ['k3', 'k4', 'Suburban'], ['k4', 'k1', 'Suburban'],
+        ['e3', 'i1', 'Industrial'], ['i1', 'i2', 'Industrial'], ['i2', 'i3', 'Industrial'],
+        ['i3', 'm4', 'Industrial'], ['i2', 'm3', 'Industrial'],
+    ],
+};
+
+const RURAL_HUB: TopologyTemplate = {
+    key: 'hub',
+    name: 'Rural Hub',
+    northBoundary: 740,
+    centreBounds: { x: 1320, y: 820, width: 1280, height: 720 },
+    pocketBounds: { x: 90, y: 1510, width: 720, height: 630 },
+    nodes: [
+        { id: 'hub', x: 1900, y: 340, jitter: 16 },
+        { id: 'r1', x: 220, y: 180 }, { id: 'r2', x: 780, y: 520 },
+        { id: 'r3', x: 1120, y: 120 }, { id: 'r4', x: 2670, y: 140 },
+        { id: 'r5', x: 3160, y: 500 }, { id: 'r6', x: 3630, y: 170 },
+        { id: 'm1', x: 3440, y: 620 }, { id: 'm2', x: 3500, y: 1120 },
+        { id: 'm3', x: 3440, y: 1600 }, { id: 'm4', x: 3520, y: 2050 },
+        { id: 's1', x: 280, y: 850 }, { id: 's2', x: 850, y: 900 },
+        { id: 's3', x: 300, y: 1370 }, { id: 's4', x: 940, y: 1460 },
+        { id: 'c1', x: 1430, y: 900 }, { id: 'c2', x: 1980, y: 850 },
+        { id: 'c3', x: 2460, y: 970 }, { id: 'c4', x: 1540, y: 1370 },
+        { id: 'c5', x: 2150, y: 1370 },
+        { id: 'k1', x: 170, y: 1690 }, { id: 'k2', x: 210, y: 2050 },
+        { id: 'k3', x: 650, y: 2060 }, { id: 'k4', x: 710, y: 1690 },
+        { id: 'i1', x: 1940, y: 1780 }, { id: 'i2', x: 2580, y: 1930 },
+        { id: 'i3', x: 3140, y: 1760 },
+    ],
+    segments: [
+        ['r1', 'r2', 'Rural'], ['r2', 'hub', 'Rural'], ['r3', 'hub', 'Rural'],
+        ['hub', 'r4', 'Rural'], ['hub', 'r5', 'Rural'], ['r5', 'r6', 'Rural'],
+        ['r1', 'r3', 'Rural'], ['r4', 'r6', 'Rural'], ['r2', 's2', 'Rural'],
+        ['r5', 'm1', 'Rural'], ['hub', 'c2', 'Rural'],
+        ['m1', 'm2', 'Motorway'], ['m2', 'm3', 'Motorway'], ['m3', 'm4', 'Motorway'],
+        ['s1', 's2', 'Suburban'], ['s2', 's4', 'Suburban'], ['s4', 's3', 'Suburban'],
+        ['s3', 's1', 'Suburban'], ['s2', 'c1', 'Primary'], ['s4', 'c4', 'Primary'],
+        ['c1', 'c2', 'Primary'], ['c2', 'c3', 'Primary'], ['c1', 'c4', 'Primary'],
+        ['c2', 'c5', 'Primary'], ['c3', 'c5', 'Primary'], ['c4', 'c5', 'Primary'],
+        ['c3', 'm2', 'Primary'], ['c5', 'm3', 'Primary'],
+        ['s3', 'k1', 'Suburban'], ['k1', 'k2', 'Suburban'], ['k2', 'k3', 'Suburban'],
+        ['k3', 'k4', 'Suburban'], ['k4', 'k1', 'Suburban'],
+        ['c4', 'i1', 'Industrial'], ['i1', 'i2', 'Industrial'], ['i2', 'i3', 'Industrial'],
+        ['i3', 'm3', 'Industrial'], ['i2', 'm4', 'Industrial'],
+    ],
+};
+
+const HILL_SWITCHBACKS: TopologyTemplate = {
+    key: 'hill',
+    name: 'High Country Switchbacks',
+    northBoundary: 820,
+    centreBounds: { x: 1280, y: 880, width: 1460, height: 680 },
+    pocketBounds: { x: 80, y: 1510, width: 750, height: 630 },
+    nodes: [
+        { id: 'r1', x: 180, y: 170 }, { id: 'r2', x: 920, y: 480 },
+        { id: 'r3', x: 470, y: 730 }, { id: 'r4', x: 1390, y: 560 },
+        { id: 'r5', x: 1050, y: 170 }, { id: 'r6', x: 1900, y: 330 },
+        { id: 'r7', x: 2540, y: 120 }, { id: 'r8', x: 3100, y: 600 },
+        { id: 's1', x: 260, y: 910 }, { id: 's2', x: 900, y: 900 },
+        { id: 's3', x: 340, y: 1370 }, { id: 's4', x: 1040, y: 1480 },
+        { id: 'c1', x: 1400, y: 940 }, { id: 'c2', x: 2010, y: 900 },
+        { id: 'c3', x: 2600, y: 1010 }, { id: 'c4', x: 1510, y: 1390 },
+        { id: 'c5', x: 2180, y: 1420 },
+        { id: 'm1', x: 1160, y: 1990 }, { id: 'm2', x: 1940, y: 2030 },
+        { id: 'm3', x: 2700, y: 1980 }, { id: 'm4', x: 3580, y: 2020 },
+        { id: 'k1', x: 170, y: 1690 }, { id: 'k2', x: 210, y: 2050 },
+        { id: 'k3', x: 650, y: 2060 }, { id: 'k4', x: 720, y: 1690 },
+        { id: 'i1', x: 1980, y: 1740 }, { id: 'i2', x: 2710, y: 1690 },
+        { id: 'i3', x: 3360, y: 1600 },
+    ],
+    segments: [
+        ['r1', 'r2', 'Rural'], ['r2', 'r3', 'Rural'], ['r3', 'r4', 'Rural'],
+        ['r4', 'r5', 'Rural'], ['r5', 'r6', 'Rural'], ['r6', 'r7', 'Rural'],
+        ['r7', 'r8', 'Rural'], ['r3', 's1', 'Rural'], ['r4', 'c1', 'Rural'], ['r8', 'c3', 'Rural'],
+        ['s1', 's2', 'Suburban'], ['s2', 's4', 'Suburban'], ['s4', 's3', 'Suburban'],
+        ['s3', 's1', 'Suburban'], ['s2', 'c1', 'Primary'], ['s4', 'c4', 'Primary'],
+        ['c1', 'c2', 'Primary'], ['c2', 'c3', 'Primary'], ['c1', 'c4', 'Primary'],
+        ['c2', 'c5', 'Primary'], ['c3', 'c5', 'Primary'], ['c4', 'c5', 'Primary'],
+        ['s3', 'k1', 'Suburban'], ['k1', 'k2', 'Suburban'], ['k2', 'k3', 'Suburban'],
+        ['k3', 'k4', 'Suburban'], ['k4', 'k1', 'Suburban'],
+        ['c4', 'm1', 'Industrial'], ['c5', 'i1', 'Industrial'], ['i1', 'i2', 'Industrial'],
+        ['i2', 'i3', 'Industrial'], ['i3', 'm4', 'Industrial'], ['i2', 'm3', 'Industrial'],
+        ['m1', 'm2', 'Motorway'], ['m2', 'm3', 'Motorway'], ['m3', 'm4', 'Motorway'],
+    ],
+};
+
+function buildTemplate(rng: Rng, template: TopologyTemplate): Built {
+    const nodes = template.nodes.map(({ id, x, y, jitter = 28 }) => ({
+        id: `${template.key}_${id}`,
+        pos: { x: Math.round(x + range(rng, -jitter, jitter)), y: Math.round(y + range(rng, -jitter, jitter)) },
+    }));
+    const segments = template.segments.map(([start, end, type]) => ({
+        id: `seg-${template.key}_${start}-${template.key}_${end}`,
+        startNodeId: `${template.key}_${start}`,
+        endNodeId: `${template.key}_${end}`,
+        type,
+    }));
+    const emptyTheme = () => ({ groundColor: '', roadColor: '', decorColor: '' });
+    const { centreBounds, pocketBounds, northBoundary } = template;
+    const districts: DistrictDefinition[] = [
+        { id: 'Karori', name: 'Karori', bounds: { ...pocketBounds }, theme: emptyTheme() },
+        { id: 'Karori Central', name: 'Town Centre', bounds: { ...centreBounds }, theme: emptyTheme() },
+        { id: 'Karori North', name: 'Rural North', bounds: { x: 0, y: 0, width: WORLD_W, height: northBoundary }, theme: emptyTheme() },
+        { id: 'Karori West', name: 'Suburban West', bounds: { x: 0, y: northBoundary, width: WORLD_W / 2, height: WORLD_H - northBoundary }, theme: emptyTheme() },
+        { id: 'Karori East', name: 'Motorway East', bounds: { x: WORLD_W / 2, y: northBoundary, width: WORLD_W / 2, height: WORLD_H - northBoundary }, theme: emptyTheme() },
+    ];
+    return { nodes, segments, districts };
+}
+
+interface Topology {
+    name: string;
+    build: (rng: Rng) => Built;
+}
+
+const TOPOLOGIES: readonly Topology[] = [
+    { name: 'Classic Grid', build: buildCanonical },
+    { name: COASTAL_SPINE.name, build: rng => buildTemplate(rng, COASTAL_SPINE) },
+    { name: TWIN_RIVERS.name, build: rng => buildTemplate(rng, TWIN_RIVERS) },
+    { name: RURAL_HUB.name, build: rng => buildTemplate(rng, RURAL_HUB) },
+    { name: HILL_SWITCHBACKS.name, build: rng => buildTemplate(rng, HILL_SWITCHBACKS) },
+];
+
 // Seeded orientation flips. Topology is untouched; positions and bounds mirror.
 function applyFlips(built: Built, flipX: boolean, flipY: boolean): void {
     if (!flipX && !flipY) return;
@@ -371,7 +582,8 @@ export function regenerateMap(seed: number, date = new Date()): GeneratedMapMeta
     const seasonal = region.themeNames.filter(n => SEASON_THEME_BIAS[weather.season].includes(n));
     const themeName = pick(rng, seasonal.length ? seasonal : region.themeNames);
     const theme = THEMES.find(t => t.name === themeName) ?? THEMES[0];
-    const built = buildCanonical(rng);
+    const topology = pick(rng, TOPOLOGIES);
+    const built = topology.build(rng);
     const flipX = rng() < 0.5;
     const flipY = rng() < 0.5;
     applyFlips(built, flipX, flipY);
@@ -386,7 +598,7 @@ export function regenerateMap(seed: number, date = new Date()): GeneratedMapMeta
             segments: DEFAULT_SEGMENTS.map(s => ({ ...s })),
             districts: DEFAULT_DISTRICTS.map(d => ({ ...d, bounds: { ...d.bounds }, theme: { ...d.theme } })),
         }, THEMES[0]);
-        return { seed, themeName: THEMES[0].name, layoutName: 'Karori Classic' };
+        return { seed, themeName: THEMES[0].name, layoutName: 'Karori Classic', topologyName: 'Classic Grid' };
     }
 
     currentRegionRef.current = region;
@@ -394,5 +606,5 @@ export function regenerateMap(seed: number, date = new Date()): GeneratedMapMeta
     // Label: town centre + regional character + conditions ("Te Aro District · Geothermal · Rain, Winter").
     const centre = built.districts.find(d => d.id === 'Karori Central');
     const layoutName = `${(centre?.name || 'Karori').replace(/ \(.*\)$/, '')} District · ${region.name} · ${weather.label}`;
-    return { seed, themeName: theme.name, layoutName };
+    return { seed, themeName: theme.name, layoutName, topologyName: topology.name };
 }

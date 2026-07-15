@@ -65,11 +65,29 @@ export interface EnforcementAction {
   pos: { x: number; y: number };
   ridsType: RIDSType;
   actionType: 'Investigate' | 'Standard';
+  atSeconds: number;
+  scoreDelta: number;
 }
 
 export interface ColleagueCallAction {
   pos: { x: number; y: number };
   targetVehicleId: number;
+  atSeconds: number;
+  result: 'success' | 'failure';
+}
+
+export interface PatrolSample {
+  x: number;
+  y: number;
+  atSeconds: number;
+  score: number;
+  district: DistrictName;
+}
+
+export interface ScoreSplit {
+  atSeconds: number;
+  score: number;
+  coverageQuality: number;
 }
 
 export interface FinalScoreBreakdown {
@@ -80,6 +98,9 @@ export interface FinalScoreBreakdown {
   livesLostPenalty: number;
   finalScore: number;
   patrolPath: { x: number; y: number }[];
+  /** Timestamped route used for PB coaching and action-aware replays. */
+  patrolTimeline: PatrolSample[];
+  scoreSplits: ScoreSplit[];
   enforcementActions: EnforcementAction[];
   colleagueCallActions: ColleagueCallAction[];
   /** Offenders the spawner never created because deterrence was high — the teaching headline. */
@@ -89,12 +110,37 @@ export interface FinalScoreBreakdown {
   livesLost: number;
   /** The once-per-shift interdiction car: what it was carrying and whether the stop found it. */
   interdiction: { crime: string; detail: string; outcome: 'busted' | 'missed' } | null;
-  /** Earned the +30s by holding FULL COVERAGE at the final whistle. */
+  /** Earned overtime through cumulative secured district coverage. */
   overtime: boolean;
-  /** Fraction of the shift with every district ≥50% deterrence. */
+  /** Average coverage quality across the shift, normalized to 0..1. */
   coverageRatio: number;
-  /** Grade derived from coverageRatio: S ≥0.9, A ≥0.7, B ≥0.45, else C. */
+  /** Grade derived from coverageRatio: S >=0.75, A >=0.65, B >=0.52, else C. */
   presenceGrade: 'S' | 'A' | 'B' | 'C';
+  /** Average teaching-aligned coverage quality across the run, from 0..100. */
+  coverageQuality: number;
+  /** Seconds with at least three districts secured at 85% or above. */
+  securedCoverageSeconds: number;
+  /** Overtime earned through cumulative secured coverage, including zero. */
+  earnedOvertimeSeconds: number;
+  roadStats: {
+    uniqueSegments: number;
+    repeatRatio: number;
+    bestPresenceChain: number;
+  };
+  interventionStats: {
+    scans: number;
+    accurateScans: number;
+    falseScans: number;
+    standard: number;
+    investigate: number;
+    modalSeconds: number;
+  };
+  potentialOffences: number;
+  districtReport: Array<{
+    id: DistrictName;
+    finalDeterrence: number;
+    patrolSamples: number;
+  }>;
   /** Whether the explicit untimed decision-challenge assist was used for this shift. */
   challengeAssist: boolean;
 }
@@ -151,6 +197,8 @@ export interface DispatchedCall {
     targetVehicleId: number;
     timeLeft: number;
     active: boolean;
+    /** Remaining incident deadline, updated with the target for ETA comparison. */
+    targetTimeLeft?: number;
 }
 
 export interface SparkParticle {

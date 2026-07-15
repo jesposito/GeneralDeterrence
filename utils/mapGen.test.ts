@@ -34,6 +34,51 @@ describe('regenerateMap', () => {
     expect(snapshot()).not.toBe(a);
   });
 
+  it('uses five materially different deterministic topology grammars', () => {
+    const fixedDate = new Date(2026, 6, 15, 12);
+    const signatures = new Map<string, string>();
+    for (let seed = 1; seed <= 300 && signatures.size < 5; seed++) {
+      const { topologyName } = regenerateMap(seed, fixedDate);
+      if (signatures.has(topologyName)) continue;
+
+      const nodeIds = ROAD_NODES.map(node => node.id);
+      const segmentIds = ROAD_SEGMENTS.map(segment => segment.id);
+      expect(new Set(nodeIds).size, `${topologyName}: duplicate node id`).toBe(nodeIds.length);
+      expect(new Set(segmentIds).size, `${topologyName}: duplicate segment id`).toBe(segmentIds.length);
+      const degrees = new Map(ROAD_NODES.map(n => [n.id, 0]));
+      const nodePositions = new Map(ROAD_NODES.map(node => [node.id, node.pos]));
+      const roadTypes = new Map<string, number>();
+      expect(bfsConnected(), `${topologyName} disconnected`).toBe(true);
+      for (const segment of ROAD_SEGMENTS) {
+        expect(degrees.has(segment.startNodeId), `${topologyName}: missing segment start`).toBe(true);
+        expect(degrees.has(segment.endNodeId), `${topologyName}: missing segment end`).toBe(true);
+        degrees.set(segment.startNodeId, degrees.get(segment.startNodeId)! + 1);
+        degrees.set(segment.endNodeId, degrees.get(segment.endNodeId)! + 1);
+        const start = nodePositions.get(segment.startNodeId)!;
+        const end = nodePositions.get(segment.endNodeId)!;
+        expect((start.x - end.x) ** 2 + (start.y - end.y) ** 2, `${topologyName}: zero-length segment`).toBeGreaterThan(0);
+        roadTypes.set(segment.type, (roadTypes.get(segment.type) ?? 0) + 1);
+      }
+      for (const district of DISTRICT_DEFINITIONS) {
+        expect(
+          ROAD_NODES.some(node => getDistrictForPoint(node.pos) === district.id && (degrees.get(node.id) ?? 0) > 0),
+          `${topologyName}: district ${district.id} has no usable road node`,
+        ).toBe(true);
+      }
+      signatures.set(topologyName, JSON.stringify({
+        nodes: ROAD_NODES.length,
+        segments: ROAD_SEGMENTS.length,
+        degrees: [...degrees.values()].sort((a, b) => a - b),
+        roadTypes: [...roadTypes].sort(([a], [b]) => a.localeCompare(b)),
+      }));
+    }
+
+    expect([...signatures.keys()].sort()).toEqual([
+      'Classic Grid', 'Coastal Spine', 'High Country Switchbacks', 'Rural Hub', 'Twin Centres',
+    ]);
+    expect(new Set(signatures.values()).size).toBe(5);
+  });
+
   it('generates a fully connected road network across many seeds', () => {
     for (let seed = 100; seed < 140; seed++) {
       regenerateMap(seed);

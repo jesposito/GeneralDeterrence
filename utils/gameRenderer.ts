@@ -2,6 +2,7 @@ import * as CONSTANTS from '../constants';
 import { ROAD_SEGMENTS, ROAD_NODES, DISTRICT_DEFINITIONS, mapVersionRef } from './mapData';
 import { currentRegionRef } from './mapGen';
 import { currentWeatherRef } from './weather';
+import type { TimedReplayAction } from './replay';
 import { Player, Civilian, SparkParticle, SkidMark, TireSmokeParticle, DeterrenceBlob, CollectionEffect, FloatingScoreText, Explosion, PatrolPost, RIDSType } from '../types';
 import { getDistrictForPoint } from './geometry';
 
@@ -550,6 +551,12 @@ export interface RenderState {
   pathfindingTargetId: number | null;
   targetedCarId: number | null;
   isBraking: boolean;
+  /** Matches operation-specific scan and deterrence-blob aura reach. */
+  playerAuraMultiplier?: number;
+  /** Guided assist preserves the original explicit offender rings and labels. */
+  showRidsMarkers?: boolean;
+  ghostActions?: readonly TimedReplayAction[];
+  ghostElapsedMs?: number;
 }
 
 // Cache prefers-reduced-motion once at module scope (not per frame) — gd-0wi.25.
@@ -702,6 +709,21 @@ export function drawGame(
     ctx.globalAlpha = 1;
   }
 
+  // Timestamped PB actions turn the ghost into route coaching without rendering another
+  // traffic car. Only near-term actions appear, so a retry is guided rather than spoiled.
+  for (const action of state.ghostActions ?? []) {
+    const actionAge = (state.ghostElapsedMs ?? 0) - action.timeMs;
+    if (actionAge < -5000 || actionAge > 3000 || !onScreen(action)) continue;
+    const color = action.kind === 'investigate' ? '#f472b6' : action.kind === 'colleague' ? '#facc15' : '#22d3ee';
+    ctx.globalAlpha = actionAge >= 0 ? Math.max(0.12, 0.45 - actionAge / 9000) : 0.65;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(action.x, action.y, 18, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
   // Draw civilian cars (off-screen culled)
   for (const car of state.civilians) {
     if (!onScreen(car.pos)) continue;
@@ -728,11 +750,11 @@ export function drawGame(
       }
       continue;
     }
-    drawCivilianCar(ctx, car, car.id === state.targetedCarId, car.id === state.pathfindingTargetId, !!car.isYieldingToSiren, time);
+    drawCivilianCar(ctx, car, car.id === state.targetedCarId, car.id === state.pathfindingTargetId, !!car.isYieldingToSiren, !!state.showRidsMarkers, time);
   }
 
   // Draw player car
-  drawPlayerCar(ctx, state.player, state.isBraking, time);
+  drawPlayerCar(ctx, state.player, state.isBraking, time, state.playerAuraMultiplier ?? 1);
 
   // Draw deterrence blobs
   for (const blob of state.deterrenceBlobs) {
@@ -873,6 +895,7 @@ function drawCivilianCar(
   isTargeted: boolean,
   isPathfindingTarget: boolean,
   isYielding: boolean,
+  showRidsMarkers: boolean,
   time: number
 ): void {
   ctx.save();
@@ -899,7 +922,7 @@ function drawCivilianCar(
 
   // RIDS offender pulse ring — visibility aid at mobile scales (base zoom ~0.5).
   // Drawn in WORLD space (not rotated with the car) so the halo stays oriented.
-  if (car.ridsType && !car.isLifeAtRisk) {
+  if (showRidsMarkers && car.ridsType && !car.isLifeAtRisk) {
     const t = time / 350;
     const ringScale = 1 + Math.sin(t) * 0.18;
     ctx.save();
@@ -940,7 +963,7 @@ function drawCivilianCar(
   if (isTargeted) {
     ctx.shadowColor = '#fde047';
     ctx.shadowBlur = 22;
-  } else if (car.ridsType && !car.isLifeAtRisk) {
+  } else if (showRidsMarkers && car.ridsType && !car.isLifeAtRisk) {
     ctx.shadowColor = '#facc15';
     ctx.shadowBlur = 18;
   }
@@ -992,6 +1015,42 @@ function drawCivilianCar(
   ctx.fillRect(carWidth * 0.25, carHeight / 2 - 4, carWidth * 0.15, 4);
   ctx.shadowBlur = 0;
 
+  // Observable safety evidence replaces global answer labels. Each cue is grounded in
+  // vehicle behaviour or visible occupant state; colour/vehicle type never implies guilt.
+  if (car.ridsType === 'Speed') {
+    ctx.strokeStyle = 'rgba(253, 224, 71, 0.75)';
+    ctx.lineWidth = 2;
+    for (const x of [-carWidth * 0.3, carWidth * 0.3]) {
+      ctx.beginPath();
+      ctx.moveTo(x, carHeight / 2 + 4);
+      ctx.lineTo(x, carHeight / 2 + 15 + Math.sin(time / 100) * 3);
+      ctx.stroke();
+    }
+  } else if (car.ridsType === 'Distractions' && Math.floor(time / 350) % 2 === 0) {
+    ctx.fillStyle = '#67e8f9';
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 7;
+    ctx.fillRect(carWidth * 0.08, -carHeight * 0.15, 4, 6);
+    ctx.shadowBlur = 0;
+  } else if (car.ridsType === 'Restraints') {
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(carWidth * 0.2, carHeight * 0.18, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(carWidth * 0.03, carHeight * 0.05, carWidth * 0.34, carHeight * 0.3);
+  } else if (car.ridsType === 'Impairment') {
+    ctx.strokeStyle = 'rgba(244, 114, 182, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(-carWidth * 0.35, carHeight / 2 + 3);
+    ctx.quadraticCurveTo(Math.sin(time / 180) * 8, carHeight / 2 + 12, carWidth * 0.35, carHeight / 2 + 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   // Type flourishes so the mix reads at a glance.
   if (car.vehicleType === 'truck') {
     // Cab/trailer split + container
@@ -1016,8 +1075,30 @@ function drawCivilianCar(
 
   ctx.restore();
 
+  // Default play shows a neutral observation bracket, while Guided Patrol adds the
+  // exact offence icon. The bracket remains legible at the smallest supported zoom.
+  if (!showRidsMarkers && car.ridsType && !car.isLifeAtRisk) {
+    const radius = 28 + Math.sin(time / 240) * 2;
+    const corner = 9;
+    ctx.save();
+    ctx.translate(car.pos.x, car.pos.y);
+    ctx.strokeStyle = 'rgba(254, 240, 138, 0.85)';
+    ctx.lineWidth = 3;
+    for (const [x, y, sx, sy] of [
+      [-radius, -radius, 1, 1], [radius, -radius, -1, 1],
+      [radius, radius, -1, -1], [-radius, radius, 1, -1],
+    ] as const) {
+      ctx.beginPath();
+      ctx.moveTo(x + sx * corner, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + sy * corner);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // RIDS icon — bigger + stronger glow for legibility at mobile zoom (~0.5).
-  if (car.ridsType && !car.isLifeAtRisk) {
+  if (showRidsMarkers && car.ridsType && !car.isLifeAtRisk) {
     ctx.save();
     ctx.translate(car.pos.x, car.pos.y - 42);
     const bobY = Math.sin(time / 500) * -5;
@@ -1051,7 +1132,7 @@ function drawCivilianCar(
   }
 }
 
-function drawPlayerCar(ctx: CanvasRenderingContext2D, player: Player, isBraking: boolean, time: number): void {
+function drawPlayerCar(ctx: CanvasRenderingContext2D, player: Player, isBraking: boolean, time: number, auraMultiplier: number): void {
   ctx.save();
   ctx.translate(player.pos.x, player.pos.y);
 
@@ -1068,7 +1149,7 @@ function drawPlayerCar(ctx: CanvasRenderingContext2D, player: Player, isBraking:
   // Deterrence aura
   const vigilanceBonus = CONSTANTS.VIGILANCE_AURA_BONUS_MAX * (player.vigilance / 100);
   const baseRadius = player.isSirenActive ? CONSTANTS.PLAYER_SIREN_AURA_RADIUS : CONSTANTS.PLAYER_AURA_RADIUS;
-  const auraRadius = baseRadius + vigilanceBonus;
+  const auraRadius = (baseRadius + vigilanceBonus) * auraMultiplier;
   const pulseSize = 1 + Math.sin(time / 300) * 0.05;
 
   ctx.fillStyle = player.isSirenActive ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 211, 238, 0.2)';

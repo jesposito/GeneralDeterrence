@@ -118,7 +118,7 @@ for (const device of RUN_MATRIX ? MATRIX : []) {
       await controlsButton.evaluate((button) => { button.scrollIntoView({ block: 'center' }); button.click(); });
       const done = page.getByRole('button', { name: 'Done' });
       await page.waitForTimeout(600);
-      const challengeAssist = page.getByRole('checkbox', { name: /untimed decision challenges/i });
+      const challengeAssist = page.getByTestId('guided-patrol-toggle');
       await challengeAssist.focus();
       await page.keyboard.press('Shift+Tab');
       await page.evaluate(() => document.activeElement?.textContent?.trim() === 'Done')
@@ -139,6 +139,7 @@ for (const device of RUN_MATRIX ? MATRIX : []) {
         timer: await rect(page.getByTestId('hud-timer')),
         pause: await rect(page.getByTestId('pause-button')),
         mute: await rect(page.getByTestId('mute-toggle')),
+        radio: await rect(page.getByTestId('dispatch-radio')),
       };
 
       hud.districts || hud.compact
@@ -163,9 +164,13 @@ for (const device of RUN_MATRIX ? MATRIX : []) {
         ['mute', 'timer'], ['pause', 'timer'], ['mute', 'pause'],
         ['compass', 'score'], ['compass', 'timer'], ['compass', 'compact'],
         ['compact', 'score'], ['compact', 'timer'], ['score', 'minimap'],
+        ['radio', 'score'], ['radio', 'timer'], ['radio', 'minimap'], ['radio', 'compass'],
       ];
       for (const [a, b] of independentPairs) {
-        if (overlaps(hud[a], hud[b])) { hudFailure = true; fail(`${a} overlaps ${b}`); }
+        if (overlaps(hud[a], hud[b])) {
+          hudFailure = true;
+          fail(`${a} overlaps ${b}: ${JSON.stringify(hud[a])} / ${JSON.stringify(hud[b])}`);
+        }
       }
       if (!hudFailure) ok('HUD layers fit without overlap');
 

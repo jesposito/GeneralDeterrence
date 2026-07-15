@@ -7,6 +7,11 @@ import { collectStory } from '../utils/codex';
 import ShareResult from './ShareResult';
 import * as CONSTANTS from '../constants';
 import { useGamepadNavigation } from './useGamepadNavigation';
+import type { ShiftMode } from '../App';
+import type { OperationDefinition } from '../utils/operations';
+import type { CareerProgress } from '../utils/progression';
+import type { CampaignProgress } from '../utils/campaign';
+import type { PatrolLoadout } from '../utils/loadouts';
 
 const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = {
   Investigate: '🚨',
@@ -17,8 +22,8 @@ const COLLEAGUE_CALL_ICON = '🤝';
 // Personal best + day streak, persisted locally. Computed once per breakdown (WeakMap) so
 // StrictMode's double render can't double-count the streak or hide the "new best" flag.
 const PERSONAL_KEY = 'gd-personal';
-const personalStatsCache = new WeakMap<FinalScoreBreakdown, { isNewBest: boolean; best: number; prevBest: number; streak: number }>();
-function getPersonalStats(breakdown: FinalScoreBreakdown, mode: 'daily' | 'free', competitionDay?: string) {
+const personalStatsCache = new WeakMap<FinalScoreBreakdown, { isNewBest: boolean; best: number; prevBest: number | null; streak: number }>();
+function getPersonalStats(breakdown: FinalScoreBreakdown, mode: ShiftMode, competitionDay?: string, competitionKey?: string) {
   const cached = personalStatsCache.get(breakdown);
   if (cached) return cached;
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -26,15 +31,23 @@ function getPersonalStats(breakdown: FinalScoreBreakdown, mode: 'daily' | 'free'
   const today = mode === 'daily' && competitionDay ? competitionDay : dayKey(new Date());
   const [year, month, day] = today.split('-').map(Number);
   const yesterday = new Date(Date.UTC(year, month - 1, day) - 86_400_000).toISOString().slice(0, 10);
-  const storageKey = mode === 'daily' ? PERSONAL_KEY : `${PERSONAL_KEY}-free`;
-  let prev = { best: 0, lastDay: '', streak: 0 };
-  try { prev = { ...prev, ...JSON.parse(localStorage.getItem(storageKey) || '{}') }; } catch { /* defaults */ }
-  const isNewBest = breakdown.finalScore > prev.best;
+  const storageKey = `${PERSONAL_KEY}-${mode}-${competitionKey ?? 'lifetime'}`;
+  const streakKey = `${PERSONAL_KEY}-daily-streak`;
+  let prev: { best: number | null; lastDay: string; streak: number } = { best: null, lastDay: '', streak: 0 };
+  try {
+    const storedBest = JSON.parse(localStorage.getItem(storageKey) || '{}')?.best;
+    prev.best = typeof storedBest === 'number' && Number.isFinite(storedBest) ? storedBest : null;
+    if (mode === 'daily') prev = { ...prev, ...JSON.parse(localStorage.getItem(streakKey) || '{}'), best: prev.best };
+  } catch { /* defaults */ }
+  const isNewBest = prev.best === null || breakdown.finalScore > prev.best;
   const streak = mode === 'daily'
     ? (prev.lastDay === today ? prev.streak : prev.lastDay === yesterday ? prev.streak + 1 : 1)
     : 0;
-  const next = { best: Math.max(prev.best, breakdown.finalScore), lastDay: today, streak };
-  try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
+  const next = { best: prev.best === null ? breakdown.finalScore : Math.max(prev.best, breakdown.finalScore), lastDay: today, streak };
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ best: next.best }));
+    if (mode === 'daily') localStorage.setItem(streakKey, JSON.stringify({ lastDay: today, streak }));
+  } catch { /* ignore */ }
   const stats = { isNewBest, best: next.best, prevBest: prev.best, streak };
   personalStatsCache.set(breakdown, stats);
   return stats;
@@ -272,14 +285,19 @@ interface GameOverProps {
   onQuickRestart?: () => void;
   onAddToLeaderboard: (name: string, station?: string) => Promise<SubmissionResult>;
   mapLabel?: string;
-  shiftMode?: 'daily' | 'free';
+  shiftMode?: ShiftMode;
   competitionDay?: string;
   submissionEligible?: boolean;
   leaderboardRefreshKey?: number;
   onDeleteMyScores: () => Promise<boolean>;
+  competitionKey?: string;
+  operation?: OperationDefinition | null;
+  careerProgress: CareerProgress;
+  campaignProgress: CampaignProgress | null;
+  loadout: PatrolLoadout;
 }
 
-const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onQuickRestart, onAddToLeaderboard, mapLabel, shiftMode = 'daily', competitionDay, submissionEligible = false, leaderboardRefreshKey = 0, onDeleteMyScores }) => {
+const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onQuickRestart, onAddToLeaderboard, mapLabel, shiftMode = 'daily', competitionDay, submissionEligible = false, leaderboardRefreshKey = 0, onDeleteMyScores, competitionKey, operation, careerProgress, campaignProgress, loadout }) => {
   const [name, setName] = useState('');
   const [station, setStation] = useState(() => { try { return localStorage.getItem('gd-station') || ''; } catch { return ''; } });
   const [submission, setSubmission] = useState<SubmissionResult | null>(null);
@@ -327,7 +345,7 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   // After submit the form (holding focus) unmounts; move focus to Play Again.
   useEffect(() => { if (submission?.status === 'uploaded' || submission?.status === 'queued-offline') playAgainRef.current?.focus(); }, [submission]);
 
-  const personal = getPersonalStats(scoreBreakdown, shiftMode, competitionDay);
+  const personal = getPersonalStats(scoreBreakdown, shiftMode, competitionDay, competitionKey);
   // Where are they now? One line per saved life (cap 4 shown), seeded off the score so
   // re-renders show the same stories.
   const stories = useMemo(
@@ -351,16 +369,18 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
     <div ref={reportRef} className="w-full h-full bg-[#0d0221] flex flex-col items-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
       <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
       {mapLabel && <p className="text-xs md:text-sm text-gray-400 mb-2 font-display tracking-wider">{mapLabel}</p>}
+      {operation && <p className="text-sm text-yellow-200 mb-2 font-sans"><span className="font-bold">{operation.name}:</span> {operation.briefing}</p>}
+      <p className="text-xs text-cyan-200 mb-2 font-sans">Unit: {loadout.name}</p>
       {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}
       <div className="flex items-center justify-center gap-3 mb-2">
         <span className="text-sm md:text-lg text-gray-300 font-display tracking-wider">PRESENCE GRADE</span>
         <span className={`text-3xl md:text-5xl font-display font-bold border-4 rounded-lg px-3 py-1 ${gradeStyles[scoreBreakdown.presenceGrade]}`}>{scoreBreakdown.presenceGrade}</span>
       </div>
       <p className="text-sm md:text-base text-gray-400 mb-1 font-sans">
-        All districts held ≥50% deterrence for {Math.round(scoreBreakdown.coverageRatio * 100)}% of your shift.
+        Average balanced-coverage quality: {Math.round(scoreBreakdown.coverageQuality)}%. At least three districts were secured for {Math.round(scoreBreakdown.securedCoverageSeconds)}s.
       </p>
       {scoreBreakdown.challengeAssist && (
-        <p className="text-xs text-cyan-300 mb-2 font-sans">Untimed decision challenges were enabled for this shift.</p>
+        <p className="text-xs text-cyan-300 mb-2 font-sans">Guided patrol markers and untimed decisions were enabled for this shift.</p>
       )}
       {scoreBreakdown.offencesPrevented > 0 && (
         <p className="text-base md:text-xl text-cyan-300 mb-4 font-display tracking-wide">
@@ -369,24 +389,40 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
       )}
       <p className="text-sm md:text-base font-display mb-2">
         {personal.isNewBest
-          ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest > 0 ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
+          ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest !== null ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
           : <span className="text-gray-400">{(personal.best - scoreBreakdown.finalScore).toLocaleString()} short of your best ({personal.best.toLocaleString()})</span>}
         {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
         {shiftMode === 'daily' && submission?.percentile && <span className="text-yellow-300"> · Top {submission.percentile}% of submitted runs that day</span>}
-        {scoreBreakdown.overtime && <span className="text-cyan-300"> · <span aria-hidden="true">⏱ </span>OVERTIME earned</span>}
+        {scoreBreakdown.overtime && <span className="text-cyan-300"> · OVERTIME +{scoreBreakdown.earnedOvertimeSeconds}s</span>}
       </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
       <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-4 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
       <div className="w-full max-w-xl grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
         {onQuickRestart && (
           <button ref={playAgainRef} onClick={onQuickRestart} className="w-full bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider animate-button-pulse-glow">
-            Run It Back
+            {shiftMode === 'operations' ? (campaignProgress?.complete ? 'Start New Operation Set' : 'Next Operation') : 'Run It Back'}
           </button>
         )}
         <button ref={onQuickRestart ? undefined : playAgainRef} onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-base md:text-lg transition font-display tracking-wider">
           Main Menu
         </button>
       </div>
+
+      <section className="w-full max-w-6xl mb-4 border-y border-cyan-500/40 py-3 text-left" aria-labelledby="outcome-heading">
+        <h2 id="outcome-heading" className="text-base md:text-xl font-display text-cyan-300 tracking-wider mb-2">PUBLIC SAFETY OUTCOME</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm font-sans">
+          <p><span className="block text-2xl font-bold text-cyan-300">{scoreBreakdown.offencesPrevented}/{scoreBreakdown.potentialOffences}</span>potential offences prevented</p>
+          <p><span className="block text-2xl font-bold text-green-300">{scoreBreakdown.roadStats.uniqueSegments}</span>distinct road segments · {Math.round(scoreBreakdown.roadStats.repeatRatio * 100)}% repeat entries</p>
+          <p><span className="block text-2xl font-bold text-yellow-300">{scoreBreakdown.interventionStats.accurateScans}/{scoreBreakdown.interventionStats.scans}</span>accurate observations · {scoreBreakdown.interventionStats.falseScans} false</p>
+          <p><span className="block text-2xl font-bold text-pink-300">{scoreBreakdown.interventionStats.standard}/{scoreBreakdown.interventionStats.investigate}</span>standard / deep · {scoreBreakdown.interventionStats.modalSeconds.toFixed(1)}s slowed</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
+          {scoreBreakdown.districtReport.map(district => (
+            <p key={district.id} className="text-xs text-gray-300 font-sans"><span className="block font-bold text-white">{district.id}</span>{Math.round(district.finalDeterrence)}% final · {district.patrolSamples} route samples</p>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 font-sans mt-3">Career: {careerProgress.rank.name} · {careerProgress.totalPresenceGrades} graded shifts{careerProgress.nextRank ? ` · ${careerProgress.gradesUntilNextRank} to ${careerProgress.nextRank.name}` : ''}{shiftMode === 'operations' && campaignProgress ? ` · Campaign ${campaignProgress.completedShifts}/${campaignProgress.totalShifts}, ${campaignProgress.cumulativeScore.toLocaleString()} points` : ''}</p>
+      </section>
 
       {/* The once-per-shift interdiction: the routine stop that turned out to be anything but. */}
       {scoreBreakdown.interdiction && (
@@ -531,6 +567,9 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                 )}
                 {shiftMode === 'free' && (
                     <p className="text-lg text-gray-400 text-center">Free Patrol scores stay on this device and never enter the Daily board.</p>
+                )}
+                {shiftMode === 'operations' && campaignProgress && (
+                    <p className="text-lg text-cyan-200 text-center">Operations campaign {campaignProgress.completedShifts}/{campaignProgress.totalShifts}. Scores stay local; each grade changes the next seeded shift.</p>
                 )}
                 {shiftMode === 'daily' && !submissionEligible && (
                     <p className="text-lg text-yellow-300 text-center">Offline Daily run. Community submission is unavailable for this shift.</p>

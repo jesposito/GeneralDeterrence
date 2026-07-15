@@ -1,39 +1,49 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { DriverProfile, MiniGameProps, PartnerReferral, REFERRAL_PAIRS } from '../../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { MiniGameProps, PartnerReferral } from '../../types';
+import { PARTNER_FOCUS, REFERRAL_SCENARIOS, scenarioAt } from '../../utils/interventionScenarios';
 import { useGamepadNavigation } from '../useGamepadNavigation';
+import { MINI_GAME_RESULT_DURATION_MS, useOnceComplete } from './useOnceComplete';
 
 type MatchingGameProps = MiniGameProps & { paused?: boolean; scenarioIndex?: number };
 
-const MatchingGame: React.FC<MatchingGameProps> = ({ onComplete, paused = false, scenarioIndex }) => {
-  const { driverProfile, partnerOptions, correctPartner } = useMemo(() => {
-    const profiles = Object.keys(REFERRAL_PAIRS) as DriverProfile[];
-    const seed = scenarioIndex === undefined ? Math.floor(Math.random() * 0x100000000) : Math.abs(scenarioIndex);
-    const profile = profiles[seed % profiles.length];
-    const correct = REFERRAL_PAIRS[profile];
-    const partners = Object.values(REFERRAL_PAIRS) as PartnerReferral[];
-    const offset = Math.floor(seed / profiles.length) % partners.length;
+const MatchingGame: React.FC<MatchingGameProps> = ({ onComplete, paused = false, scenarioIndex, challengeAssist = false }) => {
+  const [fallbackIndex] = useState(() => Math.floor(Math.random() * REFERRAL_SCENARIOS.length));
+  const { scenario, partnerOptions } = useMemo(() => {
+    const seed = scenarioIndex ?? fallbackIndex;
+    const selected = scenarioAt(REFERRAL_SCENARIOS, seed);
+    const partners = Object.keys(PARTNER_FOCUS) as PartnerReferral[];
+    const integer = Number.isFinite(seed) ? Math.trunc(seed) : 0;
+    const offset = ((integer % partners.length) + partners.length) % partners.length;
     const ordered = partners.map((_, index) => partners[(index + offset) % partners.length]);
-    return { driverProfile: profile, partnerOptions: ordered, correctPartner: correct };
-  }, [scenarioIndex]);
+    return { scenario: selected, partnerOptions: ordered };
+  }, [fallbackIndex, scenarioIndex]);
   const [selectedPartner, setSelectedPartner] = useState<PartnerReferral | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const correct = selectedPartner === correctPartner;
+  const correct = selectedPartner === scenario.correctPartner;
+  const complete = useOnceComplete(onComplete);
 
   useGamepadNavigation(containerRef, { active: !paused });
 
+  useEffect(() => {
+    if (!selectedPartner || paused || challengeAssist) return;
+    const timer = window.setTimeout(() => complete(correct), MINI_GAME_RESULT_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [challengeAssist, complete, correct, paused, selectedPartner]);
+
   return (
     <div ref={containerRef}>
-      <p className="text-base sm:text-lg text-gray-300 mb-3 font-sans">Match the driver profile to the partner used by this exercise.</p>
+      <p className="text-sm sm:text-base text-gray-300 mb-3 font-sans">Choose the best partner for this exercise follow-up.</p>
 
-      <div className="bg-black/50 p-3 rounded-lg mb-3 text-center border-2 border-cyan-500/50">
+      <div className="bg-black/50 p-3 rounded-lg mb-3 text-left border-2 border-cyan-500/50">
         <p className="text-gray-400 font-display tracking-wider text-sm">Driver Profile</p>
-        <p className="text-xl sm:text-2xl font-bold text-white font-display">{driverProfile}</p>
+        <p className="text-lg sm:text-xl font-bold text-white font-display mb-1">{scenario.profile}</p>
+        <p className="text-sm text-gray-200 font-sans">{scenario.prompt}</p>
       </div>
 
       <div className="space-y-2">
         {partnerOptions.map((partner) => {
           const selected = selectedPartner === partner;
-          const answer = partner === correctPartner;
+          const answer = partner === scenario.correctPartner;
           let buttonClass = 'bg-cyan-700 hover:bg-cyan-600 border-cyan-500';
           if (selectedPartner) {
             if (answer) buttonClass = 'bg-green-600 border-green-400';
@@ -46,9 +56,10 @@ const MatchingGame: React.FC<MatchingGameProps> = ({ onComplete, paused = false,
               type="button"
               onClick={() => { if (!paused && !selectedPartner) setSelectedPartner(partner); }}
               disabled={Boolean(selectedPartner)}
-              className={`w-full text-white font-bold py-2.5 px-3 rounded-lg text-base sm:text-xl border-2 ${buttonClass} focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none`}
+              className={`w-full text-white py-2 px-3 rounded-lg border-2 ${buttonClass} focus-visible:ring-4 focus-visible:ring-yellow-300 focus-visible:outline-none`}
             >
-              {partner}
+              <span className="block text-base sm:text-lg font-bold">{partner}</span>
+              <span className="block text-xs font-normal text-gray-200">{PARTNER_FOCUS[partner]}</span>
             </button>
           );
         })}
@@ -57,8 +68,8 @@ const MatchingGame: React.FC<MatchingGameProps> = ({ onComplete, paused = false,
       <div role="status" aria-live="polite" className="mt-3 min-h-[4.5rem]">
         {selectedPartner && (
           <div className={`p-2 rounded-lg font-sans ${correct ? 'text-green-300' : 'text-red-300'}`}>
-            <p className="font-bold">{correct ? 'Exercise match' : `Exercise match: ${correctPartner}`}</p>
-            <p className="text-sm text-gray-300 mt-1">Coordinated follow-up can reinforce the behaviour change started during the stop.</p>
+            <p className="font-bold">{correct ? 'Strong exercise match' : `Exercise match: ${scenario.correctPartner}`}</p>
+            <p className="text-sm text-gray-300 mt-1">{scenario.why}</p>
           </div>
         )}
       </div>
@@ -66,10 +77,10 @@ const MatchingGame: React.FC<MatchingGameProps> = ({ onComplete, paused = false,
       {selectedPartner ? (
         <button
           type="button"
-          onClick={() => onComplete(correct)}
+          onClick={() => complete(correct)}
           className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg font-sans focus-visible:ring-4 focus-visible:ring-white focus-visible:outline-none"
         >
-          Continue
+          Return now{challengeAssist ? '' : ' · auto in 5s'}
         </button>
       ) : (
         <p className="mt-2 text-sm text-gray-400 font-sans">Use Tab or the D-pad to move; Enter, Space, or gamepad A selects.</p>

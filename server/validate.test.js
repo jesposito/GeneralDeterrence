@@ -8,6 +8,7 @@ const {
   validateClientError,
   MIN_ELAPSED_MS,
   MAX_ELAPSED_MS,
+  PRESENCE_GRADE_CONTRACT_VERSION,
 } = validate;
 
 const validBreakdown = {
@@ -26,6 +27,7 @@ const validBreakdown = {
   presenceGrade: 'C',
 };
 const validSubmission = {
+  scoreVersion: PRESENCE_GRADE_CONTRACT_VERSION,
   token: 't'.repeat(43),
   name: '  Ana  ',
   station: 'tawa',
@@ -75,6 +77,28 @@ describe('validateSubmission', () => {
     expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, livesLostPenalty: 0 } }).error).toMatch(/lost/i);
     expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, livesSavedBonus: 5000 } }).error).toMatch(/saved/i);
     expect(validateSubmission({ ...validSubmission, breakdown: { ...validBreakdown, challengeAssist: 'yes' } }).error).toMatch(/assist/i);
+  });
+
+  it.each([
+    [0.75, 'S'],
+    [0.65, 'A'],
+    [0.52, 'B'],
+    [0.519, 'C'],
+  ])('accepts the shared presence-grade boundary at %s', (coverageRatio, presenceGrade) => {
+    expect(validateSubmission({
+      ...validSubmission,
+      breakdown: { ...validBreakdown, coverageRatio, presenceGrade },
+    }).ok).toBe(true);
+  });
+
+  it('accepts legacy queued grades only when the score contract version is absent', () => {
+    const { scoreVersion: _scoreVersion, ...legacySubmission } = validSubmission;
+    for (const [coverageRatio, presenceGrade] of [[0.8, 'A'], [0.68, 'B'], [0.5, 'B']]) {
+      const legacy = { ...legacySubmission, breakdown: { ...validBreakdown, coverageRatio, presenceGrade } };
+      expect(validateSubmission(legacy).ok).toBe(true);
+      expect(validateSubmission({ ...legacy, scoreVersion: 2 }).error).toMatch(/grade/i);
+    }
+    expect(validateSubmission({ ...validSubmission, scoreVersion: 99 }).error).toMatch(/version/i);
   });
 
   it('sums the independently rounded score components exactly', () => {
