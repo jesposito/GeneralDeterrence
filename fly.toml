@@ -2,10 +2,11 @@ app = 'generaldeterrence'
 primary_region = 'syd'
 
 [build]
-  image = "ghcr.io/jesposito/generaldeterrence:latest"
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "3000"
+  TRUST_PROXY = "1"
 
 [http_service]
   internal_port = 3000
@@ -14,6 +15,16 @@ primary_region = 'syd'
   auto_start_machines = true
   min_machines_running = 1
   processes = ['app']
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "3s"
+  method = "get"
+  path = "/api/health"
+
+[[mounts]]
+  source = "gd_data"
+  destination = "/data"
 
 [[vm]]
   memory = '512mb'

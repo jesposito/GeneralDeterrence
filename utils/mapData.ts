@@ -1,5 +1,11 @@
 import { DistrictName, RoadType } from '../types';
 
+// Bumped by utils/mapGen.regenerateMap(). Derived caches (geometry nodeMap/adjacency,
+// renderer static-map canvas, per-mount node maps) compare against this and rebuild lazily.
+// The arrays below are mutable singletons: the generator replaces their CONTENTS in place,
+// so every existing import keeps working.
+export const mapVersionRef = { current: 0 };
+
 export interface RoadNode {
   id: string;
   pos: { x: number; y: number };

@@ -1,58 +1,134 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import * as audio from '../utils/audio';
+import { loadBindings, displayKey, type GameAction } from '../utils/keybindings';
+import { useGamepadNavigation } from './useGamepadNavigation';
 
 interface TutorialProps {
   onComplete: () => void;
+  /** e.g. "Daily Shift · Te Aro District · Geothermal" */
+  mapLabel?: string;
 }
 
 const TutorialInfoCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="bg-black/60 p-4 rounded-lg border-2 border-cyan-500/30 flex-1 min-w-[300px]">
-        <h3 className="text-xl font-bold font-display text-yellow-400 text-glow-yellow mb-3 tracking-wider">{title}</h3>
-        <div className="text-gray-300 space-y-2 font-sans text-base">{children}</div>
+    <div className="bg-black/60 p-3 sm:p-4 rounded-lg border-2 border-cyan-500/30 w-full sm:w-auto sm:min-w-[300px] sm:flex-1">
+        <h2 className="text-lg sm:text-xl font-bold font-display text-yellow-400 text-glow-yellow mb-2 sm:mb-3 tracking-wider">{title}</h2>
+        <div className="text-gray-300 space-y-2 font-sans text-sm sm:text-base">{children}</div>
     </div>
 );
 
 const KeyDisplay: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <span className="bg-gray-200 text-black font-bold px-2 py-1 rounded-md mx-1">{children}</span>
+    <kbd className="bg-gray-200 text-black font-bold px-2 py-1 rounded-md mx-1">{children}</kbd>
 );
 
-const Tutorial: React.FC<TutorialProps> = ({ onComplete }) => {
+const Tutorial: React.FC<TutorialProps> = ({ onComplete, mapLabel }) => {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Show the player's ACTUAL bindings (they're rebindable in Controls on the menu).
+  const bindings = useMemo(() => loadBindings(), []);
+  const keysFor = (a: GameAction) => bindings[a].map(displayKey).join(' / ');
+
+  useGamepadNavigation(panelRef);
+
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onComplete();
+      // P1: aria-modal without a trap let Tab reach the obscured game. One focusable → pin it.
+      else if (e.key === 'Tab') { e.preventDefault(); buttonRef.current?.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); prev?.focus(); };
+  }, [onComplete]);
+
   return (
-    <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-30 p-8 animate-fadeIn">
-        <div className="w-full max-w-6xl">
-            <h1 className="text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-2 text-center">PRE-SHIFT BRIEFING</h1>
-            <p className="text-xl text-pink-400 mb-8 text-center font-display">Your patrol objectives and vehicle controls.</p>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tutorial-title"
+      className="absolute inset-0 bg-black/90 flex flex-col items-center z-30 p-3 sm:p-8 overflow-y-auto animate-fadeIn"
+      data-testid="tutorial-shell"
+    >
+        {/* my-auto centres when content fits, scrolls from the top when it doesn't
+            (sm:justify-center clipped the top on landscape phones). */}
+        <div ref={panelRef} tabIndex={-1} className="w-full max-w-6xl my-auto focus:outline-none">
+            <h1 id="tutorial-title" className="text-2xl sm:text-5xl font-bold font-display text-cyan-400 text-glow-cyan mb-1 text-center">PRE-SHIFT BRIEFING</h1>
+            {mapLabel && <p className="text-sm sm:text-base text-gray-400 text-center font-display tracking-wider mb-2">TONIGHT'S PATROL: {mapLabel}</p>}
 
-            <div className="flex flex-wrap gap-6 justify-center">
-                <TutorialInfoCard title="OBJECTIVE">
-                    <p>Your goal is to maintain high <span className="text-white font-bold">DETERRENCE</span> across all districts.</p>
-                    <p>Your patrol car has a deterrence aura. Grow this aura by increasing your <span className="text-purple-400 font-bold">VIGILANCE</span> through successful warnings and enforcements.</p>
-                    <p>A larger aura helps deter crime over a wider area. Keep all districts above 85% to activate a <span className="text-yellow-300 font-bold">VIGILANCE BONUS</span> for 2x points.</p>
-                </TutorialInfoCard>
+            {/* The one sentence that matters, before any mechanics. */}
+            <p className="max-w-3xl mx-auto text-center text-sm sm:text-xl text-white font-sans mb-3 sm:mb-6 bg-cyan-950/50 border-2 border-cyan-500/40 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
+                <span className="text-cyan-300 font-bold font-display">THE JOB:</span> keep every district's <span className="text-white font-bold">deterrence</span> high by <em>being seen</em>.
+                Stops score points. <span className="text-cyan-300 font-bold">presence saves lives</span>.
+            </p>
 
-                <TutorialInfoCard title="CORE PATROL">
-                     <p>Identify drivers with icons (e.g., <span className="text-xl">📱, 🔥</span>). These are RIDS offenders.</p>
-                     <p>Get close and press <KeyDisplay>SPACE</KeyDisplay> or tap the <span className="text-yellow-300 font-bold">RIDS CHECK</span> button to intervene.</p>
-                     <p className="text-red-400 font-bold">Red pulsing vehicles are high-priority <span className="text-white">LIFE AT RISK</span> events. Intervene before the timer runs out!</p>
-                </TutorialInfoCard>
-
-                <TutorialInfoCard title="CONTROLS">
-                    <ul className="list-inside space-y-1">
-                        <li><KeyDisplay>W A S D</KeyDisplay> / <KeyDisplay>Arrows</KeyDisplay> - Drive</li>
-                        <li><KeyDisplay>SHIFT</KeyDisplay> - Boost <span className="text-cyan-400">(uses energy)</span></li>
-                        <li><KeyDisplay>E</KeyDisplay> - Siren <span className="text-pink-400">(drains energy, boosts deterrence)</span></li>
-                        <li><KeyDisplay>C</KeyDisplay> - Colleague Assist <span className="text-yellow-400">(handles a high-priority event)</span></li>
-                        <li><KeyDisplay>M</KeyDisplay> - Toggle Minimap</li>
+            <div className="flex flex-wrap gap-4 sm:gap-6 justify-center">
+                <TutorialInfoCard title="1 · PATROL">
+                    <ul className="space-y-1.5">
+                        <li>Cover a <span className="text-white font-bold">fresh road</span> → deterrence rises quickly. Repeat one loop → diminishing returns.</li>
+                        <li>Secure 3, 4, then all 5 districts for staged score multipliers and earned overtime.</li>
+                        <li>Park briefly = <span className="text-cyan-300 font-bold">PATROL POST</span>. Idle where it's safe = <span className="text-red-400 font-bold">NEGLECT</span>.</li>
+                        <li><span className="text-cyan-300 font-bold">PREVENTED</span> counts offences that never happened. <span className="text-cyan-200">That's the real score.</span></li>
                     </ul>
                 </TutorialInfoCard>
+
+                <TutorialInfoCard title="2 · SPOT & STOP">
+                    <p className="text-base sm:text-lg">Watch traffic behavior: lane drift, speed difference, screen glow, delayed braking, and visible restraint use.</p>
+                    <ul className="space-y-1.5">
+                        <li>Line up the specific vehicle, then use <span className="text-yellow-300 font-bold">RIDS CHECK</span>. Guessing costs time.</li>
+                        <li><span className="text-cyan-300 font-bold">Standard</span>: reliable and fast. <span className="text-pink-400 font-bold">Investigate</span>: deeper reward, −6s, only four per shift.</li>
+                        <li><span className="text-red-400 font-bold">Pulsing red = LIFE AT RISK.</span> Go, or send <span className="text-yellow-400 font-bold">ASSIST</span>.</li>
+                        <li>One car each shift hides something <em>much</em> bigger…</li>
+                    </ul>
+                </TutorialInfoCard>
+
+                <TutorialInfoCard title="3 · CONTROLS">
+                    {/* Keyboard (desktop): live bindings in a no-wrap grid — chips never split lines. */}
+                    <div className="[@media(any-pointer:coarse)]:hidden">
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
+                            <span className="whitespace-nowrap"><KeyDisplay>{[bindings.forward[0], bindings.left[0], bindings.backward[0], bindings.right[0]].map(displayKey).join(' ')}</KeyDisplay></span><span className="whitespace-nowrap">Drive <span className="text-gray-400">(or arrows)</span></span>
+                            <span><KeyDisplay>{keysFor('rids')}</KeyDisplay></span><span className="whitespace-nowrap">RIDS Check</span>
+                            <span><KeyDisplay>{keysFor('boost')}</KeyDisplay></span><span className="whitespace-nowrap">Boost</span>
+                            <span><KeyDisplay>{keysFor('siren')}</KeyDisplay></span><span className="whitespace-nowrap">Siren</span>
+                            <span><KeyDisplay>{keysFor('colleague')}</KeyDisplay></span><span className="whitespace-nowrap">Assist</span>
+                            <span><KeyDisplay>{keysFor('minimap')}</KeyDisplay></span><span className="whitespace-nowrap">Minimap</span>
+                        </div>
+                        <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · gamepad works · rebind from the menu.</p>
+                    </div>
+                    {/* Touch: same grid, on-screen button names. */}
+                    <div className="hidden [@media(any-pointer:coarse)]:block">
+                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 items-center">
+                            <span className="font-bold text-white">Joystick</span><span>Drive: harder push = faster</span>
+                            <span className="font-bold text-yellow-300">RIDS</span><span>Check nearby offender</span>
+                            <span className="font-bold text-cyan-400">BOOST</span><span>Speed burst</span>
+                            <span className="font-bold text-red-400">SIREN</span><span>Clear traffic, deter</span>
+                            <span className="font-bold text-yellow-400">ASSIST</span><span>Send a colleague</span>
+                        </div>
+                        <p className="text-gray-400 mt-2 text-xs sm:text-sm">Boost + siren share one energy bar · top dots = district deterrence.</p>
+                    </div>
+                </TutorialInfoCard>
             </div>
-            
-            <div className="text-center mt-10">
+
+            <div className="text-center mt-4 sm:mt-10">
                 <button
-                    onClick={onComplete}
-                    className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-4 px-12 rounded-lg text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow"
+                    ref={buttonRef}
+                    onClick={() => {
+                        // Unlock/resume audio on this guaranteed last gesture before gameplay (gd audit).
+                        audio.unlockAudio();
+                        // Best-effort fullscreen request on user gesture. iOS Safari support is
+                        // variable; if unsupported, the .catch() swallows it and the game still
+                        // launches normally inside the browser chrome.
+                        const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+                        const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+                        if (req) { try { req()?.catch(() => { /* ignore */ }); } catch { /* ignore */ } }
+                        // Best-effort lock to landscape (Android); iOS ignores it, harmless if unsupported.
+                        try { (screen.orientation as unknown as { lock?: (o: string) => Promise<void> })?.lock?.('landscape')?.catch?.(() => {}); } catch { /* ignore */ }
+                        onComplete();
+                    }}
+                    className="bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 sm:py-4 px-8 sm:px-12 rounded-lg text-xl sm:text-2xl transition-transform transform hover:scale-110 font-display tracking-wider animate-button-pulse-glow focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
                 >
                     Start Patrol
                 </button>
+                <p className="text-gray-400 text-sm mt-2">Press <KeyDisplay>Esc</KeyDisplay> to skip · gamepad A starts</p>
             </div>
         </div>
     </div>

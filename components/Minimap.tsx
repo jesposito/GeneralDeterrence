@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Player, Civilian, District, DispatchedCall, MinimapMode } from '../types';
 import * as CONSTANTS from '../constants';
-import { ROAD_NODES, ROAD_SEGMENTS } from '../utils/mapData';
+import { ROAD_NODES, ROAD_SEGMENTS, mapVersionRef } from '../utils/mapData';
 
 interface MinimapProps {
   player: Player;
@@ -9,13 +9,34 @@ interface MinimapProps {
   districts: District[];
   dispatchedCall: DispatchedCall | null;
   mode: MinimapMode;
+  showRidsMarkers?: boolean;
+  roadVisitedAt?: Record<string, number>;
+  elapsedSeconds?: number;
 }
 
-const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatchedCall, mode }) => {
-  const ridsCars = civilians.filter(c => c.ridsType);
-  const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
+type RoadFreshnessBand = 'fresh' | 'recent' | 'aging' | 'stale';
 
-  const nodeMap = new Map(ROAD_NODES.map(node => [node.id, node.pos]));
+const ROAD_FRESHNESS_STYLE: Record<RoadFreshnessBand, {
+  color: string;
+  width: number;
+  dash?: string;
+  opacity: number;
+}> = {
+  fresh: { color: '#22d3ee', width: 1.2, opacity: 1 },
+  recent: { color: '#4ade80', width: 1, dash: '120 45', opacity: 0.95 },
+  aging: { color: '#facc15', width: 0.85, dash: '18 34', opacity: 0.9 },
+  stale: { color: '#6b7280', width: 0.65, opacity: 0.7 },
+};
+
+const freshnessBand = (age: number): RoadFreshnessBand => (
+  age < 8 ? 'fresh' : age < 18 ? 'recent' : age < 35 ? 'aging' : 'stale'
+);
+
+const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatchedCall, mode, showRidsMarkers = false, roadVisitedAt = {}, elapsedSeconds = 0 }) => {
+  const mapVersion = mapVersionRef.current;
+  const nodeMap = useMemo(() => new Map(ROAD_NODES.map(node => [node.id, node.pos])), [mapVersion]);
+  const ridsCars = showRidsMarkers ? civilians.filter(c => c.ridsType) : [];
+  const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
 
   const getZoneColor = (deterrence: number) => {
     const hue = (deterrence / 100) * 120; // 0 (red) to 120 (green)
@@ -24,6 +45,16 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
   
   const viewRange = CONSTANTS.MINIMAP_VIEW_RANGE;
   const isTactical = mode === 'Tactical';
+  const roads = ROAD_SEGMENTS.map((segment) => {
+    const visited = roadVisitedAt[segment.id];
+    const age = visited === undefined ? Infinity : Math.max(0, elapsedSeconds - visited);
+    return { segment, band: freshnessBand(age) };
+  });
+  const roadCounts = roads.reduce<Record<RoadFreshnessBand, number>>((counts, { band }) => {
+    counts[band] += 1;
+    return counts;
+  }, { fresh: 0, recent: 0, aging: 0, stale: 0 });
+  const mapLabel = `${mode} patrol map. Road freshness: ${roadCounts.fresh} fresh, ${roadCounts.recent} recent, ${roadCounts.aging} aging, and ${roadCounts.stale} stale or unvisited. ${livesAtRiskCars.length} life-at-risk incident${livesAtRiskCars.length === 1 ? '' : 's'}.`;
 
   const viewBox = isTactical
     ? `${player.pos.x - viewRange} ${player.pos.y - viewRange} ${viewRange * 2} ${viewRange * 2}`
@@ -33,6 +64,8 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
 
   return (
     <div 
+        role="img"
+        aria-label={mapLabel}
         className={`w-full h-full bg-black/70 border-2 border-cyan-500/50 ${isTactical ? 'rounded-full' : 'rounded-lg'} overflow-hidden pointer-events-auto relative transition-all duration-300`}
     >
         <svg 
@@ -40,6 +73,7 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
             height="100%" 
             viewBox={viewBox}
             preserveAspectRatio="xMidYMid slice"
+            aria-hidden="true"
         >
             <g transform={isTactical ? `rotate(${-player.angle} ${player.pos.x} ${player.pos.y})` : ''}>
                 {/* Background */}
@@ -111,23 +145,27 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
 
                 {/* Roads */}
                 <g>
-                    {ROAD_SEGMENTS.map((segment) => {
+                    {roads.map(({ segment, band }) => {
                         const start = nodeMap.get(segment.startNodeId);
                         const end = nodeMap.get(segment.endNodeId);
                         if (!start || !end) return null;
+                        const style = ROAD_FRESHNESS_STYLE[band];
                         return (
                             <line
                                 key={`map-road-${segment.id}`}
                                 x1={start.x} y1={start.y}
                                 x2={end.x} y2={end.y}
-                                stroke="#4b5563"
-                                strokeWidth={isTactical ? 65 : 45}
+                                stroke={style.color}
+                                strokeWidth={(isTactical ? 65 : 45) * style.width}
+                                strokeDasharray={style.dash}
+                                strokeLinecap="round"
+                                opacity={style.opacity}
                             />
                         )
                     })}
                 </g>
                 
-                {/* RIDS Cars (non-life at risk) */}
+                {/* Guided assist only: ordinary RIDS cars. Emergencies remain explicit. */}
                 {ridsCars.filter(c => !c.isLifeAtRisk).map(car => (
                     <circle
                         key={`map-car-${car.id}`}
@@ -196,4 +234,7 @@ const Minimap: React.FC<MinimapProps> = ({ player, civilians, districts, dispatc
   );
 };
 
-export default React.memo(Minimap);
+// No memo: after in-place pool compaction every prop keeps a stable identity (refs mutated,
+// arrays compacted in place), so shallow-compare froze the radar mid-shift. HUD already
+// throttles renders to ~10Hz — that's the intended refresh rate here too.
+export default Minimap;

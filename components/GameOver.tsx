@@ -1,14 +1,57 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LeaderboardEntry, FinalScoreBreakdown, EnforcementAction, ColleagueCallAction } from '../types';
 import Leaderboard from './Leaderboard';
 import { ROAD_NODES, ROAD_SEGMENTS, DISTRICT_DEFINITIONS } from '../utils/mapData';
+import { debriefStoryCount, generateSavedLifeStories, pickDebrief, pickRealShiftLine } from '../utils/stories';
+import { collectStory } from '../utils/codex';
+import ShareResult from './ShareResult';
 import * as CONSTANTS from '../constants';
+import { useGamepadNavigation } from './useGamepadNavigation';
+import type { ShiftMode } from '../App';
+import type { OperationDefinition } from '../utils/operations';
+import type { CareerProgress } from '../utils/progression';
+import type { CampaignProgress } from '../utils/campaign';
+import type { PatrolLoadout } from '../utils/loadouts';
 
 const RIDS_ACTION_ICONS: { [key in EnforcementAction['actionType']]: string } = {
-  Enforce: '🚨',
-  Warn: '⚠️',
+  Investigate: '🚨',
+  Standard: '📋',
 };
 const COLLEAGUE_CALL_ICON = '🤝';
+
+// Personal best + day streak, persisted locally. Computed once per breakdown (WeakMap) so
+// StrictMode's double render can't double-count the streak or hide the "new best" flag.
+const PERSONAL_KEY = 'gd-personal';
+const personalStatsCache = new WeakMap<FinalScoreBreakdown, { isNewBest: boolean; best: number; prevBest: number | null; streak: number }>();
+function getPersonalStats(breakdown: FinalScoreBreakdown, mode: ShiftMode, competitionDay?: string, competitionKey?: string) {
+  const cached = personalStatsCache.get(breakdown);
+  if (cached) return cached;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const dayKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = mode === 'daily' && competitionDay ? competitionDay : dayKey(new Date());
+  const [year, month, day] = today.split('-').map(Number);
+  const yesterday = new Date(Date.UTC(year, month - 1, day) - 86_400_000).toISOString().slice(0, 10);
+  const storageKey = `${PERSONAL_KEY}-${mode}-${competitionKey ?? 'lifetime'}`;
+  const streakKey = `${PERSONAL_KEY}-daily-streak`;
+  let prev: { best: number | null; lastDay: string; streak: number } = { best: null, lastDay: '', streak: 0 };
+  try {
+    const storedBest = JSON.parse(localStorage.getItem(storageKey) || '{}')?.best;
+    prev.best = typeof storedBest === 'number' && Number.isFinite(storedBest) ? storedBest : null;
+    if (mode === 'daily') prev = { ...prev, ...JSON.parse(localStorage.getItem(streakKey) || '{}'), best: prev.best };
+  } catch { /* defaults */ }
+  const isNewBest = prev.best === null || breakdown.finalScore > prev.best;
+  const streak = mode === 'daily'
+    ? (prev.lastDay === today ? prev.streak : prev.lastDay === yesterday ? prev.streak + 1 : 1)
+    : 0;
+  const next = { best: prev.best === null ? breakdown.finalScore : Math.max(prev.best, breakdown.finalScore), lastDay: today, streak };
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ best: next.best }));
+    if (mode === 'daily') localStorage.setItem(streakKey, JSON.stringify({ lastDay: today, streak }));
+  } catch { /* ignore */ }
+  const stats = { isNewBest, best: next.best, prevBest: prev.best, streak };
+  personalStatsCache.set(breakdown, stats);
+  return stats;
+}
 
 interface HeatmapCell {
   x: number;
@@ -229,17 +272,36 @@ const useCountUp = (endValue: number, duration = 1500) => {
     return count;
 };
 
+export type SubmissionResult = {
+  status: 'uploaded' | 'queued-offline' | 'rejected';
+  message: string;
+  percentile?: number | null;
+};
+
 interface GameOverProps {
   scoreBreakdown: FinalScoreBreakdown;
   leaderboard: LeaderboardEntry[];
   onPlayAgain: () => void;
-  onAddToLeaderboard: (name: string, email?: string) => void;
+  onQuickRestart?: () => void;
+  onAddToLeaderboard: (name: string, station?: string) => Promise<SubmissionResult>;
+  mapLabel?: string;
+  shiftMode?: ShiftMode;
+  competitionDay?: string;
+  submissionEligible?: boolean;
+  leaderboardRefreshKey?: number;
+  onDeleteMyScores: () => Promise<boolean>;
+  competitionKey?: string;
+  operation?: OperationDefinition | null;
+  careerProgress: CareerProgress;
+  campaignProgress: CampaignProgress | null;
+  loadout: PatrolLoadout;
 }
 
-const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onAddToLeaderboard }) => {
+const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlayAgain, onQuickRestart, onAddToLeaderboard, mapLabel, shiftMode = 'daily', competitionDay, submissionEligible = false, leaderboardRefreshKey = 0, onDeleteMyScores, competitionKey, operation, careerProgress, campaignProgress, loadout }) => {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [station, setStation] = useState(() => { try { return localStorage.getItem('gd-station') || ''; } catch { return ''; } });
+  const [submission, setSubmission] = useState<SubmissionResult | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const { enforcementScore, deterrenceScore, livesSavedBonus, livesLostPenalty, finalScore, finalDeterrenceBonus } = scoreBreakdown;
 
@@ -250,28 +312,170 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
   const animatedLivesSavedBonus = useCountUp(livesSavedBonus);
   const animatedLivesLostPenalty = useCountUp(livesLostPenalty);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (name.trim() && !submitted) {
-      onAddToLeaderboard(name.trim(), email.trim() || undefined);
-      setSubmitted(true);
+    if (name.trim() && !submitting) {
+      const cleanStation = station.trim().toUpperCase();
+      if (cleanStation && !/^[A-Z0-9]{2,4}$/.test(cleanStation)) {
+        setSubmission({ status: 'rejected', message: 'Station code must be 2-4 letters or numbers.' });
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const result = await onAddToLeaderboard(name.trim(), cleanStation || undefined);
+        setSubmission(result);
+        if (result.status !== 'rejected' && cleanStation) {
+          try { localStorage.setItem('gd-station', cleanStation); } catch { /* ignore */ }
+        }
+      } catch {
+        setSubmission({ status: 'rejected', message: 'The score could not be submitted.' });
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
-  const isHighScore = leaderboard.length < 10 || finalScore > (leaderboard[leaderboard.length - 1]?.score ?? 0);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const playAgainRef = useRef<HTMLButtonElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  useGamepadNavigation(reportRef);
+  // Move focus to the results heading on mount so AT announces the new screen (not the input —
+  // that pops the mobile keyboard over the score and skips the breakdown).
+  useEffect(() => { headingRef.current?.focus(); }, []);
+  // After submit the form (holding focus) unmounts; move focus to Play Again.
+  useEffect(() => { if (submission?.status === 'uploaded' || submission?.status === 'queued-offline') playAgainRef.current?.focus(); }, [submission]);
+
+  const personal = getPersonalStats(scoreBreakdown, shiftMode, competitionDay, competitionKey);
+  const safetyOutcomes = Math.max(0, scoreBreakdown.livesSaved) + Math.max(0, scoreBreakdown.offencesPrevented);
+  const stories = useMemo(
+      () => generateSavedLifeStories(
+        debriefStoryCount(scoreBreakdown.livesSaved, scoreBreakdown.offencesPrevented),
+        scoreBreakdown.finalScore + scoreBreakdown.livesSaved * 7919 + scoreBreakdown.offencesPrevented * 104729,
+      ),
+      [scoreBreakdown],
+  );
+  const outcomeSummary = [
+    scoreBreakdown.livesSaved > 0 ? `${scoreBreakdown.livesSaved} direct ${scoreBreakdown.livesSaved === 1 ? 'life' : 'lives'} saved` : '',
+    scoreBreakdown.offencesPrevented > 0 ? `${scoreBreakdown.offencesPrevented} ${scoreBreakdown.offencesPrevented === 1 ? 'offence' : 'offences'} prevented` : '',
+  ].filter(Boolean).join(' · ');
+  const debrief = useMemo(() => pickDebrief(scoreBreakdown), [scoreBreakdown]);
+  const realLine = useMemo(() => pickRealShiftLine(scoreBreakdown.finalScore), [scoreBreakdown]);
+  // Story codex: collect the first story of the day (idempotent inside collectStory).
+  useEffect(() => { if (stories.length > 0) collectStory(stories[0].story); }, [stories]);
+  const gradeStyles: Record<string, string> = {
+    S: 'text-yellow-300 border-yellow-300',
+    A: 'text-green-400 border-green-400',
+    B: 'text-yellow-400 border-yellow-400',
+    C: 'text-red-400 border-red-400',
+  };
 
   return (
-    <div className="w-full h-full bg-[#0d0221] flex flex-col items-center justify-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
-      <h1 className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink">Shift Over</h1>
+    // No justify-center: the report is taller than any viewport now, and flex-centering an
+    // overflowing column makes the top unreachable and scrolling erratic.
+    <div ref={reportRef} className="w-full h-full bg-[#0d0221] flex flex-col items-center p-4 md:p-8 text-center animate-fadeIn overflow-y-auto">
+      <h1 ref={headingRef} tabIndex={-1} className="text-4xl md:text-6xl font-display font-bold text-pink-500 mb-2 text-glow-pink focus:outline-none">Shift Over</h1>
+      {mapLabel && <p className="text-xs md:text-sm text-gray-400 mb-2 font-display tracking-wider">{mapLabel}</p>}
+      {operation && <p className="text-sm text-yellow-200 mb-2 font-sans"><span className="font-bold">{operation.name}:</span> {operation.briefing}</p>}
+      <p className="text-xs text-cyan-200 mb-2 font-sans">Unit: {loadout.name}</p>
+      {/* The lesson leads, the points follow: presence grade + prevented offences above the score. */}
+      <div className="flex items-center justify-center gap-3 mb-2">
+        <span className="text-sm md:text-lg text-gray-300 font-display tracking-wider">PRESENCE GRADE</span>
+        <span className={`text-3xl md:text-5xl font-display font-bold border-4 rounded-lg px-3 py-1 ${gradeStyles[scoreBreakdown.presenceGrade]}`}>{scoreBreakdown.presenceGrade}</span>
+      </div>
+      <p className="text-sm md:text-base text-gray-400 mb-1 font-sans">
+        Average balanced-coverage quality: {Math.round(scoreBreakdown.coverageQuality)}%. At least three districts were secured for {Math.round(scoreBreakdown.securedCoverageSeconds)}s.
+      </p>
+      {scoreBreakdown.challengeAssist && (
+        <p className="text-xs text-cyan-300 mb-2 font-sans">Guided patrol markers and untimed decisions were enabled for this shift.</p>
+      )}
+      {scoreBreakdown.offencesPrevented > 0 && (
+        <p className="text-base md:text-xl text-cyan-300 mb-4 font-display tracking-wide">
+          {scoreBreakdown.offencesPrevented} {scoreBreakdown.offencesPrevented === 1 ? 'OFFENCE' : 'OFFENCES'} NEVER HAPPENED. Your visible presence prevented them.
+        </p>
+      )}
+      <section data-testid="debrief-stories" className="w-full max-w-6xl mb-4 rounded-lg border-2 border-green-500/50 bg-black/50 p-3 md:p-5 text-left" aria-labelledby="stories-heading">
+        <h2 id="stories-heading" className="text-base md:text-xl font-display text-green-400 tracking-widest mb-1">WHERE ARE THEY NOW? THE RIPPLE EFFECT</h2>
+        <p className="text-xs md:text-sm text-green-100/80 font-sans mb-3">
+          {outcomeSummary
+            ? `${outcomeSummary}. The scoreboard counts events; this is what their ripple can mean.`
+            : 'No safety outcome registered this shift. These are the ordinary futures the next visible patrol can protect.'}
+        </p>
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+          {stories.map((story, index) => (
+            <li key={index} className="text-sm md:text-base text-gray-200 font-sans leading-snug border-l-2 border-green-500/40 pl-3">{story.story}</li>
+          ))}
+        </ul>
+        {safetyOutcomes > stories.length && (
+          <p className="text-xs md:text-sm text-gray-400 font-sans mt-2">...and {safetyOutcomes - stories.length} more {safetyOutcomes - stories.length === 1 ? 'outcome' : 'outcomes'} kept rippling beyond this report.</p>
+        )}
+      </section>
+      <p className="text-sm md:text-base font-display mb-2">
+        {personal.isNewBest
+          ? <span className="text-green-400 animate-pulse">NEW PERSONAL BEST{personal.prevBest !== null ? ` (+${(scoreBreakdown.finalScore - personal.prevBest).toLocaleString()})` : ''}!</span>
+          : <span className="text-gray-400">{(personal.best - scoreBreakdown.finalScore).toLocaleString()} short of your best ({personal.best.toLocaleString()})</span>}
+        {personal.streak > 1 && <span className="text-gray-400"> · {personal.streak}-day shift streak</span>}
+        {shiftMode === 'daily' && submission?.percentile && <span className="text-yellow-300"> · Top {submission.percentile}% of submitted runs that day</span>}
+        {scoreBreakdown.overtime && <span className="text-cyan-300"> · OVERTIME +{scoreBreakdown.earnedOvertimeSeconds}s</span>}
+      </p>
       <p className="text-xl md:text-3xl text-gray-300 mb-4 font-display">Final Score:</p>
-      <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-6 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
-      
+      <p className="text-5xl md:text-7xl font-bold text-yellow-400 mb-4 animate-pulse text-glow-yellow font-display">{animatedFinalScore.toLocaleString()}</p>
+      <div className="w-full max-w-xl grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        {onQuickRestart && (
+          <button ref={playAgainRef} onClick={onQuickRestart} className="w-full bg-pink-600 hover:bg-pink-500 border-2 border-pink-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider animate-button-pulse-glow">
+            {shiftMode === 'operations' ? (campaignProgress?.complete ? 'Start New Operation Set' : 'Next Operation') : 'Run It Back'}
+          </button>
+        )}
+        <button ref={onQuickRestart ? undefined : playAgainRef} onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-base md:text-lg transition font-display tracking-wider">
+          Main Menu
+        </button>
+      </div>
+
+      <section className="w-full max-w-6xl mb-4 border-y border-cyan-500/40 py-3 text-left" aria-labelledby="outcome-heading">
+        <h2 id="outcome-heading" className="text-base md:text-xl font-display text-cyan-300 tracking-wider mb-2">PUBLIC SAFETY OUTCOME</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm font-sans">
+          <p><span className="block text-2xl font-bold text-cyan-300">{scoreBreakdown.offencesPrevented}/{scoreBreakdown.potentialOffences}</span>potential offences prevented</p>
+          <p><span className="block text-2xl font-bold text-green-300">{scoreBreakdown.roadStats.uniqueSegments}</span>distinct road segments · {Math.round(scoreBreakdown.roadStats.repeatRatio * 100)}% repeat entries</p>
+          <p><span className="block text-2xl font-bold text-yellow-300">{scoreBreakdown.interventionStats.accurateScans}/{scoreBreakdown.interventionStats.scans}</span>accurate observations · {scoreBreakdown.interventionStats.falseScans} false</p>
+          <p><span className="block text-2xl font-bold text-pink-300">{scoreBreakdown.interventionStats.standard}/{scoreBreakdown.interventionStats.investigate}</span>standard / deep · {scoreBreakdown.interventionStats.modalSeconds.toFixed(1)}s slowed</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
+          {scoreBreakdown.districtReport.map(district => (
+            <p key={district.id} className="text-xs text-gray-300 font-sans"><span className="block font-bold text-white">{district.id}</span>{Math.round(district.finalDeterrence)}% final · {district.patrolSamples} route samples</p>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 font-sans mt-3">Career: {careerProgress.rank.name} · {careerProgress.totalPresenceGrades} graded shifts{careerProgress.nextRank ? ` · ${careerProgress.gradesUntilNextRank} to ${careerProgress.nextRank.name}` : ''}{shiftMode === 'operations' && campaignProgress ? ` · Campaign ${campaignProgress.completedShifts}/${campaignProgress.totalShifts}, ${campaignProgress.cumulativeScore.toLocaleString()} points` : ''}</p>
+      </section>
+
+      {/* The once-per-shift interdiction: the routine stop that turned out to be anything but. */}
+      {scoreBreakdown.interdiction && (
+        <div className={`w-full max-w-6xl mb-4 rounded-lg border-2 p-3 md:p-4 text-left ${
+            scoreBreakdown.interdiction.outcome === 'busted'
+              ? 'border-green-500 bg-green-950/60 shadow-lg shadow-green-500/20'
+              : 'border-gray-600 bg-gray-900/70'
+        }`}>
+          <h2 className={`text-sm md:text-base font-display tracking-widest mb-1 ${scoreBreakdown.interdiction.outcome === 'busted' ? 'text-green-400' : 'text-gray-400'}`}>
+            {scoreBreakdown.interdiction.outcome === 'busted' ? `THE BIG ONE: ${scoreBreakdown.interdiction.crime.toUpperCase()}` : 'THE ONE THAT DROVE ON'}
+          </h2>
+          <p className="text-sm md:text-lg text-gray-200 font-sans leading-snug">{scoreBreakdown.interdiction.detail}</p>
+        </div>
+      )}
+
+      <ShareResult
+        breakdown={scoreBreakdown}
+        ctx={{ mode: shiftMode, storyLine: stories[0]?.story, percentile: submission?.percentile ?? undefined, streak: personal.streak, competitionDay }}
+      />
+
+      {/* Your run next to the real thing, styled the same. The lesson lands by format. */}
+      <p className="w-full max-w-6xl mb-4 text-xs md:text-sm text-gray-400 font-sans text-left border-l-2 border-gray-600 pl-3">
+        <span className="font-display tracking-widest text-gray-300">THE REAL ONES · </span>{realLine}
+      </p>
+
       <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Patrol Report Map with Heatmap */}
         <div className="lg:col-span-1 h-64 lg:h-auto">
             <div className="h-full flex flex-col">
                 <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-sm font-display text-cyan-400">PATROL REPORT</h3>
+                    <h2 className="text-sm font-display text-cyan-400">PATROL REPORT</h2>
                     <button
                         onClick={() => setShowHeatmap(!showHeatmap)}
                         className="text-xs bg-cyan-800 hover:bg-cyan-700 px-2 py-1 rounded border border-cyan-600 font-sans"
@@ -329,10 +533,12 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
         {/* Leaderboard & Actions */}
         <div className="bg-black/50 p-4 md:p-6 rounded-lg shadow-lg flex flex-col space-y-4 border-2 border-cyan-500/50">
             <div className="flex-grow min-h-[150px] flex flex-col justify-center">
-                 {isHighScore && !submitted && (
+                 {shiftMode === 'daily' && submissionEligible && submission?.status !== 'uploaded' && submission?.status !== 'queued-offline' && (
                      <form onSubmit={handleSubmit} className="flex flex-col items-center space-y-3">
-                        <h2 className="text-xl md:text-2xl font-semibold text-green-400 font-display">New High Score!</h2>
+                        <h2 className="text-xl md:text-2xl font-semibold text-green-400 font-display">Submit Daily Run</h2>
+                        <label htmlFor="hs-name" className="sr-only">Your name</label>
                         <input
+                            id="hs-name"
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
@@ -341,35 +547,51 @@ const GameOver: React.FC<GameOverProps> = ({ scoreBreakdown, leaderboard, onPlay
                             required
                             className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-display tracking-widest"
                         />
+                        <label htmlFor="hs-station" className="sr-only">Station code (optional)</label>
                         <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="EMAIL (optional - to update score)"
-                            className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-sans text-sm"
+                            id="hs-station"
+                            type="text"
+                            value={station}
+                            onChange={(e) => setStation(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
+                            placeholder="STATION CODE (optional, 2-4 chars)"
+                            minLength={2}
+                            maxLength={4}
+                            pattern="[A-Z0-9]{2,4}"
+                            aria-describedby="hs-station-help"
+                            className="bg-gray-800 text-white text-center w-full p-2 rounded border-2 border-gray-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 font-display tracking-widest text-sm"
                         />
-                        <p className="text-xs text-gray-500 font-sans">Email lets you update your score if you beat it later</p>
-                        <button type="submit" className="w-full bg-green-600 hover:bg-green-500 border-2 border-green-400 text-white font-bold py-2 px-4 rounded transition font-display tracking-wider">
-                            Submit Score
+                        <p id="hs-station-help" className="text-xs text-gray-400 font-sans">Share a code with mates to get your own crew leaderboard</p>
+                        <p className="text-xs text-gray-400 font-sans">Your name, station code, score, and run summary are public within a 90-day retention window. No email is collected.</p>
+                        <button type="submit" disabled={submitting} className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-60 border-2 border-green-400 text-white font-bold py-2 px-4 rounded transition font-display tracking-wider">
+                            {submitting ? 'Uploading…' : 'Submit Score'}
                         </button>
                     </form>
                 )}
-                {submitted && (
-                    <p className="text-lg text-green-400 text-center animate-fadeIn">Score Submitted!</p>
+                {submission && (
+                    <p role="status" className={`text-lg text-center animate-fadeIn ${
+                      submission.status === 'uploaded' ? 'text-green-400' : submission.status === 'queued-offline' ? 'text-yellow-300' : 'text-red-400'
+                    }`}>{submission.message}</p>
                 )}
-                {!isHighScore && (
-                    <p className="text-lg text-gray-400 text-center">Good work, Officer.</p>
+                {shiftMode === 'free' && (
+                    <p className="text-lg text-gray-400 text-center">Free Patrol scores stay on this device and never enter the Daily board.</p>
+                )}
+                {shiftMode === 'operations' && campaignProgress && (
+                    <p className="text-lg text-cyan-200 text-center">Operations campaign {campaignProgress.completedShifts}/{campaignProgress.totalShifts}. Scores stay local; each grade changes the next seeded shift.</p>
+                )}
+                {shiftMode === 'daily' && !submissionEligible && (
+                    <p className="text-lg text-yellow-300 text-center">Offline Daily run. Community submission is unavailable for this shift.</p>
                 )}
             </div>
 
-            <button onClick={onPlayAgain} className="w-full bg-cyan-600 hover:bg-cyan-500 border-2 border-cyan-400 text-white font-bold py-3 px-4 rounded text-lg md:text-xl transition font-display tracking-wider">
-                Play Again
-            </button>
-            
             <hr className="border-gray-700" />
-            <Leaderboard scores={leaderboard} />
+            <Leaderboard scores={leaderboard} refreshKey={leaderboardRefreshKey} onDeleteMine={onDeleteMyScores} />
         </div>
       </div>
+
+      {/* Debrief: one contextual line of the actual lesson, picked from how this shift went. */}
+      <p className="w-full max-w-6xl mt-4 text-sm md:text-base text-cyan-200/90 font-sans italic border-t border-cyan-500/30 pt-3">
+        <span className="not-italic font-display text-cyan-400 tracking-widest">DEBRIEF · </span>{debrief}
+      </p>
     </div>
   );
 };

@@ -3,6 +3,8 @@ import { Player, Civilian, District, DistrictName, DispatchedCall, MinimapMode, 
 import Minimap from './Minimap';
 import * as CONSTANTS from '../constants';
 import Compass from './Compass';
+import { offscreenIndicatorPosition, type ViewTransform } from './hudGeometry';
+import type { CoverageTier, ShiftPhaseInfo } from '../utils/patrol';
 
 interface DistrictMetersProps {
     districts: District[];
@@ -29,11 +31,18 @@ const DistrictMeters: React.FC<DistrictMetersProps> = ({ districts, playerDistri
                            <p className={`text-xs font-bold tracking-wide ${isCurrent ? 'text-cyan-300' : 'text-gray-400'}`}>{district.name.toUpperCase()}</p>
                            {isCurrent && presenceBoostRate > 0 && (
                                 <span className="text-xs font-mono text-green-400 animate-pulse">
-                                    +{(presenceBoostRate * CONSTANTS.FRAMES_PER_SECOND).toFixed(2)}/s
+                                    +{presenceBoostRate.toFixed(2)}/s
                                 </span>
                             )}
                         </div>
-                        <div className="w-full bg-gray-900 rounded-full h-2.5 mt-1 border border-gray-600">
+                        <div
+                            className="w-full bg-gray-900 rounded-full h-2.5 mt-1 border border-gray-600"
+                            role="progressbar"
+                            aria-label={`${district.name} deterrence`}
+                            aria-valuenow={Math.round(deterrence)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                        >
                              <div
                                 className={`h-full rounded-full transition-all duration-300 ${deterrenceColor}`}
                                 style={{ width: `${deterrence}%`, boxShadow: `0 0 6px ${deterrence < 33 ? 'theme("colors.pink.500")' : deterrence < 66 ? 'theme("colors.yellow.500")' : 'theme("colors.green.500")'}` }}
@@ -51,51 +60,36 @@ interface DispatchedCallUIProps {
 }
 
 const DispatchedCallUI: React.FC<DispatchedCallUIProps> = ({ call }) => (
-    <div className="bg-pink-900/80 border-2 border-pink-500 p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
-        <p className="text-pink-300 font-bold text-sm font-display tracking-wider">URGENT CALL</p>
-        <p className="text-lg text-white">High-Risk Offender</p>
-        <p className="text-3xl font-bold text-yellow-300 font-display">{Math.ceil(call.timeLeft)}s</p>
+    <div data-testid="hud-dispatch" className="hud-dispatch max-w-full bg-pink-900/90 border-2 border-pink-500 p-2 sm:p-3 rounded-lg shadow-lg shadow-pink-500/30 text-center mt-2 animate-pulse">
+        <p className="text-pink-300 font-bold text-xs sm:text-sm font-display tracking-wider">URGENT CALL</p>
+        <p className="text-sm sm:text-lg text-white">Colleague ETA</p>
+        <p className="text-xl sm:text-3xl font-bold text-yellow-300 font-display">{Math.ceil(call.timeLeft)}s</p>
+        {call.targetTimeLeft !== undefined && (
+          <p className={`text-xs font-sans ${call.timeLeft < call.targetTimeLeft ? 'text-green-300' : 'text-red-300'}`}>
+            {call.timeLeft < call.targetTimeLeft ? `Due ${Math.ceil(call.targetTimeLeft)}s · response on time` : `Due ${Math.ceil(call.targetTimeLeft)}s · intercept personally`}
+          </p>
+        )}
     </div>
 );
 
 const OffscreenIndicator: React.FC<{
     targetPos: { x: number, y: number },
-    camera: { x: number, y: number },
+    viewTransform: ViewTransform,
     color: string,
-}> = ({ targetPos, camera, color }) => {
-    const targetScreenX = targetPos.x - camera.x;
-    const targetScreenY = targetPos.y - camera.y;
-
-    const isOffScreen = targetScreenX < 0 || targetScreenX > CONSTANTS.VIEWPORT_WIDTH ||
-                        targetScreenY < 0 || targetScreenY > CONSTANTS.VIEWPORT_HEIGHT;
-    
-    if (!isOffScreen) {
-        return null;
-    }
-
-    const screenCenterX = CONSTANTS.VIEWPORT_WIDTH / 2;
-    const screenCenterY = CONSTANTS.VIEWPORT_HEIGHT / 2;
-
-    const angle = Math.atan2(targetScreenY - screenCenterY, targetScreenX - screenCenterX);
-    const degrees = angle * (180 / Math.PI) + 90;
-
-    const padding = 30;
-    const boundX = CONSTANTS.VIEWPORT_WIDTH - padding;
-    const boundY = CONSTANTS.VIEWPORT_HEIGHT - padding;
-    
-    let x = screenCenterX + Math.cos(angle) * (CONSTANTS.VIEWPORT_WIDTH / 2);
-    let y = screenCenterY + Math.sin(angle) * (CONSTANTS.VIEWPORT_HEIGHT / 2);
-
-    x = Math.max(padding, Math.min(x, boundX));
-    y = Math.max(padding, Math.min(y, boundY));
+}> = ({ targetPos, viewTransform, color }) => {
+    const position = offscreenIndicatorPosition(targetPos, viewTransform);
+    if (!position) return null;
 
     return (
+        // Decorative for AT: the aria-live region announces life-at-risk onset; a rotating
+        // colour-only glyph has no non-visual meaning (a11y F1).
         <div
+            aria-hidden="true"
             className={`absolute text-4xl animate-pulse pointer-events-none ${color}`}
             style={{
-                left: `${x}px`,
-                top: `${y}px`,
-                transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+                transform: `translate(-50%, -50%) rotate(${position.degrees}deg)`,
                 zIndex: 100,
                 textShadow: '0 0 10px currentColor'
             }}
@@ -109,8 +103,6 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
     const arcPathRef = useRef<SVGPathElement>(null);
     const [arcLength, setArcLength] = useState(0);
 
-    const radius = 50;
-    const circumference = Math.PI * radius; // Half circumference for a 180-degree arc
     const maxKmh = 160;
     const speedKmh = Math.round((speed / maxSpeed) * maxKmh);
 
@@ -125,7 +117,8 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
 
     return (
         <div className="relative w-32 h-20 flex flex-col items-center justify-end text-white">
-            <svg className="absolute bottom-0 w-full h-auto" viewBox="0 0 120 65">
+            {/* The visible "N km/h" text carries the value for AT; the arc is decorative. */}
+            <svg aria-hidden="true" className="absolute bottom-0 w-full h-auto" viewBox="0 0 120 65">
                 <path
                     d="M 10 60 A 50 50 0 0 1 110 60"
                     fill="none"
@@ -140,8 +133,8 @@ const Speedometer: React.FC<{ speed: number; maxSpeed: number, isBoosting: boole
                     stroke={isBoosting ? "url(#boostGradient)" : "url(#normalGradient)"}
                     strokeWidth="10"
                     strokeLinecap="round"
-                    strokeDasharray={arcLength}
-                    strokeDashoffset={strokeDashoffset}
+                    strokeDasharray={arcLength || 1000}
+                    strokeDashoffset={arcLength ? strokeDashoffset : 9999}
                     style={{ transition: 'stroke-dashoffset 0.2s ease-out' }}
                 />
                 <defs>
@@ -168,7 +161,7 @@ const VigilanceMeter: React.FC<{ vigilance: number, isGaining: boolean }> = ({ v
     return (
         <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-48 flex items-center space-x-2 border-2 border-purple-500/50 mb-1 transition-transform ${isGaining ? 'animate-vigilance-gain-flash' : ''}`}>
             <span className={`text-xs font-bold transition-colors text-purple-400 text-glow-pink`}>VIGILANCE</span>
-            <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden">
+            <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden" role="progressbar" aria-label="Vigilance" aria-valuenow={Math.round(vigilance)} aria-valuemin={0} aria-valuemax={100}>
                 <div
                     className={`h-full rounded-full bg-purple-500 transition-all duration-300 ${isMax ? 'animate-pulse' : ''}`}
                     style={{ 
@@ -195,7 +188,7 @@ const StationaryCountdownTimer: React.FC<{ countdown: NonNullable<StationaryCoun
     const strokeColor = isNeglect ? 'stroke-red-500' : 'stroke-cyan-400';
 
     return (
-        <div className="absolute bottom-28 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none animate-fadeIn z-30">
+        <div className="hud-stationary absolute bottom-28 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none animate-fadeIn z-30">
             <p className={`font-display text-lg tracking-widest font-bold ${textColor} ${isNeglect ? 'animate-neglect-pulse' : ''}`} style={{ textShadow: '0 0 8px currentColor' }}>
                 {label}
             </p>
@@ -246,8 +239,6 @@ interface HUDProps {
   playerDistrict: DistrictName;
   livesLost: number;
   dispatchedCall: DispatchedCall | null;
-  isTouchDevice: boolean;
-  camera: { x: number; y: number };
   minimapMode: MinimapMode;
   colleagueCalls: number;
   gameMessage: string | null;
@@ -256,89 +247,132 @@ interface HUDProps {
   presenceBoostRate: number;
   stationaryCountdown: StationaryCountdown;
   shouldFlashColleagueAssist: boolean;
+  hudTick: number;
+  viewTransform: ViewTransform;
+  offencesPrevented: number;
+  projectedScore: number;
+  lifeAtRiskSeconds: number | null;
+  onPause: () => void;
+  /** Arcade combo: active multiplier (1 = inactive) + fraction of the window remaining. */
+  comboMult: number;
+  comboFrac: number;
+  showRidsMarkers: boolean;
+  roadVisitedAt: Record<string, number>;
+  elapsedSeconds: number;
+  presenceChain: number;
+  coverageTier: CoverageTier;
+  shiftPhase: ShiftPhaseInfo;
+  earnedOvertimeSeconds: number;
+  investigationsRemaining: number;
+  pbDelta: number | null;
+  pbNextTarget: { atSeconds: number; score: number } | null;
+  radioActive: boolean;
 }
 
-const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, isTouchDevice, camera, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist }) => {
+const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts, playerDistrict, livesLost, dispatchedCall, minimapMode, colleagueCalls, gameMessage, isVigilanceBonusActive, isNeglectOfDutyActive, presenceBoostRate, stationaryCountdown, shouldFlashColleagueAssist, hudTick: _hudTick, viewTransform, offencesPrevented, projectedScore, lifeAtRiskSeconds, onPause, comboMult, comboFrac, showRidsMarkers, roadVisitedAt, elapsedSeconds, presenceChain, coverageTier, shiftPhase, earnedOvertimeSeconds, investigationsRemaining, pbDelta, pbNextTarget, radioActive }) => {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   const livesAtRiskCars = civilians.filter(c => c.isLifeAtRisk);
   const livesAtRiskCount = livesAtRiskCars.length;
+  const weakestDistrict = districts.reduce((weakest, district) => district.deterrence < weakest.deterrence ? district : weakest, districts[0]);
 
   const [scoreDisplay, setScoreDisplay] = useState(score);
   const [scorePop, setScorePop] = useState(false);
   const [vigilanceGained, setVigilanceGained] = useState(false);
   const prevVigilance = useRef(player.vigilance);
+  const scoreTargetRef = useRef(score);
+  scoreTargetRef.current = score;
 
   useEffect(() => {
-    if(player.vigilance > prevVigilance.current) {
+    // Advance the baseline unconditionally, THEN flash — otherwise a gain returns early and
+    // prevVigilance never advances, so the flash latches on every subsequent render.
+    const gained = player.vigilance > prevVigilance.current;
+    prevVigilance.current = player.vigilance;
+    if (gained) {
       setVigilanceGained(true);
       const timer = setTimeout(() => setVigilanceGained(false), 500);
       return () => clearTimeout(timer);
     }
-    prevVigilance.current = player.vigilance;
   }, [player.vigilance]);
 
   useEffect(() => {
-    if (scoreDisplay === score) return;
+    if (score > scoreDisplay) setScorePop(true);
+    const popTimer = setTimeout(() => setScorePop(false), 300);
+    return () => clearTimeout(popTimer);
+  }, [score]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    if (score > scoreDisplay) {
-        setScorePop(true);
-        const popTimer = setTimeout(() => setScorePop(false), 300);
-        
-        const diff = score - scoreDisplay;
-        const duration = 500; // ms
-        const stepTime = 20; // ms
-        const steps = duration / stepTime;
-        const increment = diff / steps;
-        let current = scoreDisplay;
-
-        const timer = setInterval(() => {
-            current += increment;
-            if (current >= score) {
-                setScoreDisplay(score);
-                clearInterval(timer);
-            } else {
-                setScoreDisplay(Math.round(current));
-            }
-        }, stepTime);
-        
-        return () => {
-            clearTimeout(popTimer);
-            clearInterval(timer);
-        };
-    } else {
-        setScoreDisplay(score);
-    }
-  }, [score, scoreDisplay]);
+  useEffect(() => {
+    // ONE persistent count-up interval for the component's lifetime. Score changes every
+    // hudTick (continuous deterrence accrual), so keying the interval on `score` recreated
+    // it ~10×/sec. At target the updater returns `cur` and React bails — effectively idle.
+    const timer = setInterval(() => {
+      setScoreDisplay(cur => {
+        const target = scoreTargetRef.current;
+        if (cur === target) return cur;
+        const step = Math.max(1, Math.ceil(Math.abs(target - cur) / 8));
+        return cur < target ? Math.min(target, cur + step) : Math.max(target, cur - step);
+      });
+    }, 30);
+    return () => clearInterval(timer);
+  }, []);
 
   const isBoostReady = player.boostCharge === CONSTANTS.PLAYER_BOOST_MAX_CHARGE && !player.isSirenActive && !player.isBoosting;
 
   return (
-    <div className="absolute inset-0 p-2 md:p-4 flex flex-col justify-between items-start text-white pointer-events-none z-10 font-display">
+    <div
+      className="absolute inset-0 p-2 md:p-4 flex flex-col justify-between items-start text-white pointer-events-none z-10 font-display"
+      style={{
+        paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
+        paddingLeft: 'max(0.5rem, env(safe-area-inset-left))',
+        paddingRight: 'max(0.5rem, env(safe-area-inset-right))',
+        paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+      }}
+    >
       {player.isSirenActive && <div className="absolute inset-0 pointer-events-none animate-hud-siren-flash z-0"></div>}
       {livesAtRiskCount > 0 && <div className="life-at-risk-vignette"></div>}
       {isVigilanceBonusActive && <div className="vigilance-border"></div>}
       
       {livesAtRiskCars.map(car => (
-          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} camera={camera} color="text-red-500" />
+          <OffscreenIndicator key={`lar-indicator-${car.id}`} targetPos={car.pos} viewTransform={viewTransform} color="text-red-500" />
       ))}
       {dispatchedCall && (
-           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} camera={camera} color="text-yellow-400" />
+           <OffscreenIndicator key={`dispatch-indicator-${dispatchedCall.id}`} targetPos={dispatchedCall.pos} viewTransform={viewTransform} color="text-yellow-400" />
       )}
 
-      <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} />
+      <Compass player={player} civilians={civilians} dispatchedCall={dispatchedCall} showRidsMarkers={showRidsMarkers} />
+
+      <button
+        type="button"
+        onClick={onPause}
+        aria-label="Pause game"
+        data-testid="pause-button"
+        className="hud-pause pointer-events-auto absolute top-2 w-11 h-11 z-50 rounded-full bg-black/75 border-2 border-cyan-500/60 text-white text-xl flex items-center justify-center shadow-lg select-none hover:bg-cyan-900/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
+        style={{ top: 'max(0.5rem, env(safe-area-inset-top))', right: 'calc(3.75rem + env(safe-area-inset-right))', touchAction: 'manipulation' }}
+      >
+        <span aria-hidden="true">Ⅱ</span>
+      </button>
 
 
-      <div className="w-full flex justify-between items-start">
-        <div className="flex flex-col space-y-2 md:space-y-3">
-            <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg w-40 md:w-52 border-2 border-pink-500/50">
+      <div className="hud-top-row w-full flex justify-between items-start gap-1 sm:gap-2">
+        <div className="flex shrink-0 flex-col space-y-2 md:space-y-3">
+            <div data-testid="hud-score" className="hud-score bg-black/80 p-2 md:p-3 rounded-lg shadow-lg w-32 sm:w-40 md:w-52 border-2 border-pink-500/50">
                 <div className="text-xs md:text-sm font-semibold text-cyan-400 tracking-wider text-glow-cyan">SCORE</div>
                 <div className={`text-2xl md:text-3xl font-bold text-glow-yellow ${scorePop ? 'animate-score-pop' : ''}`}>{scoreDisplay.toLocaleString()}</div>
+                <div className="text-[10px] md:text-xs text-gray-300 font-sans">Projected <span className="font-bold text-yellow-200">{projectedScore.toLocaleString()}</span></div>
+                {pbDelta !== null && <div className={`text-[10px] md:text-xs font-sans ${pbDelta >= 0 ? 'text-green-300' : 'text-red-300'}`}>PB pace {pbDelta >= 0 ? '+' : ''}{pbDelta.toLocaleString()}</div>}
+                {pbNextTarget && <div className="text-[10px] md:text-xs text-cyan-200 font-sans">Next {pbNextTarget.score.toLocaleString()} at {pbNextTarget.atSeconds}s</div>}
+                <div className="text-[10px] md:text-xs text-pink-200 font-sans mt-0.5">Deep investigations <span className="font-bold">{investigationsRemaining}</span></div>
                 <div className="flex justify-between items-center text-center mt-1">
+                    {/* The teaching stat: offences that never happened because deterrence held. */}
+                    <div>
+                        <div className="text-[10px] md:text-xs font-semibold text-cyan-300 text-glow-cyan">PREVENTED</div>
+                        <div className={`text-xl md:text-2xl font-bold ${offencesPrevented > 0 ? 'text-cyan-300' : 'text-white'}`}>{offencesPrevented}</div>
+                    </div>
                     <div>
                         <div className="text-[10px] md:text-xs font-semibold text-yellow-300 text-glow-yellow">RISK</div>
                         <div className={`text-xl md:text-2xl font-bold ${livesAtRiskCount > 0 ? 'text-yellow-400 animate-pulse' : 'text-white'}`}>{livesAtRiskCount}</div>
+                        {lifeAtRiskSeconds !== null && <div className="text-[10px] text-yellow-200 font-sans">{Math.max(0, Math.ceil(lifeAtRiskSeconds))}s</div>}
                     </div>
                     <div>
                         <div className="text-[10px] md:text-xs font-semibold text-pink-400 text-glow-pink">LOST</div>
@@ -346,44 +380,100 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                     </div>
                 </div>
             </div>
-            <div className={`bg-black/70 p-2 rounded-lg shadow-lg w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors`}>
+            {/* Arcade combo badge: chained interventions inside the window. Drain bar is
+                decorative (a11y-lead: transient, no progressbar semantics, never live). */}
+            {comboMult > 1 && (
+                <div aria-label={`Combo times ${comboMult}`} className="bg-black/80 px-2 py-1 rounded-lg shadow-lg w-28 border-2 border-yellow-400 shadow-yellow-400/40">
+                    <div className="text-lg font-bold font-display text-yellow-300 text-glow-yellow animate-pulse text-center">×{comboMult} COMBO</div>
+                    <div aria-hidden="true" className="w-full h-1 bg-gray-800 rounded overflow-hidden">
+                        <div className="h-full bg-yellow-400" style={{ width: `${Math.round(comboFrac * 100)}%` }} />
+                    </div>
+                </div>
+            )}
+            <div data-testid="hud-districts" className={`bg-black/70 p-2 rounded-lg shadow-lg w-32 sm:w-40 md:w-52 border-2 ${isVigilanceBonusActive ? 'border-yellow-400' : 'border-cyan-500/50'} transition-colors [@media(max-height:500px)]:hidden`}>
                 <DistrictMeters districts={districts} playerDistrict={playerDistrict} isVigilanceBonusActive={isVigilanceBonusActive} presenceBoostRate={presenceBoostRate} />
             </div>
         </div>
 
-        <div className="flex-grow flex flex-col justify-start items-center space-y-2 pt-2">
-            {isVigilanceBonusActive && (
-                <div className="bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
-                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">VIGILANCE BONUS 2.0x</p>
+        <div className="hud-center-alerts min-w-0 flex-1 flex flex-col justify-start items-center space-y-2 px-1 pt-12">
+            <div className={`${radioActive ? 'invisible' : ''} hidden sm:block w-full max-w-[30rem] bg-black/85 border-2 border-cyan-500/60 px-3 py-1.5 rounded-lg text-center`}>
+                <p className="text-sm md:text-base text-cyan-300 font-bold tracking-wider">{shiftPhase.label}</p>
+                <p className="text-[10px] md:text-xs text-gray-200 font-sans [@media(max-height:500px)]:hidden">{shiftPhase.objective}</p>
+                <p className="text-[10px] md:text-xs text-yellow-200 font-sans">{coverageTier.label}{coverageTier.scoreMultiplier > 1 ? ` · ×${coverageTier.scoreMultiplier.toFixed(2)}` : ''}{presenceChain > 1 ? ` · Presence chain ${presenceChain}` : ''}</p>
+                {weakestDistrict && <p className={`text-[10px] md:text-xs font-sans [@media(max-height:500px)]:hidden ${weakestDistrict.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 'text-red-300' : 'text-gray-300'}`}>Weakest: {weakestDistrict.name} {Math.round(weakestDistrict.deterrence)}%</p>}
+            </div>
+            {/* Compact meters for touch players (gd-0wi.17/.21): the bottom cluster is hidden on
+                coarse pointers to leave room for the on-screen controls, so surface key state here. */}
+            <div data-testid="hud-compact" className={`${radioActive ? 'invisible' : ''} hud-compact-strip hidden [@media(any-pointer:coarse)]:flex [@media(max-height:500px)]:flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-black/90 px-2 py-1.5 rounded-lg border-2 border-purple-500/50 text-[11px] relative z-10`}>
+                <span className="sm:hidden font-bold text-cyan-300">{shiftPhase.label}</span>
+                {/* District deterrence dots: landscape phones hide the full meter panel
+                    (max-height:500px), losing the core teaching UI — keep a glanceable version here. */}
+                <div
+                    className="flex items-center gap-1"
+                    role="img"
+                    aria-label={`District deterrence: ${districts.map(d => `${d.name} ${Math.round(d.deterrence)}%`).join(', ')}`}
+                >
+                    {districts.map(d => (
+                        <span
+                            key={d.id}
+                            className={`w-2.5 h-2.5 rounded-full ${
+                                d.deterrence >= CONSTANTS.DETERRENCE_VIGILANCE_THRESHOLD ? 'bg-green-400' :
+                                d.deterrence < CONSTANTS.DETERRENCE_HOTSPOT_THRESHOLD ? 'bg-red-500 animate-pulse' : 'bg-yellow-400'
+                            } ${d.id === playerDistrict ? 'ring-1 ring-white' : ''}`}
+                        />
+                    ))}
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className={`font-bold ${player.isSirenActive ? 'text-red-400' : 'text-cyan-400'}`}>{player.isSirenActive ? 'SIREN' : 'BOOST'}</span>
+                    <div className="w-14 h-2.5 bg-gray-900 rounded-full border border-gray-600 overflow-hidden" role="progressbar" aria-label={player.isSirenActive ? 'Siren energy' : 'Boost charge'} aria-valuenow={Math.round(player.boostCharge)} aria-valuemin={0} aria-valuemax={100}>
+                        <div className={`h-full rounded-full ${player.isSirenActive ? 'bg-red-500' : (player.isBoosting ? 'bg-yellow-400' : 'bg-cyan-400')}`} style={{ width: `${player.boostCharge}%` }}></div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className="font-bold text-purple-300">VIG</span>
+                    <div className="w-14 h-2.5 bg-gray-900 rounded-full border border-gray-600 overflow-hidden" role="progressbar" aria-label="Vigilance" aria-valuenow={Math.round(player.vigilance)} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="h-full rounded-full bg-purple-400" style={{ width: `${player.vigilance}%` }}></div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <span className="font-bold text-yellow-400">ASSIST</span>
+                    <span className="text-yellow-300 font-bold" aria-label={`${colleagueCalls} colleague assists available`}>{colleagueCalls}</span>
+                </div>
+            </div>
+            {coverageTier.scoreMultiplier > 1 && (
+                <div className="max-w-full bg-black/80 border-2 border-yellow-400 p-2 rounded-lg shadow-lg shadow-yellow-400/50 text-center">
+                    <p className="text-lg font-bold font-display tracking-wider animate-vigilance-glow">{coverageTier.label} ×{coverageTier.scoreMultiplier.toFixed(2)}</p>
                 </div>
             )}
-            {dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}
+            {!radioActive && dispatchedCall && <DispatchedCallUI call={dispatchedCall} />}
         </div>
         
-        <div className="flex flex-col items-end space-y-2 md:space-y-3">
-          <div className="bg-black/70 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50">
-            <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink">SHIFT ENDS IN</div>
-            <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''}`}>{timeString}</div>
+        <div className="hud-right-stack shrink-0 flex flex-col items-end space-y-2 md:space-y-3">
+          <div data-testid="hud-timer" className="bg-black/80 p-2 md:p-3 rounded-lg shadow-lg text-right border-2 border-cyan-500/50 [@media(max-height:500px)]:p-1">
+            <div className="text-xs md:text-sm font-semibold text-pink-400 tracking-wider text-glow-pink [@media(max-height:500px)]:hidden">SHIFT ENDS IN</div>
+            <div className={`text-2xl md:text-3xl font-bold transition-colors ${timeLeft < 30 ? 'animate-urgent-pulse' : ''} [@media(max-height:500px)]:text-lg`}>{timeString}</div>
+            <div className="text-[10px] md:text-xs text-green-300 font-sans">Overtime bank {earnedOvertimeSeconds}s</div>
           </div>
-          <div className="w-36 h-36 md:w-52 md:h-52">
-             <Minimap 
+          <div data-testid="hud-minimap" className="w-24 h-24 sm:w-36 sm:h-36 md:w-52 md:h-52 [@media(max-height:500px)]:w-24 [@media(max-height:500px)]:h-24 [@media(max-height:400px)]:w-16 [@media(max-height:400px)]:h-16">
+             <Minimap
                 player={player} 
                 civilians={civilians} 
                 districts={districts}
                 dispatchedCall={dispatchedCall}
                 mode={minimapMode}
+                showRidsMarkers={showRidsMarkers}
+                roadVisitedAt={roadVisitedAt}
+                elapsedSeconds={elapsedSeconds}
              />
           </div>
         </div>
       </div>
 
       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex flex-col items-center">
-        {!isTouchDevice && (
-            <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50">
-                 <VigilanceMeter vigilance={player.vigilance} isGaining={vigilanceGained} />
-            </div>
-        )}
-        <div className={`${isTouchDevice ? 'hidden' : 'flex'} flex-col items-center`}>
+        <div className="hidden md:block bg-black/70 p-2 rounded-lg shadow-lg text-center mb-2 border-2 border-yellow-500/50 [@media(any-pointer:coarse)]:hidden">
+             <VigilanceMeter vigilance={player.vigilance} isGaining={vigilanceGained} />
+        </div>
+        <div className="flex flex-col items-center [@media(any-pointer:coarse)]:hidden">
             <div className="flex items-end space-x-4 bg-black/50 px-4 pt-2 pb-1 rounded-t-lg border-x-2 border-t-2 border-purple-500/50">
                 <div className={`bg-black/70 p-2 rounded-lg shadow-lg flex flex-col items-center border-2 ${shouldFlashColleagueAssist ? 'border-red-400 animate-urgent-pulse' : 'border-yellow-500/50'}`}>
                     <span className="text-xs font-bold text-yellow-400 text-glow-yellow">ASSIST</span>
@@ -402,7 +492,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
                 
                 <div className="bg-black/70 p-2 rounded-lg shadow-lg w-48 flex items-center space-x-2 border-2 border-pink-500/50 mb-1">
                     <span className={`text-xs font-bold transition-colors ${player.isSirenActive ? 'text-red-400' : 'text-cyan-400 text-glow-cyan'}`}>{player.isSirenActive ? 'SIREN' : 'BOOST'}</span>
-                    <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden">
+                    <div className="w-full bg-gray-900 rounded-full h-4 border border-gray-600 overflow-hidden" role="progressbar" aria-label={player.isSirenActive ? 'Siren energy' : 'Boost charge'} aria-valuenow={Math.round(player.boostCharge)} aria-valuemin={0} aria-valuemax={100}>
                         <div
                             className={`h-full rounded-full ${player.isSirenActive ? 'animate-siren-boost-flash' : (player.isBoosting ? 'bg-yellow-400' : `bg-cyan-400 ${isBoostReady ? 'animate-boost-ready-glow' : ''}`)} transition-all duration-100`}
                             style={{ width: `${player.boostCharge}%`, boxShadow: player.isSirenActive ? 'none' : `inset 0 0 4px ${player.isBoosting ? 'theme("colors.yellow.300")' : 'theme("colors.cyan.300")'}` }}
@@ -421,15 +511,20 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
       {stationaryCountdown && stationaryCountdown.timeLeft > 0 && <StationaryCountdownTimer countdown={stationaryCountdown} />}
 
        {gameMessage && (
-        <div key={Date.now()} className="absolute top-1/2 left-1/2 text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-6 py-3 rounded-lg text-yellow-300 animate-fade-in-out z-50">
+        // key is the message text (not Date.now()) so the fade animation plays once per
+        // distinct message instead of restarting every render (which read as a flicker).
+        // Top-centre, out of the driving lane: dead-centre placement sat right on the patrol car.
+        <div key={gameMessage} aria-hidden="true" className="hud-game-message absolute top-24 left-1/2 -translate-x-1/2 max-w-[90%] text-center text-lg md:text-3xl font-bold bg-black/80 border-2 border-yellow-400 px-4 md:px-6 py-2 md:py-3 rounded-lg text-yellow-300 animate-fade-in-out z-40">
             {gameMessage}
         </div>
        )}
 
       {isNeglectOfDutyActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[80px] text-center z-50">
-            <h2 className="text-5xl font-bold animate-neglect-pulse font-display tracking-widest">NEGLECT OF DUTY</h2>
-            <p className="text-xl text-red-400">Deterrence Falling Rapidly</p>
+        // Below the toast band, clear of the patrol car (was floating just above centre).
+        // aria-hidden: the live region announces neglect; this h2 would orphan into the AT outline.
+        <div aria-hidden="true" className="hud-neglect absolute top-36 md:top-44 left-1/2 -translate-x-1/2 text-center z-40">
+            <h2 className="text-3xl md:text-5xl font-bold animate-neglect-pulse font-display tracking-widest">NEGLECT OF DUTY</h2>
+            <p className="text-base md:text-xl text-red-400">Deterrence Falling Rapidly</p>
         </div>
       )}
 
@@ -437,4 +532,7 @@ const HUD: React.FC<HUDProps> = ({ score, timeLeft, player, civilians, districts
   );
 };
 
-export default HUD;
+// hudTick is the sole parent-driven render clock: Game samples every HUD input from refs and bumps
+// hudTick at a throttled rate, so gating re-render on hudTick alone is intentional — not a stale-props
+// bug. Any new HUD input must be sampled at tick time, not expected to trigger its own re-render.
+export default React.memo(HUD, (prev, next) => prev.hudTick === next.hudTick);
